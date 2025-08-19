@@ -1,0 +1,202 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: unified-radarr
+  labels:
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgres-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              BACKUP_FILE="radarr_backup_${TIMESTAMP}.sql"
+              
+              echo "Starting backup at $(date)"
+              pg_dump -h postgres-service -U radarr -d radarr > /backup/${BACKUP_FILE}
+              
+              # Compress the backup
+              gzip /backup/${BACKUP_FILE}
+              
+              # Upload to cloud storage (requires cloud SDK)
+              # gsutil cp /backup/${BACKUP_FILE}.gz gs://unified-radarr-backups/postgres/
+              
+              # Clean up old local backups (keep last 7 days)
+              find /backup -name "radarr_backup_*.sql.gz" -mtime +7 -delete
+              
+              echo "Backup completed at $(date)"
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: password
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: unified-radarr
+  labels:
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: redis-backup
+            image: redis:7-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              BACKUP_FILE="redis_backup_${TIMESTAMP}.rdb"
+              
+              echo "Starting Redis backup at $(date)"
+              
+              # Trigger Redis save
+              redis-cli -h redis-service -a ${REDIS_PASSWORD} BGSAVE
+              
+              # Wait for background save to complete
+              while [ "$(redis-cli -h redis-service -a ${REDIS_PASSWORD} LASTSAVE)" = "$(redis-cli -h redis-service -a ${REDIS_PASSWORD} LASTSAVE)" ]; do
+                sleep 1
+              done
+              
+              # Copy the RDB file
+              redis-cli -h redis-service -a ${REDIS_PASSWORD} --rdb /backup/${BACKUP_FILE}
+              
+              # Compress the backup
+              gzip /backup/${BACKUP_FILE}
+              
+              # Clean up old backups
+              find /backup -name "redis_backup_*.rdb.gz" -mtime +7 -delete
+              
+              echo "Redis backup completed at $(date)"
+            env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 512Mi
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: unified-radarr
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: backup-storage
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-cleanup
+  namespace: unified-radarr
+  labels:
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup-cleanup
+            image: alpine:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Starting backup cleanup at $(date)"
+              
+              # Clean up old backups (keep last 30 days)
+              find /backup -name "*.gz" -mtime +30 -delete
+              
+              # Report backup sizes
+              echo "Current backup directory size:"
+              du -sh /backup
+              
+              echo "Backup cleanup completed at $(date)"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc

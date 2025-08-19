@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - postgres.yaml
+  - redis.yaml
+  - monitoring.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+  - hpa.yaml
+
+commonLabels:
+  app.kubernetes.io/name: unified-radarr
+  app.kubernetes.io/part-of: radarr-automation
+
+commonAnnotations:
+  version: "0.1.0"
+  managed-by: "kustomize"

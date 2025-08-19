@@ -558,7 +558,7 @@ mod tests {
             release_history: Vec::new(),
         };
 
-        HDBitsSceneAnalyzer::calculate_group_metrics_static(&mut metrics);
+        SceneGroupAnalyzer::calculate_group_metrics_static(&mut metrics);
         
         assert!(metrics.reputation_score > 50.0); // Should be a good score
         assert!(metrics.reputation_score <= 100.0); // Should not exceed max

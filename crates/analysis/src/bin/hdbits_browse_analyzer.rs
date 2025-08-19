@@ -9,7 +9,7 @@ use tracing::{info, Level};
 use tracing_subscriber;
 use chrono::Utc;
 
-use radarr_rust::core::hdbits_browse_analyzer::{HDBitsBrowseAnalyzer, HDBitsBrowseConfig};
+use radarr_analysis::{HDBitsBrowseAnalyzer, HDBitsBrowseConfig};
 
 #[derive(Parser)]
 #[command(name = "hdbits-browse-analyzer")]

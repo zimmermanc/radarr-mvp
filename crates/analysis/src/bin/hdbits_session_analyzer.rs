@@ -9,7 +9,7 @@ use tracing::{info, Level};
 use tracing_subscriber;
 use chrono::Utc;
 
-use radarr_rust::core::hdbits_session_analyzer::{HDBitsSessionAnalyzer, HDBitsSessionConfig};
+use radarr_analysis::{HDBitsSessionAnalyzer, HDBitsSessionConfig};
 
 #[derive(Parser)]
 #[command(name = "hdbits-session-analyzer")]

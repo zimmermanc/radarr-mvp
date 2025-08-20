@@ -1,0 +1,366 @@
+//! Application configuration
+//!
+//! This module defines the complete configuration structure for the Radarr application,
+//! including database, external services, and component-specific settings.
+
+// Simplified configuration to avoid circular dependencies for now
+// TODO: Import actual configs once they have proper Serde derives
+use serde::{Deserialize, Serialize};
+use std::env;
+use radarr_core::{RadarrError, Result};
+
+/// Simplified Prowlarr configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProwlarrConfig {
+    pub base_url: String,
+    pub api_key: String,
+    pub timeout: u64,
+    pub max_requests_per_minute: u32,
+    pub user_agent: String,
+    pub verify_ssl: bool,
+}
+
+impl Default for ProwlarrConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "http://localhost:9696".to_string(),
+            api_key: String::new(),
+            timeout: 30,
+            max_requests_per_minute: 60,
+            user_agent: "Radarr-Rust/1.0".to_string(),
+            verify_ssl: true,
+        }
+    }
+}
+
+/// Simplified qBittorrent configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QBittorrentConfig {
+    pub base_url: String,
+    pub username: String,
+    pub password: String,
+    pub timeout: u64,
+}
+
+impl Default for QBittorrentConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "http://localhost:8080".to_string(),
+            username: "admin".to_string(),
+            password: String::new(),
+            timeout: 30,
+        }
+    }
+}
+
+/// Simplified import configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportConfig {
+    pub dry_run: bool,
+    pub min_confidence: f32,
+    pub skip_samples: bool,
+    pub continue_on_error: bool,
+    pub max_parallel: usize,
+}
+
+impl Default for ImportConfig {
+    fn default() -> Self {
+        Self {
+            dry_run: false,
+            min_confidence: 0.3,
+            skip_samples: true,
+            continue_on_error: true,
+            max_parallel: 4,
+        }
+    }
+}
+
+/// Complete application configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    /// Server configuration
+    pub server: ServerConfig,
+    /// Database configuration
+    pub database: DatabaseConfig,
+    /// Prowlarr indexer configuration
+    pub prowlarr: ProwlarrConfig,
+    /// qBittorrent downloader configuration
+    pub qbittorrent: QBittorrentConfig,
+    /// Import pipeline configuration
+    pub import: ImportConfig,
+    /// Logging configuration
+    pub logging: LoggingConfig,
+}
+
+/// Server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// Server host address
+    pub host: String,
+    /// Server port
+    pub port: u16,
+    /// Maximum concurrent connections
+    pub max_connections: usize,
+    /// Request timeout in seconds
+    pub request_timeout: u64,
+}
+
+/// Database configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseConfig {
+    /// Database URL
+    pub url: String,
+    /// Maximum number of connections in the pool
+    pub max_connections: u32,
+    /// Connection timeout in seconds
+    pub connect_timeout: u64,
+    /// Enable query logging
+    pub log_queries: bool,
+}
+
+/// Logging configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    /// Log level (error, warn, info, debug, trace)
+    pub level: String,
+    /// Enable JSON formatted logs
+    pub json_format: bool,
+    /// Log to file
+    pub log_file: Option<String>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            database: DatabaseConfig::default(),
+            prowlarr: ProwlarrConfig::default(),
+            qbittorrent: QBittorrentConfig::default(),
+            import: ImportConfig::default(),
+            logging: LoggingConfig::default(),
+        }
+    }
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            host: "0.0.0.0".to_string(),
+            port: 7878,
+            max_connections: 1000,
+            request_timeout: 30,
+        }
+    }
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: "postgresql://radarr:radarr@localhost:5432/radarr".to_string(),
+            max_connections: 10,
+            connect_timeout: 30,
+            log_queries: false,
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            json_format: false,
+            log_file: None,
+        }
+    }
+}
+
+impl AppConfig {
+    /// Load configuration from environment variables
+    pub fn from_env() -> Result<Self> {
+        let mut config = Self::default();
+        
+        // Server configuration
+        if let Ok(host) = env::var("RADARR_HOST") {
+            config.server.host = host;
+        }
+        if let Ok(port) = env::var("RADARR_PORT") {
+            config.server.port = port.parse().map_err(|e| RadarrError::ValidationError {
+                field: "RADARR_PORT".to_string(),
+                message: format!("Invalid port number: {}", e),
+            })?;
+        }
+        if let Ok(max_conn) = env::var("RADARR_MAX_CONNECTIONS") {
+            config.server.max_connections = max_conn.parse().map_err(|e| RadarrError::ValidationError {
+                field: "RADARR_MAX_CONNECTIONS".to_string(),
+                message: format!("Invalid max connections: {}", e),
+            })?;
+        }
+        if let Ok(timeout) = env::var("RADARR_REQUEST_TIMEOUT") {
+            config.server.request_timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
+                field: "RADARR_REQUEST_TIMEOUT".to_string(),
+                message: format!("Invalid timeout: {}", e),
+            })?;
+        }
+        
+        // Database configuration
+        if let Ok(db_url) = env::var("DATABASE_URL") {
+            config.database.url = db_url;
+        }
+        if let Ok(max_conn) = env::var("DATABASE_MAX_CONNECTIONS") {
+            config.database.max_connections = max_conn.parse().map_err(|e| RadarrError::ValidationError {
+                field: "DATABASE_MAX_CONNECTIONS".to_string(),
+                message: format!("Invalid max connections: {}", e),
+            })?;
+        }
+        if let Ok(timeout) = env::var("DATABASE_CONNECT_TIMEOUT") {
+            config.database.connect_timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
+                field: "DATABASE_CONNECT_TIMEOUT".to_string(),
+                message: format!("Invalid timeout: {}", e),
+            })?;
+        }
+        if let Ok(log_queries) = env::var("DATABASE_LOG_QUERIES") {
+            config.database.log_queries = log_queries.parse().unwrap_or(false);
+        }
+        
+        // Prowlarr configuration
+        if let Ok(base_url) = env::var("PROWLARR_BASE_URL") {
+            config.prowlarr.base_url = base_url;
+        }
+        if let Ok(api_key) = env::var("PROWLARR_API_KEY") {
+            config.prowlarr.api_key = api_key;
+        }
+        if let Ok(timeout) = env::var("PROWLARR_TIMEOUT") {
+            config.prowlarr.timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
+                field: "PROWLARR_TIMEOUT".to_string(),
+                message: format!("Invalid timeout: {}", e),
+            })?;
+        }
+        if let Ok(rate_limit) = env::var("PROWLARR_RATE_LIMIT") {
+            config.prowlarr.max_requests_per_minute = rate_limit.parse().map_err(|e| RadarrError::ValidationError {
+                field: "PROWLARR_RATE_LIMIT".to_string(),
+                message: format!("Invalid rate limit: {}", e),
+            })?;
+        }
+        
+        // qBittorrent configuration
+        if let Ok(base_url) = env::var("QBITTORRENT_BASE_URL") {
+            config.qbittorrent.base_url = base_url;
+        }
+        if let Ok(username) = env::var("QBITTORRENT_USERNAME") {
+            config.qbittorrent.username = username;
+        }
+        if let Ok(password) = env::var("QBITTORRENT_PASSWORD") {
+            config.qbittorrent.password = password;
+        }
+        if let Ok(timeout) = env::var("QBITTORRENT_TIMEOUT") {
+            config.qbittorrent.timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
+                field: "QBITTORRENT_TIMEOUT".to_string(),
+                message: format!("Invalid timeout: {}", e),
+            })?;
+        }
+        
+        // Logging configuration
+        if let Ok(level) = env::var("RUST_LOG") {
+            config.logging.level = level;
+        }
+        if let Ok(json_format) = env::var("LOG_JSON_FORMAT") {
+            config.logging.json_format = json_format.parse().unwrap_or(false);
+        }
+        if let Ok(log_file) = env::var("LOG_FILE") {
+            config.logging.log_file = Some(log_file);
+        }
+        
+        Ok(config)
+    }
+    
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<()> {
+        // Validate server config
+        if self.server.port == 0 {
+            return Err(RadarrError::ValidationError {
+                field: "server.port".to_string(),
+                message: "Port must be greater than 0".to_string(),
+            });
+        }
+        
+        if self.server.max_connections == 0 {
+            return Err(RadarrError::ValidationError {
+                field: "server.max_connections".to_string(),
+                message: "Max connections must be greater than 0".to_string(),
+            });
+        }
+        
+        // Validate database config
+        if self.database.url.is_empty() {
+            return Err(RadarrError::ValidationError {
+                field: "database.url".to_string(),
+                message: "Database URL cannot be empty".to_string(),
+            });
+        }
+        
+        if self.database.max_connections == 0 {
+            return Err(RadarrError::ValidationError {
+                field: "database.max_connections".to_string(),
+                message: "Database max connections must be greater than 0".to_string(),
+            });
+        }
+        
+        // Validate Prowlarr config
+        if self.prowlarr.base_url.is_empty() {
+            return Err(RadarrError::ValidationError {
+                field: "prowlarr.base_url".to_string(),
+                message: "Prowlarr base URL cannot be empty".to_string(),
+            });
+        }
+        
+        // Note: API key validation is optional as it might be set later
+        
+        // Validate qBittorrent config
+        if self.qbittorrent.base_url.is_empty() {
+            return Err(RadarrError::ValidationError {
+                field: "qbittorrent.base_url".to_string(),
+                message: "qBittorrent base URL cannot be empty".to_string(),
+            });
+        }
+        
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_default_config() {
+        let config = AppConfig::default();
+        assert_eq!(config.server.host, "0.0.0.0");
+        assert_eq!(config.server.port, 7878);
+        assert_eq!(config.database.max_connections, 10);
+        assert!(config.validate().is_ok());
+    }
+    
+    #[test]
+    fn test_config_validation() {
+        let mut config = AppConfig::default();
+        config.server.port = 0;
+        assert!(config.validate().is_err());
+        
+        config.server.port = 8080;
+        config.database.url = String::new();
+        assert!(config.validate().is_err());
+    }
+    
+    #[test]
+    fn test_from_env() {
+        std::env::set_var("RADARR_PORT", "8080");
+        std::env::set_var("DATABASE_URL", "postgresql://test:test@localhost/test");
+        
+        let config = AppConfig::from_env().unwrap();
+        assert_eq!(config.server.port, 8080);
+        assert_eq!(config.database.url, "postgresql://test:test@localhost/test");
+        
+        std::env::remove_var("RADARR_PORT");
+        std::env::remove_var("DATABASE_URL");
+    }
+}

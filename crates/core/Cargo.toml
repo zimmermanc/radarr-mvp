@@ -13,6 +13,14 @@ uuid = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
+async-trait = { workspace = true }
+
+# Optional infrastructure dependencies
+sqlx = { workspace = true, optional = true }
+
+[features]
+default = []
+postgres = ["sqlx"]
 
 [dev-dependencies]
 proptest = { workspace = true }

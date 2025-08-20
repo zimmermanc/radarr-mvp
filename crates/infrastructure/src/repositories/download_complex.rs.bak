@@ -1,0 +1,317 @@
+//! PostgreSQL implementation of DownloadRepository
+
+use crate::database::DatabasePool;
+use async_trait::async_trait;
+use radarr_core::{
+    domain::repositories::DownloadRepository,
+    models::{Download, DownloadStatus},
+    Result,
+};
+use sqlx::{query, Row};
+use uuid::Uuid;
+
+/// PostgreSQL implementation of DownloadRepository
+pub struct PostgresDownloadRepository {
+    pool: DatabasePool,
+}
+
+impl PostgresDownloadRepository {
+    /// Create a new PostgreSQL download repository
+    pub fn new(pool: DatabasePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl DownloadRepository for PostgresDownloadRepository {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Download>> {
+        let row = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(row) => Ok(Some(row_to_download(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_movie_id(&self, movie_id: Uuid) -> Result<Vec<Download>> {
+        let rows = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            WHERE movie_id = $1
+            ORDER BY created_at DESC
+            "#,
+            movie_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            downloads.push(row_to_download(row)?);
+        }
+        Ok(downloads)
+    }
+
+    async fn find_by_status(&self, status: DownloadStatus) -> Result<Vec<Download>> {
+        let rows = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            WHERE status = $1
+            ORDER BY created_at DESC
+            "#,
+            status.to_string()
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            downloads.push(row_to_download(row)?);
+        }
+        Ok(downloads)
+    }
+
+    async fn find_active(&self) -> Result<Vec<Download>> {
+        let rows = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            WHERE status = 'downloading'
+            ORDER BY created_at DESC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            downloads.push(row_to_download(row)?);
+        }
+        Ok(downloads)
+    }
+
+    async fn find_completed_not_imported(&self) -> Result<Vec<Download>> {
+        let rows = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            WHERE status = 'completed' AND imported = false
+            ORDER BY completion_time ASC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            downloads.push(row_to_download(row)?);
+        }
+        Ok(downloads)
+    }
+
+    async fn create(&self, download: &Download) -> Result<Download> {
+        let row = query!(
+            r#"
+            INSERT INTO downloads (
+                id, movie_id, download_client_id, indexer_id, download_id,
+                title, category, status, size_bytes, size_left, quality,
+                download_time, completion_time, error_message, imported,
+                import_time, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            RETURNING id, movie_id, download_client_id, indexer_id, download_id,
+                      title, category, status, size_bytes, size_left, quality,
+                      download_time, completion_time, error_message, imported,
+                      import_time, created_at, updated_at
+            "#,
+            download.id,
+            download.movie_id,
+            download.download_client_id,
+            download.indexer_id,
+            download.download_id,
+            download.title,
+            download.category,
+            download.status.to_string(),
+            download.size_bytes,
+            download.size_left,
+            download.quality,
+            download.download_time,
+            download.completion_time,
+            download.error_message,
+            download.imported,
+            download.import_time,
+            download.created_at,
+            download.updated_at
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        row_to_download(row)
+    }
+
+    async fn update(&self, download: &Download) -> Result<Download> {
+        let row = query!(
+            r#"
+            UPDATE downloads
+            SET movie_id = $2, download_client_id = $3, indexer_id = $4,
+                download_id = $5, title = $6, category = $7, status = $8,
+                size_bytes = $9, size_left = $10, quality = $11,
+                download_time = $12, completion_time = $13, error_message = $14,
+                imported = $15, import_time = $16, updated_at = $17
+            WHERE id = $1
+            RETURNING id, movie_id, download_client_id, indexer_id, download_id,
+                      title, category, status, size_bytes, size_left, quality,
+                      download_time, completion_time, error_message, imported,
+                      import_time, created_at, updated_at
+            "#,
+            download.id,
+            download.movie_id,
+            download.download_client_id,
+            download.indexer_id,
+            download.download_id,
+            download.title,
+            download.category,
+            download.status.to_string(),
+            download.size_bytes,
+            download.size_left,
+            download.quality,
+            download.download_time,
+            download.completion_time,
+            download.error_message,
+            download.imported,
+            download.import_time,
+            download.updated_at
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        row_to_download(row)
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        query!("DELETE FROM downloads WHERE id = $1", id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn list(&self, offset: i64, limit: i32) -> Result<Vec<Download>> {
+        let rows = query!(
+            r#"
+            SELECT id, movie_id, download_client_id, indexer_id, download_id,
+                   title, category, status, size_bytes, size_left, quality,
+                   download_time, completion_time, error_message, imported,
+                   import_time, created_at, updated_at
+            FROM downloads
+            ORDER BY created_at DESC
+            OFFSET $1 LIMIT $2
+            "#,
+            offset,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            downloads.push(row_to_download(row)?);
+        }
+        Ok(downloads)
+    }
+
+    async fn cleanup_old(&self, days: i32) -> Result<i64> {
+        let result = query!(
+            r#"
+            DELETE FROM downloads
+            WHERE status IN ('completed', 'failed', 'removed')
+            AND imported = true
+            AND completed_at < NOW() - INTERVAL '%d days'
+            "#,
+            days
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() as i64)
+    }
+}
+
+// Helper functions
+
+fn row_to_download(row: impl Row + sqlx::postgres::PgRow) -> Result<Download> {
+    let status_str: String = row.try_get("status")?;
+    let status = parse_download_status(&status_str)?;
+
+    Ok(Download {
+        id: row.try_get("id")?,
+        movie_id: row.try_get("movie_id")?,
+        download_client_id: row.try_get("download_client_id")?,
+        indexer_id: row.try_get("indexer_id")?,
+        download_id: row.try_get("download_id")?,
+        title: row.try_get("title")?,
+        category: row.try_get("category")?,
+        status,
+        size_bytes: row.try_get("size_bytes")?,
+        size_left: row.try_get("size_left")?,
+        quality: row.try_get("quality")?,
+        download_time: row.try_get("download_time")?,
+        completion_time: row.try_get("completion_time")?,
+        error_message: row.try_get("error_message")?,
+        imported: row.try_get("imported")?,
+        import_time: row.try_get("import_time")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+fn parse_download_status(status_str: &str) -> Result<DownloadStatus> {
+    match status_str {
+        "downloading" => Ok(DownloadStatus::Downloading),
+        "completed" => Ok(DownloadStatus::Completed),
+        "failed" => Ok(DownloadStatus::Failed),
+        "removed" => Ok(DownloadStatus::Removed),
+        _ => Err(radarr_core::RadarrError::ValidationError {
+            field: "status".to_string(),
+            message: format!("Invalid download status: {}", status_str),
+        }),
+    }
+}
+
+// Implement Display for enum serialization to string
+impl std::fmt::Display for DownloadStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloadStatus::Downloading => write!(f, "downloading"),
+            DownloadStatus::Completed => write!(f, "completed"),
+            DownloadStatus::Failed => write!(f, "failed"),
+            DownloadStatus::Removed => write!(f, "removed"),
+        }
+    }
+}

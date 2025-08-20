@@ -102,16 +102,18 @@ async fn main() -> Result<()> {
     
     // Create analyzer configuration
     let config = HDBitsComprehensiveConfig {
-        session_cookie: Some(session_cookie),
-        max_pages: if test_mode { 3 } else { max_pages as usize },
-        delay_seconds,
-        enable_six_month_filter: six_month_filtering,
+        session_cookie,
+        base_url: "https://hdbits.org".to_string(),
+        request_delay_seconds: delay_seconds,
+        max_pages_per_category: if test_mode { 3 } else { max_pages },
+        six_month_filtering,
+        comprehensive_collection: !test_mode,
     };
 
     info!("🚀 HDBits Comprehensive Scene Group Analyzer v3.0");
     info!("📊 Configuration:");
-    info!("   • Max pages per category: {}", config.max_pages);
-    info!("   • Request delay: {} seconds", config.delay_seconds);
+    info!("   • Max pages per category: {}", config.max_pages_per_category);
+    info!("   • Request delay: {} seconds", config.request_delay_seconds);
     info!("   • 6-month filtering: {}", if six_month_filtering { "enabled" } else { "disabled" });
     info!("   • Test mode: {}", if test_mode { "enabled" } else { "disabled" });
     info!("   • Output file: {}", output_file);
@@ -120,32 +122,37 @@ async fn main() -> Result<()> {
     let start_time = Utc::now();
     
     // Initialize analyzer
-    let analyzer = HDBitsComprehensiveAnalyzer::new(config);
+    let mut analyzer = HDBitsComprehensiveAnalyzer::new(config)
+        .context("Failed to initialize analyzer")?;
 
-    // Simplified analysis for compilation
-    info!("🔐 Running simplified analysis...");
-    
-    let result = analyzer.analyze().await;
-    
-    match result {
-        Ok(analysis_data) => {
-            info!("✅ Analysis complete");
-            
-            // Save analysis data
-            let analysis_json = serde_json::to_string_pretty(&analysis_data)
-                .context("Failed to serialize analysis data")?;
-            fs::write(output_file, analysis_json)
-                .with_context(|| format!("Failed to write results to {}", output_file))?;
-            
-            info!("✅ Analysis results saved to: {}", output_file);
-        }
+    // Verify session
+    info!("🔐 Verifying HDBits session...");
+    match analyzer.verify_session().await {
+        Ok(()) => info!("✅ Session verified successfully"),
         Err(e) => {
-            warn!("⚠️  Analysis failed: {}", e);
-            info!("ℹ️  This is a simplified implementation for compilation compatibility");
+            warn!("⚠️  Session verification failed: {}", e);
+            info!("ℹ️  You may need to provide a valid --session-cookie parameter");
+            info!("ℹ️  Continuing with default cookie for demonstration...");
         }
     }
+
+    // Collect comprehensive data
+    info!("🔄 Starting comprehensive data collection...");
+    let releases = analyzer.collect_comprehensive_data().await
+        .context("Failed to collect data from HDBits")?;
+
+    if releases.is_empty() {
+        warn!("⚠️  No releases collected. Check session cookie and connectivity.");
+        return Ok(());
+    }
+
+    info!("📈 Analyzing {} releases for scene group reputation data...", releases.len());
     
-    let (total_groups, total_releases, internal_releases, six_month_releases) = (0, 0, 0, 0);
+    // Analyze scene groups
+    analyzer.analyze_scene_groups(releases)
+        .context("Failed to analyze scene groups")?;
+
+    let (total_groups, total_releases, internal_releases, six_month_releases) = analyzer.get_statistics();
     
     info!("📊 Analysis Results:");
     info!("   • Unique scene groups: {}", total_groups);
@@ -153,15 +160,51 @@ async fn main() -> Result<()> {
     info!("   • Internal releases: {}", internal_releases);
     info!("   • 6-month releases: {}", six_month_releases);
 
-    // Generate simplified report
-    info!("📋 Generating simplified analysis report...");
+    // Generate comprehensive report
+    info!("📋 Generating comprehensive analysis report...");
+    let report = analyzer.generate_comprehensive_report(start_time);
     
-    // Create a simple CSV export
-    let csv_data = "group_name,reputation_score,total_releases\nSample,75.0,10\n";
+    // Display top groups
+    info!("🏆 Top 10 Scene Groups by Reputation:");
+    for (i, group) in analyzer.get_top_groups_by_reputation(10).iter().enumerate() {
+        info!("   {}. {} - Score: {:.1} ({}) - {} releases ({}% internal)", 
+              i + 1,
+              group.group_name,
+              group.comprehensive_reputation_score,
+              group.evidence_based_tier,
+              group.total_releases,
+              (group.internal_ratio * 100.0) as u32
+        );
+    }
+
+    // Export results
+    info!("💾 Exporting results...");
+    
+    // JSON export
+    let json_data = analyzer.export_comprehensive_json()
+        .context("Failed to serialize analysis data")?;
+    
+    fs::write(output_file, json_data)
+        .with_context(|| format!("Failed to write results to {}", output_file))?;
+    
+    info!("✅ JSON results saved to: {}", output_file);
+    
+    // CSV export
+    let csv_data = analyzer.export_csv_comprehensive();
     fs::write(csv_output_file, csv_data)
         .with_context(|| format!("Failed to write CSV to {}", csv_output_file))?;
     
     info!("✅ CSV results saved to: {}", csv_output_file);
+
+    // Save detailed report
+    let report_file = "hdbits_comprehensive_report.json";
+    let report_json = serde_json::to_string_pretty(&report)
+        .context("Failed to serialize report")?;
+    
+    fs::write(report_file, report_json)
+        .with_context(|| format!("Failed to write report to {}", report_file))?;
+    
+    info!("✅ Detailed report saved to: {}", report_file);
 
     let duration = Utc::now().signed_duration_since(start_time);
     
@@ -172,18 +215,34 @@ async fn main() -> Result<()> {
     
     // Print summary statistics
     info!("📊 Final Statistics:");
-    info!("   • Simplified implementation for compilation compatibility");
-    info!("   • Groups analyzed: placeholder data");
+    info!("   • Data collection period: {}", report.data_collection_period);
+    info!("   • Pages processed: {}", report.pages_processed);
+    info!("   • Scene group extraction rate: {:.1}%", 
+          report.data_quality_indicators.scene_group_extraction_rate * 100.0);
+    info!("   • Internal release percentage: {:.1}%", 
+          report.data_quality_indicators.internal_release_percentage * 100.0);
+    info!("   • 6-month data coverage: {:.1}%", 
+          report.data_quality_indicators.six_month_data_coverage * 100.0);
     
+    // Quality distribution summary
+    let stats = &report.statistical_insights.reputation_distribution;
+    info!("🏅 Quality Distribution:");
+    info!("   • Elite (95-100): {} groups", stats.elite);
+    info!("   • Premium (85-94): {} groups", stats.premium);
+    info!("   • Excellent (75-84): {} groups", stats.excellent);
+    info!("   • Good (65-74): {} groups", stats.good);
+    info!("   • Average (50-64): {} groups", stats.average);
+    info!("   • Below Average (35-49): {} groups", stats.below_average);
+    info!("   • Poor (0-34): {} groups", stats.poor);
+
     info!("📁 Output files generated:");
     info!("   • {}", output_file);
     info!("   • {}", csv_output_file);
+    info!("   • {}", report_file);
     
     if test_mode {
         info!("ℹ️  Test mode was enabled. Run without --test-mode for full analysis.");
     }
-    
-    info!("ℹ️  Note: This is a simplified implementation for compilation compatibility");
     
     info!("✨ Ready for scene group reputation integration!");
     

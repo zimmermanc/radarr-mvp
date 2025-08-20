@@ -17,6 +17,8 @@ pub use hdbits_browse_analyzer::{HDBitsBrowseAnalyzer, HDBitsBrowseConfig};
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn analysis_crate_compiles() {
         // Basic compilation test

@@ -75,8 +75,10 @@ async fn main() -> Result<()> {
 
     // Create configuration
     let config = HDBitsBrowseConfig {
-        max_pages: 5,
-        delay_seconds: safe_rate_limit,
+        username: cli.username.clone(),
+        passkey: cli.passkey.clone(),
+        base_url: "https://hdbits.org".to_string(),
+        rate_limit_seconds: safe_rate_limit,
     };
 
     // Display configuration (masking sensitive data)
@@ -132,33 +134,97 @@ async fn main() -> Result<()> {
     info!("");
 
     // Initialize analyzer
-    let analyzer = HDBitsBrowseAnalyzer::new(config);
+    let mut analyzer = HDBitsBrowseAnalyzer::new(config);
     
-    // Simplified analysis for compilation
-    info!("🔐 Phase 1: Initializing analyzer...");
-    info!("✅ Analyzer initialized successfully");
-    
-    info!("");
-    info!("📥 Phase 2: Running analysis (simplified version)...");
-    
-    let result = analyzer.analyze().await;
-    
-    match result {
-        Ok(analysis_data) => {
-            info!("✅ Analysis complete");
-            
-            let timestamp = start_time.format("%Y%m%d_%H%M%S");
-            let analysis_path = cli.output.join(format!("hdbits_browse_analysis_{}.json", timestamp));
-            let analysis_json = serde_json::to_string_pretty(&analysis_data)
-                .context("Failed to serialize analysis data")?;
-            std::fs::write(&analysis_path, analysis_json)
-                .context("Failed to write analysis data")?;
-            info!("✅ Analysis data saved to: {}", analysis_path.display());
-        }
+    // Phase 1: Authentication
+    info!("🔐 Phase 1: Authenticating with HDBits...");
+    match analyzer.login().await {
+        Ok(_) => info!("✅ Authentication successful"),
         Err(e) => {
-            eprintln!("❌ Analysis failed: {}", e);
+            eprintln!("❌ Authentication failed: {}", e);
+            eprintln!("");
+            eprintln!("Possible issues:");
+            eprintln!("  • Invalid credentials");
+            eprintln!("  • Network connectivity problems");
+            eprintln!("  • HDBits site issues");
             std::process::exit(1);
         }
+    }
+    
+    // Phase 2: Data Collection
+    info!("");
+    info!("📥 Phase 2: Collecting release data from browse interface...");
+    info!("   Using {}-second delays between requests for community safety", safe_rate_limit);
+    
+    let releases = match analyzer.collect_internal_releases().await {
+        Ok(releases) => {
+            info!("✅ Data collection complete: {} releases collected", releases.len());
+            releases
+        }
+        Err(e) => {
+            eprintln!("❌ Data collection failed: {}", e);
+            eprintln!("");
+            eprintln!("Possible issues:");
+            eprintln!("  • Network connectivity problems");
+            eprintln!("  • HDBits site structure changes");
+            eprintln!("  • Rate limiting (try increasing --rate-limit-seconds)");
+            std::process::exit(1);
+        }
+    };
+    
+    if releases.is_empty() {
+        eprintln!("⚠️  No releases found - this might indicate:");
+        eprintln!("   • Site structure changes requiring parser updates");
+        eprintln!("   • Network or authentication issues");
+        eprintln!("   • Temporary site problems");
+        std::process::exit(1);
+    }
+    
+    // Phase 3: Scene Group Analysis
+    info!("");
+    info!("🔍 Phase 3: Analyzing scene groups and calculating reputation scores...");
+    
+    analyzer.analyze_scene_groups(releases).context("Failed to analyze scene groups")?;
+    let scene_groups = analyzer.get_scene_groups();
+    
+    if scene_groups.is_empty() {
+        eprintln!("⚠️  No scene groups identified from releases");
+        eprintln!("   This might indicate issues with release name parsing");
+        std::process::exit(1);
+    }
+    
+    info!("✅ Scene group analysis complete: {} unique groups identified", scene_groups.len());
+    
+    // Phase 4: Report Generation
+    info!("");
+    info!("📋 Phase 4: Generating comprehensive analysis reports...");
+    
+    let report = analyzer.generate_analysis_report(start_time);
+    let timestamp = start_time.format("%Y%m%d_%H%M%S");
+    
+    // Save detailed analysis report
+    let report_json = serde_json::to_string_pretty(&report)
+        .context("Failed to serialize analysis report")?;
+    let report_path = cli.output.join(format!("hdbits_browse_analysis_{}.json", timestamp));
+    std::fs::write(&report_path, report_json)
+        .context("Failed to write analysis report")?;
+    info!("✅ Detailed analysis saved to: {}", report_path.display());
+    
+    // Save reputation system data (for integration)
+    let reputation_json = analyzer.export_reputation_data()
+        .context("Failed to export reputation data")?;
+    let reputation_path = cli.output.join(format!("reputation_system_{}.json", timestamp));
+    std::fs::write(&reputation_path, reputation_json)
+        .context("Failed to write reputation system data")?;
+    info!("✅ Reputation system saved to: {}", reputation_path.display());
+    
+    if !cli.reputation_only {
+        // Save CSV data for analysis
+        let csv_data = analyzer.export_csv_data();
+        let csv_path = cli.output.join(format!("scene_groups_data_{}.csv", timestamp));
+        std::fs::write(&csv_path, csv_data)
+            .context("Failed to write CSV data")?;
+        info!("✅ CSV data saved to: {}", csv_path.display());
     }
     
     let end_time = Utc::now();
@@ -168,11 +234,73 @@ async fn main() -> Result<()> {
     info!("🎉 ANALYSIS COMPLETE!");
     info!("====================");
     info!("");
-    info!("📊 ANALYSIS SUMMARY:");
-    info!("   Execution time: {} minutes", duration.num_minutes());
+    
+    // Display summary statistics
+    info!("📊 COLLECTION SUMMARY:");
+    info!("   Total Releases Analyzed: {}", report.total_releases_analyzed);
+    info!("   Unique Scene Groups: {}", report.unique_scene_groups);
+    info!("   Internal Releases: {}", report.internal_releases);
+    info!("   Collection Duration: {} minutes", duration.num_minutes());
     info!("");
-    info!("✅ Browse analyzer completed successfully!");
-    info!("   Note: This is a simplified implementation for compilation compatibility");
+    
+    info!("🏆 QUALITY DISTRIBUTION:");
+    info!("   Premium Groups (85-100): {}", report.quality_distribution.premium);
+    info!("   Excellent Groups (75-84): {}", report.quality_distribution.excellent);
+    info!("   Good Groups (65-74): {}", report.quality_distribution.good);
+    info!("   Average Groups (50-64): {}", report.quality_distribution.average);
+    info!("   Below Average (35-49): {}", report.quality_distribution.below_average);
+    info!("   Poor Groups (0-34): {}", report.quality_distribution.poor);
+    info!("");
+    
+    info!("🌟 TOP 10 SCENE GROUPS BY REPUTATION:");
+    for (i, group) in report.top_groups.iter().take(10).enumerate() {
+        info!("   {}. {} - {:.1} ({} - {} releases)", 
+            i + 1, 
+            group.group_name, 
+            group.reputation_score, 
+            group.quality_tier,
+            group.total_releases
+        );
+    }
+    info!("");
+    
+    info!("📈 STATISTICAL SUMMARY:");
+    info!("   Reputation Score Range: {:.1} - {:.1} (avg: {:.1})", 
+        report.statistical_summary.reputation_scores.min,
+        report.statistical_summary.reputation_scores.max,
+        report.statistical_summary.reputation_scores.mean
+    );
+    info!("   Average Seeders Range: {:.1} - {:.1} (avg: {:.1})", 
+        report.statistical_summary.seeder_counts.min,
+        report.statistical_summary.seeder_counts.max,
+        report.statistical_summary.seeder_counts.mean
+    );
+    info!("   File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB)", 
+        report.statistical_summary.file_sizes_gb.min,
+        report.statistical_summary.file_sizes_gb.max,
+        report.statistical_summary.file_sizes_gb.mean
+    );
+    info!("");
+    
+    info!("🎯 NEXT STEPS:");
+    info!("   1. Review detailed analysis: {}", report_path.display());
+    info!("   2. Integrate reputation scores: {}", reputation_path.display());
+    if !cli.reputation_only {
+        info!("   3. Analyze CSV data for insights: scene_groups_data_{}.csv", timestamp);
+    }
+    info!("   4. Update your automation system with evidence-based scores");
+    info!("   5. Schedule regular analysis runs for updated data");
+    info!("");
+    
+    info!("💡 INTEGRATION EXAMPLE:");
+    info!("   Load reputation_system_{}.json in your automation system", timestamp);
+    info!("   Use reputation_score >= 75.0 for premium quality filtering");
+    info!("   Consider confidence_level for decision making");
+    info!("");
+    
+    info!("✅ Safe data collection completed successfully!");
+    info!("   All operations used browse interface with conservative rate limiting");
+    info!("   HDBits community guidelines respected throughout collection");
     
     Ok(())
 }

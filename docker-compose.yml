@@ -1,0 +1,228 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: radarr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-radarr}
+      POSTGRES_USER: ${POSTGRES_USER:-radarr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radarr}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - radarr-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radarr} -d ${POSTGRES_DB:-radarr}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Cache (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: radarr-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - radarr-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAX_MEMORY:-256mb} --maxmemory-policy allkeys-lru
+
+  # Radarr MVP Application
+  radarr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-production}
+    container_name: radarr-mvp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database Configuration
+      DATABASE_URL: postgresql://${POSTGRES_USER:-radarr}:${POSTGRES_PASSWORD:-radarr}@postgres:5432/${POSTGRES_DB:-radarr}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-10}
+      DATABASE_CONNECT_TIMEOUT: ${DATABASE_CONNECT_TIMEOUT:-30}
+      
+      # Server Configuration
+      RADARR_HOST: 0.0.0.0
+      RADARR_PORT: ${RADARR_PORT:-7878}
+      RADARR_MAX_CONNECTIONS: ${RADARR_MAX_CONNECTIONS:-1000}
+      RADARR_REQUEST_TIMEOUT: ${RADARR_REQUEST_TIMEOUT:-30}
+      
+      # External Services
+      PROWLARR_BASE_URL: ${PROWLARR_BASE_URL:-http://prowlarr:9696}
+      PROWLARR_API_KEY: ${PROWLARR_API_KEY}
+      PROWLARR_TIMEOUT: ${PROWLARR_TIMEOUT:-30}
+      
+      QBITTORRENT_BASE_URL: ${QBITTORRENT_BASE_URL:-http://qbittorrent:8080}
+      QBITTORRENT_USERNAME: ${QBITTORRENT_USERNAME:-admin}
+      QBITTORRENT_PASSWORD: ${QBITTORRENT_PASSWORD}
+      QBITTORRENT_TIMEOUT: ${QBITTORRENT_TIMEOUT:-30}
+      
+      # Optional Redis Cache
+      REDIS_URL: redis://redis:6379
+      
+      # TMDB Configuration
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      
+      # Import Settings
+      IMPORT_DRY_RUN: ${IMPORT_DRY_RUN:-false}
+      IMPORT_MIN_CONFIDENCE: ${IMPORT_MIN_CONFIDENCE:-0.3}
+      IMPORT_SKIP_SAMPLES: ${IMPORT_SKIP_SAMPLES:-true}
+      IMPORT_CONTINUE_ON_ERROR: ${IMPORT_CONTINUE_ON_ERROR:-true}
+      IMPORT_MAX_PARALLEL: ${IMPORT_MAX_PARALLEL:-4}
+      
+      # Logging
+      RUST_LOG: ${RUST_LOG:-info}
+      LOG_JSON_FORMAT: ${LOG_JSON_FORMAT:-true}
+      
+      # Security
+      RADARR_API_KEY: ${RADARR_API_KEY}
+      API_KEY_REQUIRED: ${API_KEY_REQUIRED:-false}
+      
+      # Performance
+      METRICS_PORT: ${METRICS_PORT:-9090}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-5}
+      DOWNLOAD_TIMEOUT: ${DOWNLOAD_TIMEOUT:-300}
+      
+      # Migration Settings
+      RUN_MIGRATIONS_ON_STARTUP: ${RUN_MIGRATIONS_ON_STARTUP:-true}
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
+      - "${METRICS_PORT:-9090}:9090"  # Metrics endpoint
+    volumes:
+      # Media directories
+      - ${MOVIES_PATH:-./data/movies}:/movies
+      - ${DOWNLOADS_PATH:-./data/downloads}:/downloads
+      # Configuration and logs
+      - radarr_config:/app/config
+      - radarr_logs:/app/logs
+      # Optional: Custom configuration files
+      - ./config:/app/config/custom:ro
+    networks:
+      - radarr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # Set to true for enhanced security (requires writable tmpfs mounts)
+    tmpfs:
+      - /tmp:rw,size=100m
+      - /app/temp:rw,size=50m
+
+  # Prowlarr (Optional - for indexer management)
+  prowlarr:
+    image: ghcr.io/hotio/prowlarr:latest
+    container_name: radarr-prowlarr
+    restart: unless-stopped
+    profiles:
+      - full-stack  # Only start with docker-compose --profile full-stack
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
+    volumes:
+      - prowlarr_config:/config
+    networks:
+      - radarr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9696/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # qBittorrent (Optional - for downloading)
+  qbittorrent:
+    image: ghcr.io/hotio/qbittorrent:latest
+    container_name: radarr-qbittorrent
+    restart: unless-stopped
+    profiles:
+      - full-stack  # Only start with docker-compose --profile full-stack
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      WEBUI_PORTS: ${QBITTORRENT_PORT:-8080}/tcp
+    ports:
+      - "${QBITTORRENT_PORT:-8080}:8080"  # Web UI
+      - "${QBITTORRENT_BT_PORT:-6881}:6881"  # BitTorrent
+      - "${QBITTORRENT_BT_PORT:-6881}:6881/udp"  # BitTorrent UDP
+    volumes:
+      - qbittorrent_config:/config
+      - ${DOWNLOADS_PATH:-./data/downloads}:/downloads
+    networks:
+      - radarr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# Named volumes for persistent data
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  radarr_config:
+    driver: local
+  radarr_logs:
+    driver: local
+  prowlarr_config:
+    driver: local
+  qbittorrent_config:
+    driver: local
+
+# Network configuration
+networks:
+  radarr-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    driver_opts:
+      com.docker.network.bridge.name: radarr-bridge
+      com.docker.network.bridge.enable_ip_masquerade: "true"

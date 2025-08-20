@@ -8,7 +8,7 @@ use tokio;
 use tracing::{info, Level};
 use tracing_subscriber;
 
-use radarr_analysis::{HDBitsConfig, SceneGroupAnalyzer};
+use radarr_analysis::{HDBitsConfig, HDBitsClient, SceneGroupAnalyzer};
 
 #[derive(Parser)]
 #[command(name = "hdbits-analyzer")]
@@ -102,11 +102,11 @@ async fn main() -> Result<()> {
 
     // Create output directory
     std::fs::create_dir_all(&cli.output)?;
-    let output_dir = cli.output.to_string_lossy().to_string();
 
-    // Initialize data collector
-    info!("Initializing HDBits data collector...");
-    let mut collector = SceneGroupAnalyzer::new(config, output_dir);
+    // Initialize HDBits client and analyzer
+    info!("Initializing HDBits client and analyzer...");
+    let client = HDBitsClient::new(config);
+    let mut analyzer = SceneGroupAnalyzer::new();
 
     // Run comprehensive data collection and analysis
     info!("Starting data collection and analysis...");
@@ -117,79 +117,11 @@ async fn main() -> Result<()> {
     info!("  4. Generate comprehensive analysis reports");
     info!("");
 
-    match collector.collect_and_analyze().await {
-        Ok(report) => {
-            info!("✅ Data collection and analysis completed successfully!");
-            info!("");
-            info!("RESULTS SUMMARY:");
-            info!("================");
-            info!("Total Torrents Analyzed: {}", report.total_torrents_analyzed);
-            info!("Unique Scene Groups: {}", report.unique_scene_groups);
-            info!("Internal Releases: {}", report.internal_releases);
-            info!("External Releases: {}", report.external_releases);
-            info!("Collection Duration: {} seconds", report.collection_duration_seconds);
-            info!("");
-            
-            info!("QUALITY DISTRIBUTION:");
-            info!("  Premium Groups (80-100): {}", report.quality_distribution.premium_groups);
-            info!("  High Quality (60-80): {}", report.quality_distribution.high_quality_groups);
-            info!("  Standard (40-60): {}", report.quality_distribution.standard_groups);
-            info!("  Low Quality (20-40): {}", report.quality_distribution.low_quality_groups);
-            info!("  Poor (0-20): {}", report.quality_distribution.poor_groups);
-            info!("");
-
-            info!("TOP 10 SCENE GROUPS BY REPUTATION:");
-            for (i, group) in report.top_groups_by_reputation.iter().take(10).enumerate() {
-                info!("  {}. {} - {:.1} ({}, {} releases)", 
-                    i + 1, 
-                    group.group_name, 
-                    group.reputation_score, 
-                    group.quality_tier,
-                    group.total_releases
-                );
-            }
-            info!("");
-
-            info!("STATISTICAL SUMMARY:");
-            info!("  Reputation Score Range: {:.1} - {:.1} (avg: {:.1})", 
-                report.statistical_summary.reputation_scores.min,
-                report.statistical_summary.reputation_scores.max,
-                report.statistical_summary.reputation_scores.mean
-            );
-            info!("  Average Seeders Range: {:.1} - {:.1} (avg: {:.1})", 
-                report.statistical_summary.seeder_counts.min,
-                report.statistical_summary.seeder_counts.max,
-                report.statistical_summary.seeder_counts.mean
-            );
-            info!("  File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB)", 
-                report.statistical_summary.file_sizes_gb.min,
-                report.statistical_summary.file_sizes_gb.max,
-                report.statistical_summary.file_sizes_gb.mean
-            );
-            info!("");
-
-            info!("TEMPORAL ANALYSIS:");
-            info!("  Active Groups (last 30 days): {}", report.temporal_analysis.active_groups_last_30_days);
-            info!("  Active Groups (last 90 days): {}", report.temporal_analysis.active_groups_last_90_days);
-            info!("  Established Groups (2+ years): {}", report.temporal_analysis.established_groups_over_2_years);
-            info!("  Dormant Groups (1+ year): {}", report.temporal_analysis.dormant_groups);
-            info!("");
-
-            info!("🎯 NEXT STEPS:");
-            info!("1. Review the generated reports in: {}", cli.output.display());
-            info!("2. Use reputation_system_*.json for integration with automation");
-            info!("3. Analyze scene_groups_data_*.csv for detailed insights");
-            info!("4. Update your automation system with evidence-based reputation scores");
-            info!("");
-
-            info!("Files Generated:");
-            info!("  📊 collection_report_*.json - Summary report with statistics");
-            info!("  🔍 scene_groups_analysis_*.json - Detailed analysis data");
-            info!("  ⚙️ reputation_system_*.json - Ready-to-integrate reputation scores");
-            info!("  📈 scene_groups_data_*.csv - Raw data for further analysis");
-        }
+    // Collect data from HDBits
+    let torrents = match client.collect_comprehensive_data().await {
+        Ok(torrents) => torrents,
         Err(e) => {
-            eprintln!("❌ Error during data collection and analysis: {}", e);
+            eprintln!("❌ Error during data collection: {}", e);
             eprintln!("");
             eprintln!("Possible causes:");
             eprintln!("  • Invalid credentials (username/passkey)");
@@ -202,7 +134,74 @@ async fn main() -> Result<()> {
             eprintln!("  2. Check your internet connection");
             eprintln!("  3. Run with --verbose for detailed logging");
             eprintln!("  4. Try --dry-run to test configuration");
-            
+            std::process::exit(1);
+        }
+    };
+
+    // Analyze scene groups
+    match analyzer.analyze_torrents(torrents) {
+        Ok(()) => {
+            info!("✅ Data collection and analysis completed successfully!");
+            info!("");
+            info!("RESULTS SUMMARY:");
+            info!("================");
+            info!("Unique Scene Groups: {}", analyzer.group_metrics.len());
+            info!("");
+
+            info!("TOP 10 SCENE GROUPS BY REPUTATION:");
+            for (i, group) in analyzer.get_top_groups(10).iter().enumerate() {
+                info!("  {}. {} - {:.1} ({} releases, {:.1}% internal)", 
+                    i + 1, 
+                    group.group_name, 
+                    group.reputation_score, 
+                    group.total_releases,
+                    group.internal_ratio * 100.0
+                );
+            }
+            info!("");
+
+            info!("STATISTICAL SUMMARY:");
+            let top_groups = analyzer.get_top_groups(analyzer.group_metrics.len());
+            if !top_groups.is_empty() {
+                let scores: Vec<f64> = top_groups.iter().map(|g| g.reputation_score).collect();
+                let min_score = scores.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+                let max_score = scores.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+                let avg_score = scores.iter().sum::<f64>() / scores.len() as f64;
+                
+                info!("  Reputation Score Range: {:.1} - {:.1} (avg: {:.1})", min_score, max_score, avg_score);
+            }
+            info!("");
+
+            info!("🎯 NEXT STEPS:");
+            info!("1. Review the generated reports in: {}", cli.output.display());
+            info!("2. Use the analysis data for integration with automation");
+            info!("3. Update your automation system with evidence-based reputation scores");
+            info!("");
+
+            // Export analysis data
+            let analysis_json = analyzer.export_analysis().unwrap_or_else(|e| {
+                eprintln!("Warning: Failed to export analysis: {}", e);
+                "{}".to_string()
+            });
+            let analysis_file = cli.output.join("scene_groups_analysis.json");
+            if let Err(e) = std::fs::write(&analysis_file, analysis_json) {
+                eprintln!("Warning: Failed to write analysis file: {}", e);
+            } else {
+                info!("Analysis data saved to: {}", analysis_file.display());
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Error during scene group analysis: {}", e);
+            eprintln!("");
+            eprintln!("Possible causes:");
+            eprintln!("  • Corrupted torrent data");
+            eprintln!("  • Parsing errors in release names");
+            eprintln!("  • Invalid date formats");
+            eprintln!("");
+            eprintln!("Troubleshooting:");
+            eprintln!("  1. Check the collected torrent data format");
+            eprintln!("  2. Run with --verbose for detailed logging");
+            eprintln!("  3. Try --dry-run to test configuration");
             std::process::exit(1);
         }
     }

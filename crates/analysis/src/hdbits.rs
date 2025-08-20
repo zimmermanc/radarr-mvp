@@ -322,7 +322,7 @@ impl SceneGroupAnalyzer {
                     if let Some(group) = captures.get(1) {
                         let group_name = group.as_str().to_uppercase();
                         // Filter out common false positives
-                        if !["x264", "x265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
+                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
                             return Some(group_name);
                         }
                     }
@@ -538,9 +538,7 @@ mod tests {
 
     #[test]
     fn test_reputation_score_calculation() {
-        let mut analyzer = SceneGroupAnalyzer::new();
-        
-        let mut metrics = SceneGroupMetrics {
+        let metrics = SceneGroupMetrics {
             group_name: "TEST".to_string(),
             total_releases: 50,
             internal_releases: 40,
@@ -558,9 +556,9 @@ mod tests {
             release_history: Vec::new(),
         };
 
-        SceneGroupAnalyzer::calculate_group_metrics_static(&mut metrics);
+        let score = SceneGroupAnalyzer::calculate_reputation_score_static(&metrics);
         
-        assert!(metrics.reputation_score > 50.0); // Should be a good score
-        assert!(metrics.reputation_score <= 100.0); // Should not exceed max
+        assert!(score > 50.0, "Score was {} but should be > 50.0", score); // Should be a good score
+        assert!(score <= 100.0, "Score was {} but should be <= 100.0", score); // Should not exceed max
     }
 }

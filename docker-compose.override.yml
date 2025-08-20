@@ -1,0 +1,124 @@
+# Docker Compose Override for Development
+# =====================================
+# This file is automatically used by docker-compose in development
+# It extends docker-compose.yml with development-specific configurations
+
+version: '3.8'
+
+services:
+  radarr:
+    build:
+      target: development  # Use development stage with hot reload
+    environment:
+      # Development-specific environment variables
+      RUST_LOG: debug
+      DEVELOPMENT_MODE: true
+      LOG_JSON_FORMAT: false  # Human-readable logs for development
+      
+      # Relaxed security for development
+      API_KEY_REQUIRED: false
+      CORS_ALLOWED_ORIGINS: "*"
+      
+      # Development database settings
+      DATABASE_LOG_QUERIES: true
+      DATABASE_MAX_CONNECTIONS: 5  # Lower for development
+      
+      # Mock services for easier development
+      MOCK_PROWLARR: ${MOCK_PROWLARR:-false}
+      MOCK_QBITTORRENT: ${MOCK_QBITTORRENT:-false}
+      
+      # Import settings for development
+      IMPORT_DRY_RUN: ${IMPORT_DRY_RUN:-true}  # Safe default for dev
+      
+      # Enable additional debugging
+      RUST_BACKTRACE: 1
+      SQLX_LOGGING: true
+    volumes:
+      # Mount source code for hot reloading
+      - ./src:/app/src:ro
+      - ./crates:/app/crates:ro
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./Cargo.lock:/app/Cargo.lock:ro
+      - ./migrations:/app/migrations:ro
+      
+      # Development configuration
+      - ./config/dev:/app/config/dev:ro
+      
+      # Development data directories (local bind mounts)
+      - ./dev-data/movies:/movies
+      - ./dev-data/downloads:/downloads
+    ports:
+      # Additional ports for development tools
+      - "7878:7878"  # Main application
+      - "9090:9090"  # Metrics
+      - "8888:8888"  # Optional: Debug server
+    command: ["cargo", "watch", "-x", "run"]  # Hot reload command
+    
+    # Development-specific health check (more lenient)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/health"]
+      interval: 60s  # Less frequent checks
+      timeout: 30s   # More time for startup
+      retries: 10    # More retries for slow builds
+      start_period: 120s  # More time for initial build
+    
+    # Remove security restrictions for easier debugging
+    security_opt: []
+    read_only: false
+
+  postgres:
+    environment:
+      # Development database settings
+      POSTGRES_DB: radarr_dev
+      POSTGRES_USER: radarr_dev
+      POSTGRES_PASSWORD: radarr_dev_password
+    ports:
+      - "5432:5432"  # Expose for direct access during development
+    volumes:
+      # Development database initialization
+      - ./scripts/dev-db-init.sql:/docker-entrypoint-initdb.d/dev-init.sql:ro
+      # Development database dumps
+      - ./dev-data/db-dumps:/db-dumps
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c log_min_messages=info
+      -c log_line_prefix='%t [%p]: [%l-1] '
+      -c shared_preload_libraries=''
+
+  redis:
+    # Development-specific Redis settings
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --loglevel verbose
+    ports:
+      - "6379:6379"  # Expose for direct access during development
+
+# Development-specific volumes
+volumes:
+  postgres_data:
+    # Use local driver with specific options for development
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/dev-data/postgres
+      o: bind
+  
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/dev-data/redis
+      o: bind
+
+# Development network with custom configuration
+networks:
+  radarr-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"

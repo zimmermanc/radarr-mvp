@@ -1,0 +1,24 @@
+GET http://localhost:7878/health
+
+GET http://localhost:7878/api/v3/movie
+X-Api-Key: test-api-key
+
+GET http://localhost:7878/api/v3/movie?limit=10&offset=0
+X-Api-Key: test-api-key
+
+GET http://localhost:7878/api/v3/calendar
+X-Api-Key: test-api-key
+
+GET http://localhost:7878/api/v3/downloads
+X-Api-Key: test-api-key
+
+GET http://localhost:7878/api/v3/command
+X-Api-Key: test-api-key
+
+GET http://localhost:7878/api/v3/movie/search?term=matrix
+X-Api-Key: test-api-key
+
+POST http://localhost:7878/api/v3/movie/search
+Content-Type: application/json
+X-Api-Key: test-api-key
+@scripts/perf/search-body.json

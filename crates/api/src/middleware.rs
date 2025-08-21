@@ -44,9 +44,9 @@ pub async fn require_api_key(
         .or_else(|| headers.get("ApiKey"))
         .and_then(|v| v.to_str().ok());
     
-    // Get expected API key from environment or use default
+    // Get expected API key from environment - fail fast if not set
     let expected_api_key = std::env::var("RADARR_API_KEY")
-        .unwrap_or_else(|_| "changeme123".to_string());
+        .expect("RADARR_API_KEY environment variable must be set for security");
     
     match api_key {
         Some(key) if key == expected_api_key => {

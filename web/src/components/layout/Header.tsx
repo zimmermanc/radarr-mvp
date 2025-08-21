@@ -13,7 +13,6 @@ export const Header: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const { 
     toggleSidebar, 
-    isMobile, 
     notificationCount, 
     clearNotifications,
     toggleGlobalSearch 

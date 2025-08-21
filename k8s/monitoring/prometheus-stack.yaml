@@ -1,0 +1,541 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+      external_labels:
+        cluster: 'radarr-cluster'
+        environment: 'production'
+        replica: '$(POD_NAME)'
+    
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+    
+    scrape_configs:
+      # Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+        scrape_interval: 15s
+      
+      # OpenTelemetry Collector
+      - job_name: 'otel-collector'
+        static_configs:
+          - targets: ['otel-collector.radarr-system:8889']
+        scrape_interval: 15s
+        metrics_path: /metrics
+      
+      # Radarr API
+      - job_name: 'radarr-api'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - radarr-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: radarr-api
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+        scrape_interval: 15s
+      
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+      
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+      
+      # Kubernetes pods
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      # Service monitors
+      - job_name: 'kubernetes-service-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+
+  alerting_rules.yml: |
+    groups:
+      - name: radarr_alerts
+        rules:
+          # High error rate
+          - alert: RadarrHighErrorRate
+            expr: |
+              (
+                rate(radarr_http_requests_total{status=~"5.."}[5m]) /
+                rate(radarr_http_requests_total[5m])
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              service: radarr
+            annotations:
+              summary: "Radarr high error rate detected"
+              description: "Radarr API error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          
+          # Slow response time
+          - alert: RadarrSlowResponseTime
+            expr: |
+              histogram_quantile(0.95, 
+                rate(radarr_http_request_duration_seconds_bucket[5m])
+              ) > 0.1
+            for: 10m
+            labels:
+              severity: warning
+              service: radarr
+            annotations:
+              summary: "Radarr slow response time"
+              description: "Radarr API 95th percentile response time is {{ $value }}s"
+          
+          # Database connection pool exhausted
+          - alert: RadarrDatabaseConnectionPoolExhausted
+            expr: |
+              (
+                radarr_system_metrics{metric_type="db_connections_active"} /
+                radarr_system_metrics{metric_type="db_pool_size"}
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: critical
+              service: radarr
+            annotations:
+              summary: "Radarr database connection pool nearly exhausted"
+              description: "Database connection pool is {{ $value | humanizePercentage }} full"
+          
+          # High memory usage
+          - alert: RadarrHighMemoryUsage
+            expr: |
+              radarr_system_metrics{metric_type="memory_usage_bytes"} > 500 * 1024 * 1024
+            for: 15m
+            labels:
+              severity: warning
+              service: radarr
+            annotations:
+              summary: "Radarr high memory usage"
+              description: "Radarr memory usage is {{ $value | humanizeBytes }}"
+          
+          # Low movie import rate
+          - alert: RadarrLowImportRate
+            expr: |
+              rate(radarr_business_events_total{event_type="import_processed",status="success"}[1h]) < 0.1
+            for: 2h
+            labels:
+              severity: warning
+              service: radarr
+            annotations:
+              summary: "Radarr low movie import rate"
+              description: "Movie import rate is {{ $value }} per hour"
+          
+          # Failed downloads
+          - alert: RadarrHighDownloadFailureRate
+            expr: |
+              (
+                rate(radarr_business_events_total{event_type="download_started",status="error"}[1h]) /
+                rate(radarr_business_events_total{event_type="download_started"}[1h])
+              ) > 0.2
+            for: 30m
+            labels:
+              severity: warning
+              service: radarr
+            annotations:
+              summary: "Radarr high download failure rate"
+              description: "Download failure rate is {{ $value | humanizePercentage }}"
+
+      - name: infrastructure_alerts
+        rules:
+          # OpenTelemetry Collector down
+          - alert: OtelCollectorDown
+            expr: up{job="otel-collector"} == 0
+            for: 5m
+            labels:
+              severity: critical
+              service: otel-collector
+            annotations:
+              summary: "OpenTelemetry Collector is down"
+              description: "OpenTelemetry Collector has been down for more than 5 minutes"
+          
+          # High CPU usage
+          - alert: HighCPUUsage
+            expr: |
+              (
+                1 - rate(node_cpu_seconds_total{mode="idle"}[5m])
+              ) > 0.8
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage detected"
+              description: "CPU usage is above 80% for more than 10 minutes"
+          
+          # High memory usage
+          - alert: HighMemoryUsage
+            expr: |
+              (
+                1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High memory usage detected"
+              description: "Memory usage is above 90% for more than 5 minutes"
+          
+          # Disk space running low
+          - alert: DiskSpaceLow
+            expr: |
+              (
+                1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)
+              ) > 0.8
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Disk space running low"
+              description: "Disk usage is above 80% on {{ $labels.mountpoint }}"
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: observability
+spec:
+  serviceName: prometheus
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        component: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      # Prometheus
+      - name: prometheus
+        image: prom/prometheus:v2.47.0
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus/'
+          - '--storage.tsdb.retention.time=24h'
+          - '--storage.tsdb.retention.size=10GB'
+          - '--web.console.libraries=/etc/prometheus/console_libraries'
+          - '--web.console.templates=/etc/prometheus/consoles'
+          - '--web.enable-lifecycle'
+          - '--web.enable-admin-api'
+          - '--web.external-url=http://prometheus:9090'
+          - '--log.level=info'
+        ports:
+        - containerPort: 9090
+          name: web
+          protocol: TCP
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: prometheus-config-volume
+          mountPath: /etc/prometheus/
+        - name: prometheus-storage-volume
+          mountPath: /prometheus/
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      
+      # Thanos Sidecar for long-term storage
+      - name: thanos-sidecar
+        image: thanosio/thanos:v0.32.4
+        args:
+          - sidecar
+          - --tsdb.path=/prometheus
+          - --prometheus.url=http://localhost:9090
+          - --grpc-address=0.0.0.0:10901
+          - --http-address=0.0.0.0:10902
+          - --objstore.config-file=/etc/thanos/objstore.yml
+          - --log.level=info
+        ports:
+        - containerPort: 10901
+          name: grpc
+          protocol: TCP
+        - containerPort: 10902
+          name: http
+          protocol: TCP
+        volumeMounts:
+        - name: prometheus-storage-volume
+          mountPath: /prometheus/
+          readOnly: true
+        - name: thanos-objstore-config
+          mountPath: /etc/thanos/
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      
+      volumes:
+      - name: prometheus-config-volume
+        configMap:
+          name: prometheus-config
+      - name: thanos-objstore-config
+        secret:
+          secretName: thanos-objstore-config
+      securityContext:
+        fsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+  volumeClaimTemplates:
+  - metadata:
+      name: prometheus-storage-volume
+      labels:
+        app: prometheus
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: web
+  - port: 10901
+    targetPort: 10901
+    protocol: TCP
+    name: grpc
+  - port: 10902
+    targetPort: 10902
+    protocol: TCP
+    name: sidecar-http
+  selector:
+    app: prometheus
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: observability
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    component: observability
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    component: observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thanos-objstore-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: observability
+type: Opaque
+stringData:
+  objstore.yml: |
+    type: S3
+    config:
+      bucket: "radarr-thanos-storage"
+      endpoint: "s3.amazonaws.com"
+      region: "us-west-2"
+      access_key: ""
+      secret_key: ""
+      insecure: false
+      signature_version2: false
+      put_user_metadata: {}
+      http_config:
+        idle_conn_timeout: 90s
+        response_header_timeout: 2m
+        insecure_skip_verify: false
+      trace:
+        enable: false
+      part_size: 134217728

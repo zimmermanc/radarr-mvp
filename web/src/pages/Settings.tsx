@@ -9,9 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { radarrApi } from '../lib/api';
 import { usePageTitle } from '../contexts/UIContext';
-import { useToast } from '../components/ui/Toast';
-import { LoadingButton } from '../components/ui/Loading';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
+// import { useToast } from '../components/ui/Toast'; // Currently unused
 
 export const Settings: React.FC = () => {
   usePageTitle('Settings');
@@ -23,7 +21,7 @@ export const Settings: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState('');
   const [saved, setSaved] = useState(false);
 
-  const { success, error } = useToast();
+  // const { success } = useToast(); // Currently unused
 
   useEffect(() => {
     testConnection();

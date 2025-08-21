@@ -1,0 +1,360 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        component: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8889"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:0.91.0
+        args:
+          - --config=/etc/otel-collector-config/otel-collector.yaml
+        ports:
+        - containerPort: 4317   # OTLP gRPC receiver
+          name: otlp-grpc
+          protocol: TCP
+        - containerPort: 4318   # OTLP HTTP receiver
+          name: otlp-http
+          protocol: TCP
+        - containerPort: 8889   # Prometheus metrics
+          name: prometheus
+          protocol: TCP
+        - containerPort: 13133  # Health check
+          name: health
+          protocol: TCP
+        - containerPort: 1777   # Performance profiler
+          name: pprof
+          protocol: TCP
+        - containerPort: 55679  # zPages
+          name: zpages
+          protocol: TCP
+        - containerPort: 8888   # Internal metrics
+          name: internal
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: CLUSTER_NAME
+          value: "radarr-cluster"
+        - name: PROMETHEUS_REMOTE_WRITE_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: observability-secrets
+              key: prometheus-remote-write-endpoint
+              optional: true
+        - name: PROMETHEUS_REMOTE_WRITE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-secrets
+              key: prometheus-remote-write-token
+              optional: true
+        volumeMounts:
+        - name: otel-collector-config-vol
+          mountPath: /etc/otel-collector-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 13133
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: otel-collector-config-vol
+        configMap:
+          name: otel-collector-config
+          items:
+          - key: otel-collector.yaml
+            path: otel-collector.yaml
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - otel-collector
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8889"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4317
+    targetPort: 4317
+    protocol: TCP
+    name: otlp-grpc
+  - port: 4318
+    targetPort: 4318
+    protocol: TCP
+    name: otlp-http
+  - port: 8889
+    targetPort: 8889
+    protocol: TCP
+    name: prometheus
+  - port: 13133
+    targetPort: 13133
+    protocol: TCP
+    name: health
+  - port: 1777
+    targetPort: 1777
+    protocol: TCP
+    name: pprof
+  - port: 55679
+    targetPort: 55679
+    protocol: TCP
+    name: zpages
+  selector:
+    app: otel-collector
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+    component: observability
+rules:
+- apiGroups: [""]
+  resources: ["events", "namespaces", "namespaces/status", "nodes", "nodes/spec", "pods", "pods/status", "replicationcontrollers", "replicationcontrollers/status", "resourcequotas", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets", "deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["extensions"]
+  resources: ["daemonsets", "deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses", "volumeattachments"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+  labels:
+    app: otel-collector
+    component: observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: radarr-system
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: observability-secrets
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+type: Opaque
+data:
+  # Base64 encoded values - replace with actual values
+  prometheus-remote-write-endpoint: aHR0cHM6Ly9wcm9tZXRoZXVzLWVuZHBvaW50LmNvbS9hcGkvdjEvcHVzaA==
+  prometheus-remote-write-token: eW91ci1wcm9tZXRoZXVzLXRva2VuLWhlcmU=
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-netpol
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+spec:
+  podSelector:
+    matchLabels:
+      app: otel-collector
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: radarr-system
+    - podSelector:
+        matchLabels:
+          app: radarr-api
+    ports:
+    - protocol: TCP
+      port: 4317
+    - protocol: TCP
+      port: 4318
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8889
+    - protocol: TCP
+      port: 13133
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 14250  # Jaeger
+    - protocol: TCP
+      port: 3100   # Loki
+    - protocol: TCP
+      port: 4317   # Tempo
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: otel-collector-pdb
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: otel-collector-hpa
+  namespace: radarr-system
+  labels:
+    app: otel-collector
+    component: observability
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otel-collector
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

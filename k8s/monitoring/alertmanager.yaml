@@ -1,0 +1,489 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@radarr.local'
+      smtp_auth_username: 'alertmanager@radarr.local'
+      smtp_auth_password: 'password'
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+    
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+        # Critical alerts go to PagerDuty and Slack
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+          group_wait: 5s
+          repeat_interval: 5m
+        
+        # Warning alerts go to Slack only
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+          group_wait: 30s
+          repeat_interval: 30m
+        
+        # Radarr-specific alerts
+        - match:
+            service: radarr
+          receiver: 'radarr-alerts'
+          routes:
+            - match:
+                severity: critical
+              receiver: 'radarr-critical'
+        
+        # Infrastructure alerts
+        - match_re:
+            alertname: '(HighCPUUsage|HighMemoryUsage|DiskSpaceLow)'
+          receiver: 'infrastructure-alerts'
+    
+    inhibit_rules:
+      # Inhibit any warning-level alerts if there are critical alerts
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'cluster', 'service']
+      
+      # Inhibit database alerts if the service is down
+      - source_match:
+          alertname: 'RadarrDown'
+        target_match_re:
+          alertname: '.*Database.*'
+        equal: ['service']
+    
+    receivers:
+      - name: 'default'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#alerts'
+            title: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+            send_resolved: true
+      
+      - name: 'critical-alerts'
+        pagerduty_configs:
+          - routing_key: 'YOUR_PAGERDUTY_INTEGRATION_KEY'
+            description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+            severity: 'critical'
+            details:
+              firing: '{{ .Alerts.Firing | len }}'
+              resolved: '{{ .Alerts.Resolved | len }}'
+              alertname: '{{ .GroupLabels.alertname }}'
+              service: '{{ .GroupLabels.service }}'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#critical-alerts'
+            color: 'danger'
+            title: '🚨 CRITICAL ALERT - {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Service:* {{ .Labels.service }}
+              *Severity:* {{ .Labels.severity }}
+              *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              {{ end }}
+            send_resolved: true
+        email_configs:
+          - to: 'ops-team@radarr.local'
+            subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }} - {{ .GroupLabels.service }}'
+            body: |
+              Critical alert has been triggered.
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Service: {{ .Labels.service }}
+              Severity: {{ .Labels.severity }}
+              Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              
+              Grafana Dashboard: http://grafana.radarr.local/d/radarr-overview
+              Prometheus: http://prometheus.radarr.local
+              {{ end }}
+      
+      - name: 'warning-alerts'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#alerts'
+            color: 'warning'
+            title: '⚠️ WARNING - {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Service:* {{ .Labels.service }}
+              *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              {{ end }}
+            send_resolved: true
+      
+      - name: 'radarr-alerts'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#radarr-alerts'
+            color: 'good'
+            title: '📡 Radarr Alert - {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Service:* {{ .Labels.service }}
+              *Environment:* {{ .Labels.environment }}
+              *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              
+              🔗 [View Dashboard](http://grafana.radarr.local/d/radarr-overview)
+              {{ end }}
+            send_resolved: true
+        webhook_configs:
+          - url: 'http://radarr-api:8080/webhooks/alerts'
+            send_resolved: true
+            http_config:
+              basic_auth:
+                username: 'alertmanager'
+                password: 'webhook-secret'
+      
+      - name: 'radarr-critical'
+        pagerduty_configs:
+          - routing_key: 'RADARR_PAGERDUTY_KEY'
+            description: 'Radarr Critical Alert: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+            severity: 'critical'
+            details:
+              service: 'radarr'
+              environment: '{{ .GroupLabels.environment }}'
+              alertname: '{{ .GroupLabels.alertname }}'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#radarr-critical'
+            color: 'danger'
+            title: '🚨 RADARR CRITICAL - {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *CRITICAL RADARR ALERT*
+              
+              *Alert:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Environment:* {{ .Labels.environment }}
+              *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              
+              🔗 [Radarr Dashboard](http://grafana.radarr.local/d/radarr-overview)
+              🔗 [Logs](http://grafana.radarr.local/explore?datasource=loki&queries=[{"expr":"{app=\"radarr-api\"}"}])
+              🔗 [Traces](http://grafana.radarr.local/explore?datasource=tempo)
+              {{ end }}
+            send_resolved: true
+        email_configs:
+          - to: 'radarr-team@radarr.local'
+            subject: '🚨 RADARR CRITICAL: {{ .GroupLabels.alertname }}'
+            body: |
+              CRITICAL RADARR ALERT
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Environment: {{ .Labels.environment }}
+              Started: {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              
+              Dashboard: http://grafana.radarr.local/d/radarr-overview
+              Logs: http://grafana.radarr.local/explore?datasource=loki&queries=[{"expr":"{app=\"radarr-api\"}"}]
+              Traces: http://grafana.radarr.local/explore?datasource=tempo
+              {{ end }}
+      
+      - name: 'infrastructure-alerts'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+            channel: '#infrastructure'
+            color: 'warning'
+            title: '🖥️ Infrastructure Alert - {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Node:* {{ .Labels.instance }}
+              *Description:* {{ .Annotations.description }}
+              *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+              {{ end }}
+            send_resolved: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-templates
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+data:
+  default.tmpl: |
+    {{ define "slack.radarr.title" }}
+    [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.alertname }} for {{ .GroupLabels.job }}
+    {{- if gt (len .GroupLabels) (len .GroupLabels.alertname) -}}
+      {{- with .GroupLabels.Remove (slice "alertname" "job") -}}
+        {{- if gt (len .) 0 -}}
+          ({{ range $k, $v := . }}{{ $k }}={{ $v }},{{ end }})
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+    {{ end }}
+    
+    {{ define "slack.radarr.text" }}
+    {{ if or .Alerts.Firing .Alerts.Resolved }}
+    {{ if .Alerts.Firing }}**Alerts Firing:**
+    {{ range .Alerts.Firing }}• {{ .Annotations.summary }}{{ if .Labels.severity }} - Severity: {{ .Labels.severity }}{{ end }}
+    {{ end }}{{ end }}
+    {{ if .Alerts.Resolved }}**Alerts Resolved:**
+    {{ range .Alerts.Resolved }}• {{ .Annotations.summary }}
+    {{ end }}{{ end }}
+    {{ else }}No alerts in common.{{ end }}
+    {{ end }}
+    
+    {{ define "email.radarr.subject" }}
+    [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.alertname }}
+    {{ end }}
+    
+    {{ define "email.radarr.html" }}
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; }
+        .alert { margin: 10px 0; padding: 10px; border-left: 4px solid; }
+        .firing { border-color: #d32f2f; background-color: #ffebee; }
+        .resolved { border-color: #388e3c; background-color: #e8f5e8; }
+        .warning { border-color: #f57c00; background-color: #fff3e0; }
+      </style>
+    </head>
+    <body>
+      <h2>Radarr Alert Notification</h2>
+      
+      {{ if .Alerts.Firing }}
+      <h3>Firing Alerts:</h3>
+      {{ range .Alerts.Firing }}
+      <div class="alert firing">
+        <h4>{{ .Annotations.summary }}</h4>
+        <p><strong>Description:</strong> {{ .Annotations.description }}</p>
+        <p><strong>Service:</strong> {{ .Labels.service }}</p>
+        <p><strong>Severity:</strong> {{ .Labels.severity }}</p>
+        <p><strong>Started:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05" }}</p>
+        {{ if .Labels.instance }}<p><strong>Instance:</strong> {{ .Labels.instance }}</p>{{ end }}
+      </div>
+      {{ end }}
+      {{ end }}
+      
+      {{ if .Alerts.Resolved }}
+      <h3>Resolved Alerts:</h3>
+      {{ range .Alerts.Resolved }}
+      <div class="alert resolved">
+        <h4>{{ .Annotations.summary }}</h4>
+        <p><strong>Description:</strong> {{ .Annotations.description }}</p>
+        <p><strong>Resolved:</strong> {{ .EndsAt.Format "2006-01-02 15:04:05" }}</p>
+        <p><strong>Duration:</strong> {{ .EndsAt.Sub .StartsAt }}</p>
+      </div>
+      {{ end }}
+      {{ end }}
+      
+      <hr>
+      <p><strong>Useful Links:</strong></p>
+      <ul>
+        <li><a href="http://grafana.radarr.local/d/radarr-overview">Radarr Dashboard</a></li>
+        <li><a href="http://prometheus.radarr.local">Prometheus</a></li>
+        <li><a href="http://grafana.radarr.local/explore?datasource=loki&queries=[{\"expr\":\"{app=\\\"radarr-api\\\"}\"}]">Application Logs</a></li>
+      </ul>
+    </body>
+    </html>
+    {{ end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        component: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: alertmanager
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.26.0
+        args:
+          - '--config.file=/etc/alertmanager/alertmanager.yml'
+          - '--storage.path=/alertmanager'
+          - '--web.external-url=http://alertmanager:9093'
+          - '--log.level=info'
+          - '--cluster.listen-address=0.0.0.0:9094'
+          - '--cluster.advertise-address=$(POD_IP):9094'
+        ports:
+        - containerPort: 9093
+          name: web
+          protocol: TCP
+        - containerPort: 9094
+          name: mesh
+          protocol: TCP
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - name: alertmanager-config
+          mountPath: /etc/alertmanager/alertmanager.yml
+          subPath: alertmanager.yml
+        - name: alertmanager-templates
+          mountPath: /etc/alertmanager/templates
+        - name: alertmanager-storage
+          mountPath: /alertmanager
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9093
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9093
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: alertmanager-config
+        configMap:
+          name: alertmanager-config
+      - name: alertmanager-templates
+        configMap:
+          name: alertmanager-templates
+      - name: alertmanager-storage
+        persistentVolumeClaim:
+          claimName: alertmanager-storage
+      securityContext:
+        fsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alertmanager-storage
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9093"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9093
+    targetPort: 9093
+    protocol: TCP
+    name: web
+  - port: 9094
+    targetPort: 9094
+    protocol: TCP
+    name: mesh
+  selector:
+    app: alertmanager
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+    component: observability
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: radarr.local
+    http:
+      paths:
+      - path: /alertmanager(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: alertmanager
+            port:
+              number: 9093
+  tls:
+  - hosts:
+    - radarr.local
+    secretName: radarr-tls

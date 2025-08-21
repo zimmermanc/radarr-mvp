@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: unified-radarr
+namespace: radarr-mvp
 
 resources:
 - ../../base
@@ -9,6 +9,11 @@ resources:
 - exporters.yaml
 - backup.yaml
 - cert-manager.yaml
+- gateway-api.yaml
+- external-secrets-prod.yaml
+- prometheus-rules.yaml
+- grafana-dashboards.yaml
+- istio-config.yaml
 
 patchesStrategicMerge:
 - deployment-patch.yaml
@@ -17,20 +22,27 @@ patchesStrategicMerge:
 - secret-patch.yaml
 
 images:
-- name: unified-radarr
+- name: radarr-mvp
   newTag: "1.0.0"
+  newName: your-registry.com/radarr-mvp
 
 replicas:
-- name: unified-radarr
+- name: radarr-mvp
   count: 5
 
 commonLabels:
   environment: production
   version: "1.0.0"
+  tier: production
+  security-scan: "enabled"
 
 commonAnnotations:
-  deployment.timestamp: "2025-01-01T00:00:00Z"
+  deployment.timestamp: "2025-01-21T00:00:00Z"
   managed-by: "kustomize"
+  contact: "team@radarr.com"
+  documentation: "https://docs.radarr.com/deployment"
+  monitoring: "prometheus"
+  security.policy: "restricted"
   
 configMapGenerator:
 - name: prometheus-config
@@ -48,3 +60,11 @@ configMapGenerator:
   - radarr-overview.json
   - system-metrics.json
   - automation-pipeline.json
+- name: otel-config
+  files:
+  - otel-collector.yaml
+- name: istio-config
+  files:
+  - virtualservice.yaml
+  - destinationrule.yaml
+  - authorizationpolicy.yaml

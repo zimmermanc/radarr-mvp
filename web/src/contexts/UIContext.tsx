@@ -149,12 +149,14 @@ export const UIProvider: React.FC<UIProviderProps> = ({
   useEffect(() => {
     const checkMobile = () => {
       const isMobile = window.innerWidth < 768; // md breakpoint
-      setUIState(prev => ({ ...prev, isMobile }));
-      
-      // Auto-collapse sidebar on mobile
-      if (isMobile && prev.sidebarOpen) {
-        setUIState(prev => ({ ...prev, sidebarOpen: false }));
-      }
+      setUIState(prev => {
+        const newState = { ...prev, isMobile };
+        // Auto-collapse sidebar on mobile
+        if (isMobile && prev.sidebarOpen) {
+          newState.sidebarOpen = false;
+        }
+        return newState;
+      });
     };
 
     checkMobile();

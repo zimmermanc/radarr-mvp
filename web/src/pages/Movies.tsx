@@ -11,7 +11,7 @@ import { radarrApi, isApiError } from '../lib/api';
 import type { Movie, MovieFilters, MovieSortField, SortDirection } from '../types/api';
 import { usePageTitle } from '../contexts/UIContext';
 import { useToast, useApiErrorHandler } from '../components/ui/Toast';
-import { MovieCardSkeleton, LoadingButton, InlineLoading } from '../components/ui/Loading';
+import { MovieCardSkeleton, LoadingButton } from '../components/ui/Loading';
 
 export const Movies: React.FC = () => {
   usePageTitle('Movies');

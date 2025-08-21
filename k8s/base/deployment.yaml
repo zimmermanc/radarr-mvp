@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/component: application
     app.kubernetes.io/version: "1.0.0"
 spec:
-  replicas: 2
+  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -28,12 +28,21 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "7878"
         prometheus.io/path: "/metrics"
+        instrumentation.opentelemetry.io/inject-auto: "true"
+        instrumentation.opentelemetry.io/container-names: "radarr-mvp"
+        linkerd.io/inject: enabled
+        config.linkerd.io/proxy-cpu-request: "10m"
+        config.linkerd.io/proxy-memory-request: "64Mi"
     spec:
       serviceAccountName: radarr-mvp
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+        supplementalGroups: [1000]
       containers:
       - name: radarr-mvp
         image: radarr-mvp:latest
@@ -83,11 +92,13 @@ spec:
             name: radarr-mvp-config
         resources:
           requests:
-            cpu: 100m
+            cpu: 200m
             memory: 256Mi
+            ephemeral-storage: 1Gi
           limits:
-            cpu: 500m
-            memory: 512Mi
+            cpu: 1000m
+            memory: 1Gi
+            ephemeral-storage: 2Gi
         livenessProbe:
           httpGet:
             path: /health
@@ -100,10 +111,22 @@ spec:
           httpGet:
             path: /health
             port: http
-          initialDelaySeconds: 10
+            scheme: HTTP
+          initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
         volumeMounts:
         - name: radarr-data
           mountPath: /var/lib/radarr
@@ -114,9 +137,16 @@ spec:
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          seccompProfile:
+            type: RuntimeDefault
           capabilities:
             drop:
             - ALL
+            add: []
+          privileged: false
       volumes:
       - name: radarr-data
         persistentVolumeClaim:

@@ -303,6 +303,17 @@ impl AppConfig {
             });
         }
         
+        // Prevent default API key in production
+        if self.server.api_key == "changeme123" {
+            tracing::warn!("WARNING: Using default API key 'changeme123' - this should be changed for production!");
+            // In production builds, this should be an error:
+            #[cfg(not(debug_assertions))]
+            return Err(RadarrError::ValidationError {
+                field: "server.api_key".to_string(),
+                message: "Default API key 'changeme123' is not allowed in production builds".to_string(),
+            });
+        }
+        
         if self.server.max_connections == 0 {
             return Err(RadarrError::ValidationError {
                 field: "server.max_connections".to_string(),

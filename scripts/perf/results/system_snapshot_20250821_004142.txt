@@ -1,0 +1,22 @@
+# System Resource Snapshot - Thu Aug 21 00:41:42 EDT 2025
+
+## Process Information
+Radarr process not found
+
+## System Memory
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       2.0Gi       3.4Gi       143Mi        10Gi        13Gi
+Swap:          4.0Gi       9.6Mi       4.0Gi
+
+## CPU Load
+ 00:41:42 up 4 days, 14:42,  2 users,  load average: 1.17, 1.33, 1.30
+
+## Disk Usage
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd       1007G   59G  898G   7% /
+
+## Network Connections
+tcp        0      0 127.0.0.1:42282         127.0.0.1:7878          TIME_WAIT  
+
+## PostgreSQL Connections
+2

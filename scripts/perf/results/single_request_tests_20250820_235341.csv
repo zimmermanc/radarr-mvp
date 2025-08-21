@@ -1,0 +1,2 @@
+status,url,description,duration
+TIMEOUT,http://localhost:7878/health,Health Check Endpoint,10s

@@ -1,0 +1,76 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: radarr-mvp-servicemonitor
+  namespace: radarr-mvp
+  labels:
+    app.kubernetes.io/name: radarr-mvp
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radarr-mvp
+      app.kubernetes.io/component: application
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_container_name]
+      targetLabel: container
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*'
+      action: drop
+    - sourceLabels: [__name__]
+      regex: 'process_.*'
+      action: drop
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: radarr-mvp-postgres-servicemonitor
+  namespace: radarr-mvp
+  labels:
+    app.kubernetes.io/name: radarr-mvp
+    app.kubernetes.io/component: database
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radarr-mvp
+      app.kubernetes.io/component: database
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: radarr-mvp-redis-servicemonitor
+  namespace: radarr-mvp
+  labels:
+    app.kubernetes.io/name: radarr-mvp
+    app.kubernetes.io/component: cache
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radarr-mvp
+      app.kubernetes.io/component: cache
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true

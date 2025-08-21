@@ -11,11 +11,21 @@ pub mod extractors;
 pub mod middleware;
 pub mod error;
 pub mod simple_api;
+pub mod telemetry;
+pub mod metrics;
+pub mod tracing;
+pub mod security;
+pub mod validation;
 
 // Re-export main types
 pub use error::{ApiError, ApiResult};
 pub use models::*;
 pub use simple_api::{SimpleApiState, create_simple_api_router};
+pub use telemetry::{TelemetryConfig, ServiceInfo, init_telemetry, shutdown_telemetry};
+pub use metrics::{MetricsCollector};
+pub use tracing::{DistributedTracing, simple_tracing_middleware, instrument_business_operation};
+pub use security::{SecurityConfig, apply_security, configure_cors, security_headers};
+pub use validation::{validate_json, ValidationErrorResponse};
 
 // use axum::Router;
 // use radarr_infrastructure::DatabasePool;

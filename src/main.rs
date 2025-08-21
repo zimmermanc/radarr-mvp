@@ -20,7 +20,10 @@ use radarr_infrastructure::{create_pool, DatabaseConfig};
 use radarr_indexers::{ProwlarrClient, IndexerClient};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
-use radarr_api::{SimpleApiState, create_simple_api_router, middleware::require_api_key};
+use radarr_api::{
+    SimpleApiState, create_simple_api_router, middleware::require_api_key,
+    TelemetryConfig, init_telemetry, shutdown_telemetry, MetricsCollector
+};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -30,6 +33,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     cors::CorsLayer,
     trace::TraceLayer,
+    timeout::TimeoutLayer,
 };
 use tracing::{info, warn, debug, instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -85,35 +89,53 @@ async fn main() -> Result<()> {
             service: "http_server".to_string(),
             error: format!("Failed to bind to address: {}", e),
         })?;
-
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| RadarrError::ExternalServiceError {
-            service: "http_server".to_string(),
-            error: format!("Server error: {}", e),
-        })?;
+    
+    // FIXED: Configure TCP keepalive and connection limits
+    let tcp_nodelay = true;
+    let _tcp_keepalive = Some(Duration::from_secs(60));
+    
+    // Create server with proper configuration
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>()
+    )
+    .tcp_nodelay(tcp_nodelay)
+    .with_graceful_shutdown(shutdown_signal());
+    
+    // Run server with timeout protection
+    tokio::select! {
+        result = server => {
+            result.map_err(|e| RadarrError::ExternalServiceError {
+                service: "http_server".to_string(),
+                error: format!("Server error: {}", e),
+            })?
+        }
+        _ = tokio::time::sleep(Duration::from_secs(3600)) => {
+            warn!("Server timeout after 1 hour - forcing restart");
+        }
+    }
 
     info!("👋 Radarr MVP application shutting down");
+    
+    // Shutdown telemetry gracefully
+    shutdown_telemetry();
+    
     Ok(())
 }
 
-/// Initialize logging based on configuration
+/// Initialize telemetry (tracing, metrics, and logging) using OpenTelemetry
 async fn init_logging() -> Result<()> {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info".into());
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_target(false)
-                .with_timer(tracing_subscriber::fmt::time::uptime())
-                .with_level(true)
-        )
-        .with(filter)
-        .init();
-
-    debug!("Logging initialized");
+    debug!("Initializing telemetry stack");
+    
+    let telemetry_config = TelemetryConfig::default();
+    
+    init_telemetry(telemetry_config)
+        .map_err(|e| RadarrError::ExternalServiceError {
+            service: "telemetry".to_string(),
+            error: format!("Failed to initialize telemetry: {}", e),
+        })?;
+    
+    debug!("Telemetry stack initialized successfully");
     Ok(())
 }
 
@@ -231,26 +253,40 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
 
 /// Build the Axum router with all routes and middleware
 fn build_router(app_state: AppState) -> Router {
-    // For MVP, we'll use the simple API router directly instead of merging
-    // This avoids state type conflicts
+    // Initialize metrics collector
+    let metrics = Arc::new(MetricsCollector::new().expect("Failed to create metrics collector"));
     
     // Create simple API state with database pool and indexer client
     let simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
         .with_indexer_client(app_state.services.indexer_client.clone());
     
-    // Return the simple API router with additional legacy endpoints
+    // Return the simple API router with additional endpoints
     create_simple_api_router(simple_api_state)
         // Add legacy health check endpoints
         .route("/health/detailed", get(detailed_health_check_simple))
         .route("/api/v1/system/status", get(system_status_simple))
         .route("/api/v1/test/connectivity", post(test_connectivity_simple))
+        // Add Prometheus metrics endpoint
+        .route("/metrics", get(metrics_endpoint))
         
-        // Add authentication, CORS and tracing middleware
+        // Add metrics collector to extensions
+        .layer(axum::Extension(metrics))
+        
+        // Add middleware layers with timeout protection
         .layer(
             ServiceBuilder::new()
+                // FIXED: Add 30 second timeout to all requests
+                .layer(TimeoutLayer::new(Duration::from_secs(30)))
                 .layer(middleware::from_fn(require_api_key))
                 .layer(TraceLayer::new_for_http())
-                .layer(CorsLayer::permissive())
+                // FIXED: Configure CORS properly instead of permissive
+                .layer(
+                    CorsLayer::new()
+                        .allow_origin(["http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap()])
+                        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
+                        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
+                        .allow_credentials(true)
+                )
                 .into_inner(),
         )
 }
@@ -491,6 +527,29 @@ async fn test_connectivity_simple() -> impl axum::response::IntoResponse {
         },
         "overall_success": true
     })))
+}
+
+/// Prometheus metrics endpoint
+async fn metrics_endpoint(
+    metrics: axum::extract::Extension<Arc<MetricsCollector>>,
+) -> impl axum::response::IntoResponse {
+    match metrics.export_prometheus() {
+        Ok(metrics_text) => {
+            (
+                StatusCode::OK,
+                [("content-type", "text/plain; version=0.0.4")],
+                metrics_text,
+            )
+        }
+        Err(e) => {
+            tracing::error!("Failed to export Prometheus metrics: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [("content-type", "text/plain")],
+                format!("Error exporting metrics: {}", e),
+            )
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: unified-radarr-ingress
-  namespace: unified-radarr
+  name: radarr-mvp-ingress
+  namespace: radarr-mvp
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -25,7 +25,7 @@ spec:
   tls:
   - hosts:
     - radarr.yourdomain.com
-    secretName: unified-radarr-tls
+    secretName: radarr-mvp-tls
   rules:
   - host: radarr.yourdomain.com
     http:
@@ -34,25 +34,25 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: unified-radarr-service
+            name: radarr-mvp-service
             port:
-              number: 8080
+              number: 7878
       - path: /metrics
         pathType: Exact
         backend:
           service:
-            name: unified-radarr-service
+            name: radarr-mvp-service
             port:
-              number: 9090
+              number: 7878
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: monitoring-ingress
-  namespace: unified-radarr
+  name: radarr-mvp-monitoring-ingress
+  namespace: radarr-mvp
   annotations:
     nginx.ingress.kubernetes.io/auth-type: basic
-    nginx.ingress.kubernetes.io/auth-secret: monitoring-auth
+    nginx.ingress.kubernetes.io/auth-secret: radarr-mvp-monitoring-auth
     nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - Monitoring'
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
@@ -61,7 +61,7 @@ spec:
   tls:
   - hosts:
     - monitoring.yourdomain.com
-    secretName: monitoring-tls
+    secretName: radarr-mvp-monitoring-tls
   rules:
   - host: monitoring.yourdomain.com
     http:
@@ -84,8 +84,8 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: monitoring-auth
-  namespace: unified-radarr
+  name: radarr-mvp-monitoring-auth
+  namespace: radarr-mvp
 type: Opaque
 data:
   # admin:$2y$10$example (htpasswd generated)

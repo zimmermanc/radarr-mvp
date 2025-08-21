@@ -1,0 +1,123 @@
+# syntax=docker/dockerfile:1.7
+# Ultra-secure Dockerfile for Radarr MVP using distroless runtime
+# Maximum security hardening for production environments
+
+# ========================================
+# Stage 0: Cargo Chef for Dependency Caching
+# ========================================
+FROM lukemathwalker/cargo-chef:latest-rust-1.89 AS chef
+WORKDIR /app
+
+# ========================================
+# Stage 1: Cargo Planner
+# ========================================
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ========================================
+# Stage 2: Rust Builder
+# ========================================
+FROM chef AS rust-builder
+
+# Install required system dependencies with minimal attack surface
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && apt-get autoremove -y
+
+# Copy recipe from planner stage
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build dependencies using cargo-chef for better caching
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo chef cook --release --recipe-path recipe.json
+
+# Copy source code
+COPY . .
+
+# Build the actual application with static linking for distroless
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    RUSTFLAGS="-C target-feature=+crt-static" \
+    cargo build --release --target x86_64-unknown-linux-gnu --bin radarr-mvp && \
+    cp target/x86_64-unknown-linux-gnu/release/radarr-mvp /usr/local/bin/ && \
+    strip /usr/local/bin/radarr-mvp
+
+# ========================================
+# Stage 3: Web Builder (Node.js)
+# ========================================
+FROM node:22-alpine as web-builder
+
+# Security: run as non-root during build
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files for better layer caching
+COPY web/package.json web/package-lock.json* ./
+RUN chown -R nextjs:nodejs /app
+
+# Switch to non-root user for build
+USER nextjs
+
+# Install dependencies with cache mount
+RUN --mount=type=cache,target=/home/nextjs/.npm,uid=1001,gid=1001 \
+    npm ci --only=production
+
+# Copy web source files
+COPY --chown=nextjs:nodejs web/ ./
+
+# Build the frontend
+RUN npm run build
+
+# ========================================
+# Stage 4: Distroless Runtime (Maximum Security)
+# ========================================
+FROM gcr.io/distroless/cc-debian12:nonroot
+
+# Copy SSL certificates for HTTPS connections
+COPY --from=rust-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Create necessary directories with proper ownership
+# Note: distroless uses uid/gid 65532 (nonroot user)
+USER 65532:65532
+
+# Copy binary from rust builder (already stripped)
+COPY --from=rust-builder --chown=65532:65532 /usr/local/bin/radarr-mvp /usr/local/bin/radarr-mvp
+
+# Copy web assets from web builder
+COPY --from=web-builder --chown=65532:65532 /app/dist/ /usr/local/share/radarr/web/
+
+# Set environment variables for distroless
+ENV RUST_LOG=info \
+    RADARR_HOST=0.0.0.0 \
+    RADARR_PORT=7878 \
+    WEB_ROOT=/usr/local/share/radarr/web
+
+# Add security and provenance labels
+LABEL org.opencontainers.image.title="Radarr MVP (Distroless)" \
+      org.opencontainers.image.description="Ultra-secure Radarr implementation with distroless runtime" \
+      org.opencontainers.image.vendor="Radarr MVP Project" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/radarr-mvp/radarr-mvp" \
+      org.opencontainers.image.documentation="https://github.com/radarr-mvp/radarr-mvp/blob/main/README.md" \
+      org.opencontainers.image.version="latest" \
+      security.compliance="distroless-hardened" \
+      security.non-root="true" \
+      security.no-shell="true" \
+      security.minimal-attack-surface="true" \
+      security.static-binary="true"
+
+# Expose port
+EXPOSE 7878
+
+# No init system needed in distroless - direct execution
+ENTRYPOINT ["/usr/local/bin/radarr-mvp"]

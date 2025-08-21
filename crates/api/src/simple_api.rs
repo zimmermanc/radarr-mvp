@@ -10,6 +10,8 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use crate::security::{SecurityConfig, apply_security};
+use crate::middleware::require_api_key;
 use radarr_core::{Movie, MovieStatus};
 use radarr_infrastructure::DatabasePool;
 use radarr_indexers::{IndexerClient, SearchRequest};
@@ -89,31 +91,40 @@ pub struct SimpleQueryParams {
 fn default_page() -> u32 { 1 }
 fn default_limit() -> u32 { 50 }
 
-/// Create the simplified API router
+/// Create the simplified API router with security features
 pub fn create_simple_api_router(state: SimpleApiState) -> Router {
-    Router::new()
-        // Health check
+    // Load security configuration from environment
+    let security_config = SecurityConfig::from_env();
+    
+    // Create base router with endpoints
+    let api_router = Router::new()
+        // Health check (no auth required)
         .route("/health", get(health_check))
         
-        // Movie endpoints
+        // Protected movie endpoints (require API key)
         .route("/api/v3/movie", get(list_movies))
         .route("/api/v3/movie", post(create_movie))
         .route("/api/v3/movie/:id", get(get_movie))
         .route("/api/v3/movie/:id", delete(delete_movie))
         
-        // Search endpoint (real Prowlarr integration)
+        // Protected search endpoint (real Prowlarr integration)
         .route("/api/v3/indexer/search", post(search_movies))
         
-        // Prowlarr test endpoint
+        // Protected Prowlarr test endpoint
         .route("/api/v3/indexer/test", post(test_prowlarr_connection))
         
-        // Download endpoint (mock)
+        // Protected download endpoint (mock)
         .route("/api/v3/download", post(start_download))
         
-        // Import endpoint (real import pipeline)
+        // Protected import endpoint (real import pipeline)
         .route("/api/v3/command/import", post(import_download))
         
         .with_state(state)
+        // Apply API key authentication middleware
+        .layer(axum::middleware::from_fn(require_api_key));
+    
+    // Apply comprehensive security features
+    apply_security(api_router, security_config)
 }
 
 /// Health check endpoint

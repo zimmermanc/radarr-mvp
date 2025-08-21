@@ -1,6 +1,9 @@
 # Build artifacts
 target/
 dist/
+.git/
+.svn/
+.hg/
 
 # Development files
 .env*
@@ -28,8 +31,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Documentation
+# Documentation (except required ones)
 *.md
+!README.md
+!CHANGELOG.md
 docs/
 
 # Test files
@@ -52,3 +57,26 @@ k8s/
 .cache/
 .npm/
 .cargo/
+.rustup/
+.local/
+.config/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Runtime files
+*.pid
+*.lock
+*.socket
+
+# Build context optimization
+!web/package.json
+!web/package-lock.json
+!Cargo.toml
+!Cargo.lock
+!crates/
+!src/
+!migrations/

@@ -79,6 +79,16 @@ services:
     image: ${RADARR_IMAGE:-radarr-mvp:latest}
     container_name: radarr-mvp-prod
     restart: always
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,noexec,nosuid,nodev
+      - /var/run:size=100M,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,6 +154,11 @@ services:
       options:
         max-size: "100m"
         max-file: "5"
+        labels: "service,environment"
+    labels:
+      - "traefik.enable=true"
+      - "monitoring.enabled=true"
+      - "security.hardened=true"
 
   # Nginx Reverse Proxy with SSL termination
   nginx:
@@ -194,3 +209,7 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"

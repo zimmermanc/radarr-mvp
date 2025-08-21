@@ -12,20 +12,33 @@ radarr-import = { path = "../import" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true, features = ["fs", "compression-gzip", "compression-br", "cors"] }
+tower-http = { workspace = true, features = ["fs", "compression-gzip", "compression-br", "cors", "set-header"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 anyhow = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry-prometheus = { workspace = true }
+prometheus = { workspace = true }
+metrics = { workspace = true }
 # Web UI and templating
 askama = { version = "0.12", features = ["with-axum"] }
 askama_axum = "0.4"
 mime_guess = "2.0"
+
+# Security dependencies
+validator = { version = "0.18", features = ["derive"] }
+http = "1.0"
+url = "2.5"
 
 [package.metadata.askama]
 dirs = ["templates"]

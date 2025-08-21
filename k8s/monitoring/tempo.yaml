@@ -1,0 +1,414 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: monitoring
+  labels:
+    app: tempo
+    component: observability
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      log_level: info
+    
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+        jaeger:
+          protocols:
+            thrift_http:
+              endpoint: 0.0.0.0:14268
+            grpc:
+              endpoint: 0.0.0.0:14250
+            thrift_binary:
+              endpoint: 0.0.0.0:6832
+            thrift_compact:
+              endpoint: 0.0.0.0:6831
+        zipkin:
+          endpoint: 0.0.0.0:9411
+    
+    ingester:
+      lifecycler:
+        address: 127.0.0.1
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+        final_sleep: 0s
+      trace_idle_period: 10s
+      max_block_bytes: 1_000_000
+      max_block_duration: 5m
+    
+    compactor:
+      compaction:
+        compaction_window: 1h
+        max_block_bytes: 100_000_000
+        block_retention: 1h
+        compacted_block_retention: 10m
+    
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/traces
+        wal:
+          path: /tmp/tempo/wal
+        pool:
+          max_workers: 100
+          queue_depth: 10000
+    
+    querier:
+      frontend_worker:
+        frontend_address: 127.0.0.1:9095
+    
+    query_frontend:
+      search:
+        duration_slo: 5s
+        throughput_bytes_slo: 1.073741824e+09
+      trace_by_id:
+        duration_slo: 5s
+    
+    overrides:
+      defaults:
+        metrics_generators:
+          - service-graphs
+          - span-metrics
+        metrics_generator:
+          registry:
+            external_labels:
+              source: tempo
+              cluster: radarr-cluster
+          storage:
+            path: /tmp/tempo/generator/wal
+            remote_write_flush_deadline: 1m
+            remote_write:
+              - url: http://prometheus:9090/api/v1/write
+                send_exemplars: true
+        max_traces_per_user: 1000000
+        max_bytes_per_trace: 50000000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: tempo
+    component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+        component: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3200"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: tempo
+      containers:
+      - name: tempo
+        image: grafana/tempo:2.2.0
+        args:
+          - -config.file=/etc/tempo/tempo.yaml
+          - -target=all
+        ports:
+        - containerPort: 3200
+          name: http
+          protocol: TCP
+        - containerPort: 9095
+          name: grpc
+          protocol: TCP
+        - containerPort: 4317
+          name: otlp-grpc
+          protocol: TCP
+        - containerPort: 4318
+          name: otlp-http
+          protocol: TCP
+        - containerPort: 14268
+          name: jaeger-http
+          protocol: TCP
+        - containerPort: 14250
+          name: jaeger-grpc
+          protocol: TCP
+        - containerPort: 6832
+          name: jaeger-thrift-binary
+          protocol: UDP
+        - containerPort: 6831
+          name: jaeger-thrift-compact
+          protocol: UDP
+        - containerPort: 9411
+          name: zipkin
+          protocol: TCP
+        volumeMounts:
+        - name: tempo-config
+          mountPath: /etc/tempo
+        - name: tempo-storage
+          mountPath: /tmp/tempo
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 3200
+          initialDelaySeconds: 45
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3200
+          initialDelaySeconds: 45
+          timeoutSeconds: 10
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: tempo-config
+        configMap:
+          name: tempo-config
+      - name: tempo-storage
+        persistentVolumeClaim:
+          claimName: tempo-storage
+      securityContext:
+        fsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-storage
+  namespace: monitoring
+  labels:
+    app: tempo
+    component: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: tempo
+    component: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3200"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3200
+    targetPort: 3200
+    protocol: TCP
+    name: http
+  - port: 9095
+    targetPort: 9095
+    protocol: TCP
+    name: grpc
+  - port: 4317
+    targetPort: 4317
+    protocol: TCP
+    name: otlp-grpc
+  - port: 4318
+    targetPort: 4318
+    protocol: TCP
+    name: otlp-http
+  - port: 14268
+    targetPort: 14268
+    protocol: TCP
+    name: jaeger-http
+  - port: 14250
+    targetPort: 14250
+    protocol: TCP
+    name: jaeger-grpc
+  - port: 6832
+    targetPort: 6832
+    protocol: UDP
+    name: jaeger-thrift-binary
+  - port: 6831
+    targetPort: 6831
+    protocol: UDP
+    name: jaeger-thrift-compact
+  - port: 9411
+    targetPort: 9411
+    protocol: TCP
+    name: zipkin
+  selector:
+    app: tempo
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: tempo
+    component: observability
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+  labels:
+    app: jaeger-query
+    component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger-query
+  template:
+    metadata:
+      labels:
+        app: jaeger-query
+        component: observability
+    spec:
+      containers:
+      - name: jaeger-query
+        image: jaegertracing/jaeger-query:1.50.0
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: grpc-plugin
+        - name: GRPC_STORAGE_PLUGIN_BINARY
+          value: /plugin/jaeger-tempo
+        - name: GRPC_STORAGE_PLUGIN_CONFIGURATION_FILE
+          value: /plugin-config/config.yaml
+        ports:
+        - containerPort: 16686
+          name: query-http
+          protocol: TCP
+        - containerPort: 16687
+          name: query-grpc
+          protocol: TCP
+        volumeMounts:
+        - name: jaeger-tempo-plugin-config
+          mountPath: /plugin-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 16686
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+      volumes:
+      - name: jaeger-tempo-plugin-config
+        configMap:
+          name: jaeger-tempo-plugin-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-tempo-plugin-config
+  namespace: monitoring
+  labels:
+    app: jaeger-query
+    component: observability
+data:
+  config.yaml: |
+    backend: "tempo"
+    tempo:
+      endpoint: "http://tempo:3200"
+      tls:
+        insecure: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+  labels:
+    app: jaeger-query
+    component: observability
+spec:
+  type: ClusterIP
+  ports:
+  - port: 16686
+    targetPort: 16686
+    protocol: TCP
+    name: query-http
+  - port: 16687
+    targetPort: 16687
+    protocol: TCP
+    name: query-grpc
+  selector:
+    app: jaeger-query
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-query
+  namespace: monitoring
+  labels:
+    app: jaeger-query
+    component: observability
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: radarr.local
+    http:
+      paths:
+      - path: /jaeger(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger-query
+            port:
+              number: 16686
+  tls:
+  - hosts:
+    - radarr.local
+    secretName: radarr-tls

@@ -9,9 +9,7 @@ import {
 import { radarrApi, isApiError } from '../lib/api';
 import type { SearchResult, QualityProfile } from '../types/api';
 import { usePageTitle } from '../contexts/UIContext';
-import { useToast, useApiErrorHandler } from '../components/ui/Toast';
-import { useConfirmDialog } from '../components/ui/ConfirmDialog';
-import { LoadingButton, InlineLoading, Skeleton } from '../components/ui/Loading';
+// import { useToast } from '../components/ui/Toast'; // Currently unused
 
 export const AddMovie: React.FC = () => {
   usePageTitle('Add Movie');
@@ -26,9 +24,7 @@ export const AddMovie: React.FC = () => {
   const [addingMovies, setAddingMovies] = useState<Set<number>>(new Set());
   const [addedMovies, setAddedMovies] = useState<Set<number>>(new Set());
 
-  const { success, error: showError } = useToast();
-  const handleApiError = useApiErrorHandler();
-  const { confirm } = useConfirmDialog();
+  // const { success } = useToast(); // Currently unused
 
   useEffect(() => {
     loadQualityProfiles();

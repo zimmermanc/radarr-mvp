@@ -261,6 +261,7 @@ fn build_router(app_state: AppState) -> Router {
         .with_indexer_client(app_state.services.indexer_client.clone());
     
     // Return the simple API router with additional endpoints
+    // The v3 API endpoints are already defined in create_simple_api_router
     create_simple_api_router(simple_api_state)
         // Add legacy health check endpoints
         .route("/health/detailed", get(detailed_health_check_simple))
@@ -269,24 +270,48 @@ fn build_router(app_state: AppState) -> Router {
         // Add Prometheus metrics endpoint
         .route("/metrics", get(metrics_endpoint))
         
-        // Add metrics collector to extensions
+        // Add metrics collector and services to extensions
         .layer(axum::Extension(metrics))
+        .layer(axum::Extension(Arc::new(app_state.services)))
         
-        // Add middleware layers with timeout protection
+        // Add CORS layer first (before auth) to handle preflight
+        .layer(
+            CorsLayer::new()
+                .allow_origin([
+                    "http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://127.0.0.1:5173".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://0.0.0.0:5173".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://172.19.118.188:5173".parse::<axum::http::HeaderValue>().unwrap(),
+                ])
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::PUT,
+                    axum::http::Method::DELETE,
+                    axum::http::Method::OPTIONS,
+                    axum::http::Method::PATCH,
+                ])
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::ACCEPT,
+                    axum::http::header::ORIGIN,
+                    axum::http::header::ACCESS_CONTROL_REQUEST_METHOD,
+                    axum::http::header::ACCESS_CONTROL_REQUEST_HEADERS,
+                    "X-Api-Key".parse::<axum::http::HeaderName>().unwrap(),
+                ])
+                .allow_credentials(true)
+                .expose_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::CONTENT_LENGTH,
+                ])
+        )
+        // Add other middleware layers
         .layer(
             ServiceBuilder::new()
-                // FIXED: Add 30 second timeout to all requests
                 .layer(TimeoutLayer::new(Duration::from_secs(30)))
                 .layer(middleware::from_fn(require_api_key))
                 .layer(TraceLayer::new_for_http())
-                // FIXED: Configure CORS properly instead of permissive
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(["http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap()])
-                        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
-                        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION])
-                        .allow_credentials(true)
-                )
                 .into_inner(),
         )
 }

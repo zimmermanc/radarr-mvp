@@ -16,6 +16,7 @@ regex = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
 
 # Optional infrastructure dependencies
 sqlx = { workspace = true, optional = true }

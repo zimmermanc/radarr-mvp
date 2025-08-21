@@ -11,6 +11,7 @@ import type { Movie, HealthResponse } from '../types/api';
 import { usePageTitle } from '../contexts/UIContext';
 import { useToast, useApiErrorHandler } from '../components/ui/Toast';
 import { DashboardStatsSkeleton, PageLoading, LoadingButton } from '../components/ui/Loading';
+import ConnectionTest from '../components/ConnectionTest';
 
 interface DashboardStats {
   totalMovies: number;
@@ -207,6 +208,9 @@ export const Dashboard: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Connection Test */}
+      <ConnectionTest />
 
       {/* Recent Movies */}
       <div className="card p-6">

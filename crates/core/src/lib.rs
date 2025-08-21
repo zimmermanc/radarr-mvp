@@ -7,9 +7,11 @@ pub mod models;
 pub mod domain;
 pub mod error;
 pub mod notifications;
+pub mod services;
 
 // Re-export core types
 pub use models::*;
 pub use domain::*;
 pub use error::*;
 pub use notifications::*;
+pub use services::*;

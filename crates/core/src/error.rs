@@ -25,8 +25,11 @@ pub enum RadarrError {
     #[error("Configuration error: {field} - {message}")]
     ConfigurationError { field: String, message: String },
     
-    #[error("Database error: {0}")]
-    DatabaseError(String),
+    #[error("Database error: {message}")]
+    DatabaseError { message: String },
+    
+    #[error("Not found: {entity} with id {id}")]
+    NotFoundError { entity: String, id: String },
     
     #[error("IO error: {0}")]
     IoError(String),
@@ -41,7 +44,9 @@ pub type Result<T> = std::result::Result<T, RadarrError>;
 #[cfg(feature = "postgres")]
 impl From<sqlx::Error> for RadarrError {
     fn from(err: sqlx::Error) -> Self {
-        RadarrError::DatabaseError(err.to_string())
+        RadarrError::DatabaseError {
+            message: err.to_string(),
+        }
     }
 }
 
@@ -55,5 +60,14 @@ impl From<std::io::Error> for RadarrError {
 impl From<serde_json::Error> for RadarrError {
     fn from(err: serde_json::Error) -> Self {
         RadarrError::SerializationError(err.to_string())
+    }
+}
+
+impl From<tokio::task::JoinError> for RadarrError {
+    fn from(err: tokio::task::JoinError) -> Self {
+        RadarrError::ExternalServiceError {
+            service: "tokio".to_string(),
+            error: err.to_string(),
+        }
     }
 }

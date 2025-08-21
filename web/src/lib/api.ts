@@ -126,7 +126,32 @@ class RadarrApiClient {
     }
 
     const url = `/api/v3/movie${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    return this.handleResponse(this.client.get<MoviesResponse>(url));
+    
+    try {
+      const response = await this.client.get<any>(url);
+      
+      // Transform the API response to match expected format
+      const transformedData: MoviesResponse = {
+        movies: (response.data.records || []).map((movie: any) => ({
+          ...movie,
+          id: movie.id,
+          title: movie.title,
+          year: movie.year,
+          has_file: movie.has_file || false,
+          monitored: movie.monitored !== undefined ? movie.monitored : true,
+          tmdb_id: movie.tmdbId || movie.tmdb_id,
+          imdb_id: movie.imdbId || movie.imdb_id,
+          status: movie.status || 'released',
+        })),
+        total: response.data.totalCount || response.data.records?.length || 0,
+        page: response.data.page || 1,
+        limit: response.data.pageSize || params?.limit || 20
+      };
+      
+      return { data: transformedData, success: true };
+    } catch (error) {
+      return { error: error as ApiError, success: false };
+    }
   }
 
   async getMovie(id: number): Promise<ApiResponse<Movie>> {
@@ -208,8 +233,25 @@ class RadarrApiClient {
 }
 
 // Create and export a singleton instance
+// In development, use relative URLs that get proxied by Vite
+// In production, use the configured base URL or detect from window.location
+const getBaseUrl = (): string => {
+  // If explicitly set, use it (for production deployments)
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // In development with Vite dev server, use relative URLs (will be proxied)
+  if (import.meta.env.DEV) {
+    return ''; // Relative URLs will be proxied by Vite
+  }
+  
+  // In production without explicit config, detect from current location
+  return `${window.location.protocol}//${window.location.hostname}:7878`;
+};
+
 const apiConfig: ApiConfig = {
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:7878',
+  baseUrl: getBaseUrl(),
   apiKey: import.meta.env.VITE_API_KEY || 'mysecurekey123',
   timeout: 30000,
 };

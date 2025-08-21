@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
 
     // Initialize data collector
     info!("Initializing HDBits data collector...");
-    let mut collector = SceneGroupAnalyzer::new(config, output_dir);
+    let mut collector = SceneGroupAnalyzer::with_config(config, output_dir);
 
     // Run comprehensive data collection and analysis
     info!("Starting data collection and analysis...");

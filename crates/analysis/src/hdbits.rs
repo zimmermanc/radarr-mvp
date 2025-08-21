@@ -103,6 +103,11 @@ pub struct SceneGroupMetrics {
     pub quality_consistency: f64,
     pub recency_score: f64,
     pub reputation_score: f64,
+    pub comprehensive_reputation_score: f64,
+    pub evidence_based_tier: String,
+    pub quality_tier: String,
+    pub categories_covered: Vec<String>,
+    pub seeder_health_score: f64,
     pub first_seen: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
     pub release_history: Vec<ReleaseMetric>,
@@ -298,13 +303,31 @@ impl HDBitsClient {
 
 pub struct SceneGroupAnalyzer {
     pub group_metrics: HashMap<String, SceneGroupMetrics>,
+    pub config: Option<HDBitsConfig>,
+    pub output_dir: Option<String>,
 }
 
 impl SceneGroupAnalyzer {
     pub fn new() -> Self {
         Self {
             group_metrics: HashMap::new(),
+            config: None,
+            output_dir: None,
         }
+    }
+    
+    pub fn with_config(config: HDBitsConfig, output_dir: String) -> Self {
+        Self {
+            group_metrics: HashMap::new(),
+            config: Some(config),
+            output_dir: Some(output_dir),
+        }
+    }
+    
+    pub async fn collect_and_analyze(&mut self) -> Result<AnalysisReport> {
+        info!("Starting data collection and analysis");
+        // TODO: Implement actual collection and analysis
+        Ok(AnalysisReport::default())
     }
 
     pub fn extract_scene_group(torrent_name: &str) -> Option<String> {
@@ -372,6 +395,11 @@ impl SceneGroupAnalyzer {
                         quality_consistency: 0.0,
                         recency_score: 0.0,
                         reputation_score: 0.0,
+                        comprehensive_reputation_score: 0.0,
+                        evidence_based_tier: "Unrated".to_string(),
+                        quality_tier: "Unrated".to_string(),
+                        categories_covered: Vec::new(),
+                        seeder_health_score: 0.0,
                         first_seen: release_metric.added_date,
                         last_seen: release_metric.added_date,
                         release_history: Vec::new(),
@@ -520,6 +548,59 @@ struct ReputationWeights {
     size_appropriateness: f64,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AnalysisReport {
+    pub total_torrents_analyzed: u32,
+    pub unique_scene_groups: u32,
+    pub internal_releases: u32,
+    pub external_releases: u32,
+    pub collection_duration_seconds: u64,
+    pub quality_distribution: AnalysisQualityDistribution,
+    pub top_groups_by_reputation: Vec<SceneGroupSummary>,
+    pub statistical_summary: StatisticalSummary,
+    pub temporal_analysis: TemporalAnalysis,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AnalysisQualityDistribution {
+    pub premium_groups: u32,
+    pub high_quality_groups: u32,
+    pub standard_groups: u32,
+    pub low_quality_groups: u32,
+    pub poor_groups: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SceneGroupSummary {
+    pub group_name: String,
+    pub reputation_score: f64,
+    pub quality_tier: String,
+    pub total_releases: u32,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct StatisticalSummary {
+    pub reputation_scores: StatisticalMetrics,
+    pub seeder_counts: StatisticalMetrics,
+    pub file_sizes_gb: StatisticalMetrics,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct StatisticalMetrics {
+    pub min: f64,
+    pub max: f64,
+    pub mean: f64,
+    pub p95: f64,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct TemporalAnalysis {
+    pub active_groups_last_30_days: u32,
+    pub active_groups_last_90_days: u32,
+    pub established_groups_over_2_years: u32,
+    pub dormant_groups: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,6 +634,11 @@ mod tests {
             quality_consistency: 0.9,
             recency_score: 0.8,
             reputation_score: 0.0,
+            comprehensive_reputation_score: 0.0,
+            evidence_based_tier: "Premium".to_string(),
+            quality_tier: "Premium".to_string(),
+            categories_covered: vec!["Movies".to_string()],
+            seeder_health_score: 0.9,
             first_seen: Utc::now() - chrono::Duration::days(365),
             last_seen: Utc::now() - chrono::Duration::days(7),
             release_history: Vec::new(),

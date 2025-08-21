@@ -6,8 +6,10 @@
 pub mod repositories;
 pub mod database;
 pub mod error;
+pub mod download_clients;
 
 // Re-export for easy access
 pub use database::*;
 pub use error::*;
 pub use repositories::*;
+pub use download_clients::*;

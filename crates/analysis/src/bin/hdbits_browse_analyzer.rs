@@ -78,7 +78,10 @@ async fn main() -> Result<()> {
         username: cli.username.clone(),
         passkey: cli.passkey.clone(),
         base_url: "https://hdbits.org".to_string(),
+        max_pages: 5,
+        delay_seconds: safe_rate_limit,
         rate_limit_seconds: safe_rate_limit,
+        request_delay_seconds: safe_rate_limit,
     };
 
     // Display configuration (masking sensitive data)

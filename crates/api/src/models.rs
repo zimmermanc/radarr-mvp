@@ -4,7 +4,7 @@
 //! API requests and responses, implementing proper serialization and validation.
 
 use chrono::{DateTime, Utc};
-use radarr_core::{Movie, MovieStatus, MinimumAvailability, Download, DownloadStatus};
+use radarr_core::{Movie, MovieStatus, MinimumAvailability, Download};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -312,4 +312,52 @@ pub struct ServiceHealth {
     pub response_time_ms: Option<u64>,
     pub last_check: DateTime<Utc>,
     pub error: Option<String>,
+}
+
+/// Generic API response wrapper
+#[derive(Debug, Serialize)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<String>,
+    pub message: Option<String>,
+}
+
+impl<T> ApiResponse<T> {
+    pub fn success(data: T) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+            message: None,
+        }
+    }
+    
+    pub fn error(message: String) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(message.clone()),
+            message: Some(message),
+        }
+    }
+}
+
+/// Query parameters for pagination
+#[derive(Debug, Deserialize)]
+pub struct PaginationQuery {
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+    pub sort_key: Option<String>,
+    pub sort_dir: Option<SortDirection>,
+}
+
+impl PaginationQuery {
+    pub fn to_sql_params(&self) -> (i32, i64) {
+        let limit = self.page_size.min(1000) as i32;
+        let offset = ((self.page.saturating_sub(1)) * self.page_size) as i64;
+        (limit, offset)
+    }
 }

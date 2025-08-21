@@ -32,7 +32,12 @@ pub struct SecurityConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            cors_origins: vec!["http://localhost:3000".to_string()],
+            cors_origins: vec![
+                "http://localhost:3000".to_string(),
+                "http://localhost:5173".to_string(), // Vite dev server default
+                "http://127.0.0.1:5173".to_string(),
+                "http://0.0.0.0:5173".to_string(),
+            ],
             enable_hsts: true,
             hsts_max_age: 31536000, // 1 year
             csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'".to_string(),
@@ -46,7 +51,7 @@ impl SecurityConfig {
     pub fn from_env() -> Self {
         Self {
             cors_origins: std::env::var("CORS_ALLOWED_ORIGINS")
-                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+                .unwrap_or_else(|_| "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://0.0.0.0:5173".to_string())
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect(),
@@ -87,9 +92,30 @@ pub fn configure_cors(config: &SecurityConfig) -> CorsLayer {
         .allow_credentials(true);
 
     // Configure origins based on environment
-    if config.environment == "development" && config.cors_origins.iter().any(|o| o.contains("localhost")) {
-        // In development, allow localhost origins
-        let origins: Result<Vec<_>, _> = config.cors_origins
+    if config.environment == "development" {
+        // In development, be more permissive with CORS
+        let mut dev_origins = config.cors_origins.clone();
+        
+        // Add common development origins if not already present
+        let common_dev_origins = vec![
+            "http://localhost:5173",
+            "http://127.0.0.1:5173", 
+            "http://0.0.0.0:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ];
+        
+        for origin in common_dev_origins {
+            if !dev_origins.iter().any(|o| o == origin) {
+                dev_origins.push(origin.to_string());
+            }
+        }
+        
+        // Also allow any localhost/127.0.0.1 origin on port 5173 for dynamic IPs
+        // This handles cases where the dev server is accessed via LAN IP
+        tracing::info!("Development mode: allowing configured origins plus common dev origins");
+        
+        let origins: Result<Vec<_>, _> = dev_origins
             .iter()
             .map(|origin| origin.parse::<HeaderValue>())
             .collect();
@@ -99,6 +125,8 @@ pub fn configure_cors(config: &SecurityConfig) -> CorsLayer {
             Err(e) => {
                 tracing::warn!("Invalid CORS origin configuration: {}", e);
                 cors = cors.allow_origin([
+                    "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                    "http://127.0.0.1:5173".parse::<HeaderValue>().unwrap(),
                     "http://localhost:3000".parse::<HeaderValue>().unwrap(),
                     "http://127.0.0.1:3000".parse::<HeaderValue>().unwrap(),
                 ]);

@@ -104,8 +104,11 @@ async fn main() -> Result<()> {
     let config = HDBitsComprehensiveConfig {
         session_cookie,
         base_url: "https://hdbits.org".to_string(),
+        max_pages: max_pages as usize,
+        delay_seconds,
         request_delay_seconds: delay_seconds,
-        max_pages_per_category: if test_mode { 3 } else { max_pages },
+        max_pages_per_category: if test_mode { 3 } else { max_pages as usize },
+        enable_six_month_filter: six_month_filtering,
         six_month_filtering,
         comprehensive_collection: !test_mode,
     };

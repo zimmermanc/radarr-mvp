@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 radarr-core = { path = "../core", features = ["postgres"] }
+radarr-downloaders = { path = "../downloaders" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 sqlx = { workspace = true }
@@ -14,3 +15,4 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
+rust_decimal = { workspace = true }

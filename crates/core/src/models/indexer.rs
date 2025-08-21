@@ -9,6 +9,7 @@ pub enum IndexerImplementation {
     Jackett,
     Torznab,
     Newznab,
+    HDBits,
 }
 
 /// Indexer configuration and settings
@@ -88,6 +89,7 @@ impl std::fmt::Display for IndexerImplementation {
             IndexerImplementation::Jackett => write!(f, "jackett"),
             IndexerImplementation::Torznab => write!(f, "torznab"),
             IndexerImplementation::Newznab => write!(f, "newznab"),
+            IndexerImplementation::HDBits => write!(f, "hdbits"),
         }
     }
 }

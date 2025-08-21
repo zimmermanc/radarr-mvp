@@ -6,12 +6,13 @@
 use crate::models::{
     IndexerStats, ProwlarrIndexer, SearchRequest, SearchResponse,
 };
+use crate::service_health::{ServiceHealth, CircuitBreakerConfig};
 use async_trait::async_trait;
 use radarr_core::{RadarrError, Result};
 use reqwest::{Client, Response, StatusCode};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, warn};
+use tracing::{debug, warn, info};
 use url::Url;
 
 /// Configuration for the Prowlarr client
@@ -103,6 +104,7 @@ pub struct ProwlarrClient {
     client: Client,
     rate_limiter: RateLimiter,
     base_url: Url,
+    health_monitor: ServiceHealth,
 }
 
 impl ProwlarrClient {
@@ -126,11 +128,21 @@ impl ProwlarrClient {
             
         let rate_limiter = RateLimiter::new(config.max_requests_per_minute);
         
+        // Configure circuit breaker for production reliability
+        let circuit_config = CircuitBreakerConfig {
+            failure_threshold: 5,        // Open after 5 failures
+            timeout: Duration::from_secs(60), // Wait 60s before retry
+            success_threshold: 3,        // Need 3 successes to close
+            failure_window: Duration::from_secs(300), // 5-minute failure window
+        };
+        let health_monitor = ServiceHealth::with_config("prowlarr".to_string(), circuit_config);
+        
         Ok(Self {
             config,
             client,
             rate_limiter,
             base_url,
+            health_monitor,
         })
     }
     
@@ -138,6 +150,14 @@ impl ProwlarrClient {
     pub async fn search(&self, request: &SearchRequest) -> Result<SearchResponse> {
         self.rate_limiter.wait_if_needed().await?;
         
+        // Execute with health monitoring and circuit breaker
+        self.health_monitor.execute_request(async {
+            self.search_internal(request).await
+        }).await
+    }
+    
+    /// Internal search implementation without health monitoring
+    async fn search_internal(&self, request: &SearchRequest) -> Result<SearchResponse> {
         let mut url = self.base_url.join("/api/v1/search")
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "prowlarr".to_string(),
@@ -317,6 +337,22 @@ impl ProwlarrClient {
         self.handle_response(response).await
     }
     
+    /// Get current service health status and metrics
+    pub async fn get_service_health(&self) -> crate::service_health::HealthStatus {
+        self.health_monitor.get_health_status().await
+    }
+    
+    /// Get current service metrics
+    pub async fn get_service_metrics(&self) -> crate::service_health::ServiceMetrics {
+        self.health_monitor.get_metrics().await
+    }
+    
+    /// Reset service health monitoring (useful for testing)
+    pub async fn reset_health_monitoring(&self) {
+        self.health_monitor.reset().await;
+        info!("Reset health monitoring for Prowlarr service");
+    }
+
     /// Check if the Prowlarr service is healthy and accessible
     pub async fn health_check(&self) -> Result<bool> {
         let url = self.base_url.join("/api/v1/system/status")
@@ -382,6 +418,16 @@ pub trait IndexerClient: Send + Sync {
     
     /// Check service health
     async fn health_check(&self) -> Result<bool>;
+    
+    /// Get current service health status (optional, default implementation returns healthy)
+    async fn get_service_health(&self) -> crate::service_health::HealthStatus {
+        crate::service_health::HealthStatus::Healthy
+    }
+    
+    /// Get current service metrics (optional, default implementation returns empty metrics)
+    async fn get_service_metrics(&self) -> crate::service_health::ServiceMetrics {
+        crate::service_health::ServiceMetrics::default()
+    }
 }
 
 #[async_trait]
@@ -400,6 +446,14 @@ impl IndexerClient for ProwlarrClient {
     
     async fn health_check(&self) -> Result<bool> {
         self.health_check().await
+    }
+    
+    async fn get_service_health(&self) -> crate::service_health::HealthStatus {
+        self.get_service_health().await
+    }
+    
+    async fn get_service_metrics(&self) -> crate::service_health::ServiceMetrics {
+        self.get_service_metrics().await
     }
 }
 

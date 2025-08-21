@@ -10,6 +10,7 @@
 use axum::{
     extract::State,
     http::StatusCode,
+    middleware,
     response::Json,
     routing::{get, post},
     Router,
@@ -19,7 +20,7 @@ use radarr_infrastructure::{create_pool, DatabaseConfig};
 use radarr_indexers::{ProwlarrClient, IndexerClient};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
-use radarr_api::{SimpleApiState, create_simple_api_router};
+use radarr_api::{SimpleApiState, create_simple_api_router, middleware::require_api_key};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -233,8 +234,9 @@ fn build_router(app_state: AppState) -> Router {
     // For MVP, we'll use the simple API router directly instead of merging
     // This avoids state type conflicts
     
-    // Create simple API state from database pool
-    let simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone());
+    // Create simple API state with database pool and indexer client
+    let simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
+        .with_indexer_client(app_state.services.indexer_client.clone());
     
     // Return the simple API router with additional legacy endpoints
     create_simple_api_router(simple_api_state)
@@ -243,9 +245,10 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/v1/system/status", get(system_status_simple))
         .route("/api/v1/test/connectivity", post(test_connectivity_simple))
         
-        // Add CORS and tracing middleware
+        // Add authentication, CORS and tracing middleware
         .layer(
             ServiceBuilder::new()
+                .layer(middleware::from_fn(require_api_key))
                 .layer(TraceLayer::new_for_http())
                 .layer(CorsLayer::permissive())
                 .into_inner(),

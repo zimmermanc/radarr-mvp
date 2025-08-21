@@ -136,7 +136,7 @@ impl From<Movie> for MovieResponse {
 }
 
 /// Movie creation request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateMovieRequest {
     pub tmdb_id: i32,
@@ -155,7 +155,7 @@ fn default_monitored() -> bool {
 }
 
 /// Movie update request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateMovieRequest {
     pub monitored: Option<bool>,
@@ -165,7 +165,7 @@ pub struct UpdateMovieRequest {
 }
 
 /// Search request for movies via indexers
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRequest {
     /// Movie title to search for
@@ -228,7 +228,7 @@ pub struct ReleaseResponse {
 }
 
 /// Download request to start downloading a release
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadRequest {
     /// Release GUID

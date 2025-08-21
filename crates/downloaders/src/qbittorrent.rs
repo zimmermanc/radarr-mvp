@@ -5,12 +5,14 @@
 
 use std::collections::HashMap;
 use std::time::Duration;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use radarr_core::{Result, RadarrError};
 use reqwest::Client;
 use url::Url;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Configuration for qBittorrent client
 #[derive(Debug, Clone)]
@@ -36,12 +38,20 @@ impl Default for QBittorrentConfig {
     }
 }
 
+/// Session state for tracking login status
+#[derive(Debug, Default)]
+struct SessionState {
+    authenticated: bool,
+    last_auth_time: Option<std::time::Instant>,
+}
+
 /// qBittorrent client for managing downloads
 #[derive(Debug)]
 pub struct QBittorrentClient {
     config: QBittorrentConfig,
     client: Client,
     base_url: Url,
+    session_state: Arc<RwLock<SessionState>>,
 }
 
 /// Torrent information from qBittorrent
@@ -151,9 +161,32 @@ impl QBittorrentClient {
             config,
             client,
             base_url,
+            session_state: Arc::new(RwLock::new(SessionState::default())),
         })
     }
 
+    /// Check if we need to re-authenticate (session older than 30 minutes)
+    async fn needs_authentication(&self) -> bool {
+        let state = self.session_state.read().await;
+        if !state.authenticated {
+            return true;
+        }
+        
+        if let Some(last_auth) = state.last_auth_time {
+            last_auth.elapsed() > Duration::from_secs(30 * 60) // 30 minutes
+        } else {
+            true
+        }
+    }
+    
+    /// Ensure we have a valid authenticated session
+    async fn ensure_authenticated(&self) -> Result<()> {
+        if self.needs_authentication().await {
+            self.login().await?;
+        }
+        Ok(())
+    }
+    
     /// Login to qBittorrent and establish session
     pub async fn login(&self) -> Result<()> {
         let login_url = self.base_url.join("api/v2/auth/login")
@@ -192,6 +225,13 @@ impl QBittorrentClient {
                 });
             }
 
+            // Update session state
+            {
+                let mut state = self.session_state.write().await;
+                state.authenticated = true;
+                state.last_auth_time = Some(std::time::Instant::now());
+            }
+            
             info!("Successfully logged in to qBittorrent");
             Ok(())
         } else {
@@ -202,8 +242,60 @@ impl QBittorrentClient {
         }
     }
 
-    /// Add a torrent to qBittorrent
+    /// Reset authentication state for retry
+    async fn reset_auth_state(&self) {
+        let mut state = self.session_state.write().await;
+        state.authenticated = false;
+        state.last_auth_time = None;
+    }
+    
+    /// Check if error indicates authentication failure
+    fn is_auth_error(&self, error: &RadarrError) -> bool {
+        let error_str = error.to_string().to_lowercase();
+        error_str.contains("forbidden") || 
+        error_str.contains("unauthorized") || 
+        error_str.contains("403") ||
+        error_str.contains("login")
+    }
+    
+    /// Extract torrent hash from magnet URL
+    fn extract_hash_from_magnet(&self, magnet_url: &str) -> Option<String> {
+        // Look for xt=urn:btih: in the magnet URL
+        if let Some(start) = magnet_url.find("xt=urn:btih:") {
+            let hash_start = start + "xt=urn:btih:".len();
+            let hash_part = &magnet_url[hash_start..];
+            
+            // Find the end of the hash (next & or end of string)
+            if let Some(end) = hash_part.find('&') {
+                Some(hash_part[..end].to_uppercase())
+            } else {
+                Some(hash_part.to_uppercase())
+            }
+        } else {
+            None
+        }
+    }
+    
+    /// Add a torrent to qBittorrent with retry logic
     pub async fn add_torrent(&self, params: AddTorrentParams) -> Result<String> {
+        // Ensure we're authenticated before attempting
+        self.ensure_authenticated().await?;
+        
+        // Try the operation, with one retry on auth failure
+        match self.add_torrent_internal(&params).await {
+            Ok(result) => Ok(result),
+            Err(e) if self.is_auth_error(&e) => {
+                warn!("Authentication error detected in add_torrent, retrying with fresh login");
+                self.reset_auth_state().await;
+                self.ensure_authenticated().await?;
+                self.add_torrent_internal(&params).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+    
+    /// Internal implementation of add_torrent
+    async fn add_torrent_internal(&self, params: &AddTorrentParams) -> Result<String> {
         let add_url = self.base_url.join("api/v2/torrents/add")
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
@@ -213,12 +305,12 @@ impl QBittorrentClient {
         let mut form = reqwest::multipart::Form::new();
 
         // Add torrent data
-        match params.torrent_data {
+        match &params.torrent_data {
             TorrentData::Url(url) => {
-                form = form.text("urls", url);
+                form = form.text("urls", url.clone());
             }
             TorrentData::File(data) => {
-                form = form.part("torrents", reqwest::multipart::Part::bytes(data)
+                form = form.part("torrents", reqwest::multipart::Part::bytes(data.clone())
                     .file_name("torrent.torrent")
                     .mime_str("application/x-bittorrent")
                     .map_err(|e| RadarrError::ExternalServiceError {
@@ -229,11 +321,11 @@ impl QBittorrentClient {
         }
 
         // Add optional parameters
-        if let Some(category) = params.category {
-            form = form.text("category", category);
+        if let Some(category) = &params.category {
+            form = form.text("category", category.clone());
         }
-        if let Some(save_path) = params.save_path {
-            form = form.text("savepath", save_path);
+        if let Some(save_path) = &params.save_path {
+            form = form.text("savepath", save_path.clone());
         }
         if params.paused {
             form = form.text("paused", "true");
@@ -263,9 +355,23 @@ impl QBittorrentClient {
 
             if response_text.to_lowercase().contains("ok") || response_text.is_empty() {
                 info!("Successfully added torrent to qBittorrent");
-                // For successful additions, qBittorrent usually returns "Ok." or empty response
-                // We'll return a placeholder hash since the API doesn't return the actual hash
-                Ok("torrent_added".to_string())
+                
+                // qBittorrent doesn't return the hash directly, so we need to extract it
+                // For magnet links, we can extract the hash from the magnet URL
+                match &params.torrent_data {
+                    TorrentData::Url(url) if url.starts_with("magnet:") => {
+                        if let Some(hash) = self.extract_hash_from_magnet(url) {
+                            Ok(hash)
+                        } else {
+                            Ok(format!("magnet_{:x}", md5::compute(url.as_bytes())))
+                        }
+                    }
+                    TorrentData::File(data) => {
+                        // For torrent files, we'll use a hash of the file content
+                        Ok(format!("file_{:x}", md5::compute(data)))
+                    }
+                    _ => Ok(format!("unknown_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())),
+                }
             } else {
                 Err(RadarrError::ExternalServiceError {
                     service: "qBittorrent".to_string(),
@@ -280,8 +386,26 @@ impl QBittorrentClient {
         }
     }
 
-    /// Get information about all torrents
+    /// Get information about all torrents with retry logic
     pub async fn get_torrents(&self) -> Result<Vec<TorrentInfo>> {
+        // Ensure we're authenticated before attempting
+        self.ensure_authenticated().await?;
+        
+        // Try the operation, with one retry on auth failure
+        match self.get_torrents_internal().await {
+            Ok(result) => Ok(result),
+            Err(e) if self.is_auth_error(&e) => {
+                warn!("Authentication error detected in get_torrents, retrying with fresh login");
+                self.reset_auth_state().await;
+                self.ensure_authenticated().await?;
+                self.get_torrents_internal().await
+            }
+            Err(e) => Err(e),
+        }
+    }
+    
+    /// Internal implementation of get_torrents
+    async fn get_torrents_internal(&self) -> Result<Vec<TorrentInfo>> {
         let torrents_url = self.base_url.join("api/v2/torrents/info")
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
@@ -524,6 +648,27 @@ mod tests {
             TorrentData::File(data) => assert_eq!(data.len(), 4),
             _ => panic!("Expected File variant"),
         }
+    }
+    
+    #[test]
+    fn test_extract_hash_from_magnet() {
+        let config = QBittorrentConfig::default();
+        let client = QBittorrentClient::new(config).unwrap();
+        
+        // Test valid magnet URL
+        let magnet = "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=example";
+        let hash = client.extract_hash_from_magnet(magnet);
+        assert_eq!(hash, Some("C12FE1C06BBA254A9DC9F519B335AA7C1367A88A".to_string()));
+        
+        // Test magnet URL without additional parameters
+        let magnet_simple = "magnet:?xt=urn:btih:abc123def456";
+        let hash_simple = client.extract_hash_from_magnet(magnet_simple);
+        assert_eq!(hash_simple, Some("ABC123DEF456".to_string()));
+        
+        // Test invalid magnet URL
+        let invalid_magnet = "not-a-magnet-url";
+        let no_hash = client.extract_hash_from_magnet(invalid_magnet);
+        assert_eq!(no_hash, None);
     }
 
     // Integration tests would require a running qBittorrent instance

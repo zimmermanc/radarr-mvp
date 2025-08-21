@@ -63,8 +63,44 @@ impl DownloadRepository for PostgresDownloadRepository {
         }
     }
 
-    async fn find_by_movie_id(&self, _movie_id: Uuid) -> Result<Vec<Download>> {
-        Ok(Vec::new())
+    async fn find_by_movie_id(&self, movie_id: Uuid) -> Result<Vec<Download>> {
+        let rows = sqlx::query(
+            "SELECT id, movie_id, download_client_id, indexer_id, download_id,
+             title, category, status, size_bytes, size_left, quality,
+             download_time, completion_time, error_message, imported,
+             import_time, created_at, updated_at FROM downloads WHERE movie_id = $1
+             ORDER BY created_at DESC"
+        )
+        .bind(movie_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            let download = Download {
+                id: row.try_get("id")?,
+                movie_id: row.try_get("movie_id")?,
+                download_client_id: row.try_get("download_client_id")?,
+                indexer_id: row.try_get("indexer_id")?,
+                download_id: row.try_get("download_id")?,
+                title: row.try_get("title")?,
+                category: row.try_get("category")?,
+                status: parse_download_status(&row.try_get::<String, _>("status")?)?,
+                size_bytes: row.try_get("size_bytes")?,
+                size_left: row.try_get("size_left")?,
+                quality: row.try_get("quality")?,
+                download_time: row.try_get("download_time")?,
+                completion_time: row.try_get("completion_time")?,
+                error_message: row.try_get("error_message")?,
+                imported: row.try_get("imported")?,
+                import_time: row.try_get("import_time")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            };
+            downloads.push(download);
+        }
+        
+        Ok(downloads)
     }
 
     async fn find_by_status(&self, _status: DownloadStatus) -> Result<Vec<Download>> {
@@ -150,8 +186,45 @@ impl DownloadRepository for PostgresDownloadRepository {
         Ok(())
     }
 
-    async fn list(&self, _offset: i64, _limit: i32) -> Result<Vec<Download>> {
-        Ok(Vec::new())
+    async fn list(&self, offset: i64, limit: i32) -> Result<Vec<Download>> {
+        let rows = sqlx::query(
+            "SELECT id, movie_id, download_client_id, indexer_id, download_id,
+             title, category, status, size_bytes, size_left, quality,
+             download_time, completion_time, error_message, imported,
+             import_time, created_at, updated_at FROM downloads
+             ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut downloads = Vec::new();
+        for row in rows {
+            let download = Download {
+                id: row.try_get("id")?,
+                movie_id: row.try_get("movie_id")?,
+                download_client_id: row.try_get("download_client_id")?,
+                indexer_id: row.try_get("indexer_id")?,
+                download_id: row.try_get("download_id")?,
+                title: row.try_get("title")?,
+                category: row.try_get("category")?,
+                status: parse_download_status(&row.try_get::<String, _>("status")?)?,
+                size_bytes: row.try_get("size_bytes")?,
+                size_left: row.try_get("size_left")?,
+                quality: row.try_get("quality")?,
+                download_time: row.try_get("download_time")?,
+                completion_time: row.try_get("completion_time")?,
+                error_message: row.try_get("error_message")?,
+                imported: row.try_get("imported")?,
+                import_time: row.try_get("import_time")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            };
+            downloads.push(download);
+        }
+        
+        Ok(downloads)
     }
 
     async fn cleanup_old(&self, _days: i32) -> Result<i64> {

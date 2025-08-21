@@ -99,6 +99,8 @@ pub struct ServerConfig {
     pub host: String,
     /// Server port
     pub port: u16,
+    /// API key for authentication
+    pub api_key: String,
     /// Maximum concurrent connections
     pub max_connections: usize,
     /// Request timeout in seconds
@@ -147,6 +149,7 @@ impl Default for ServerConfig {
         Self {
             host: "0.0.0.0".to_string(),
             port: 7878,
+            api_key: "changeme123".to_string(),
             max_connections: 1000,
             request_timeout: 30,
         }
@@ -188,6 +191,9 @@ impl AppConfig {
                 field: "RADARR_PORT".to_string(),
                 message: format!("Invalid port number: {}", e),
             })?;
+        }
+        if let Ok(api_key) = env::var("RADARR_API_KEY") {
+            config.server.api_key = api_key;
         }
         if let Ok(max_conn) = env::var("RADARR_MAX_CONNECTIONS") {
             config.server.max_connections = max_conn.parse().map_err(|e| RadarrError::ValidationError {
@@ -280,6 +286,20 @@ impl AppConfig {
             return Err(RadarrError::ValidationError {
                 field: "server.port".to_string(),
                 message: "Port must be greater than 0".to_string(),
+            });
+        }
+        
+        if self.server.api_key.is_empty() {
+            return Err(RadarrError::ValidationError {
+                field: "server.api_key".to_string(),
+                message: "API key cannot be empty".to_string(),
+            });
+        }
+        
+        if self.server.api_key.len() < 8 {
+            return Err(RadarrError::ValidationError {
+                field: "server.api_key".to_string(),
+                message: "API key must be at least 8 characters long".to_string(),
             });
         }
         

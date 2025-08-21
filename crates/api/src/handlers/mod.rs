@@ -8,6 +8,7 @@ pub mod search;
 pub mod downloads;
 pub mod health;
 pub mod commands;
+pub mod calendar;
 
 // Re-export handler functions
 pub use movies::*;
@@ -15,3 +16,4 @@ pub use search::*;
 pub use downloads::*;
 pub use health::*;
 pub use commands::*;
+pub use calendar::*;

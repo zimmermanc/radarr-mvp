@@ -17,6 +17,7 @@ use axum_test::TestServer;
 use common::{TestContext, create_test_movie, create_test_app};
 use radarr_api::models::*;
 use radarr_core::models::{MinimumAvailability};
+use reqwest;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
@@ -320,11 +321,13 @@ async fn test_concurrent_operations() {
     let mut handles = Vec::new();
     
     for request in movie_requests {
-        let server_clone = server.clone();
+        let server_url = server.server_address().unwrap().to_string();
         let handle = tokio::spawn(async move {
-            server_clone
-                .post("/api/v3/movie")
+            let client = reqwest::Client::new();
+            client
+                .post(&format!("{}/api/v3/movie", server_url))
                 .json(&request)
+                .send()
                 .await
         });
         handles.push(handle);
@@ -335,8 +338,8 @@ async fn test_concurrent_operations() {
     
     // All should succeed
     for response_result in responses {
-        let response = response_result.unwrap();
-        assert_eq!(response.status_code(), StatusCode::CREATED);
+        let response = response_result.unwrap().unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
     }
 
     // Verify all movies were created
@@ -366,17 +369,19 @@ async fn test_performance_under_load() {
     let mut handles = Vec::new();
     
     for _i in 0..50 {
-        let server_clone = server.clone();
+        let server_url = server.server_address().unwrap().to_string();
         let movie_id = movie.id;
         let handle = tokio::spawn(async move {
             let start = std::time::Instant::now();
+            let client = reqwest::Client::new();
             
-            let response = server_clone
-                .get(&format!("/api/v3/movie/{}", movie_id))
+            let response = client
+                .get(&format!("{}/api/v3/movie/{}", server_url, movie_id))
+                .send()
                 .await;
                 
             let duration = start.elapsed();
-            (response.status_code(), duration)
+            (response.map(|r| r.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), duration)
         });
         handles.push(handle);
     }

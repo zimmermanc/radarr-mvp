@@ -1,42 +1,42 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: unified-radarr-service
-  namespace: unified-radarr
+  name: radarr-mvp-service
+  namespace: radarr-mvp
   labels:
+    app.kubernetes.io/name: radarr-mvp
     app.kubernetes.io/component: application
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "9090"
+    prometheus.io/port: "7878"
     prometheus.io/path: "/metrics"
 spec:
   type: ClusterIP
   selector:
+    app.kubernetes.io/name: radarr-mvp
     app.kubernetes.io/component: application
   ports:
   - name: http
-    port: 8080
+    port: 7878
     targetPort: http
-    protocol: TCP
-  - name: metrics
-    port: 9090
-    targetPort: metrics
     protocol: TCP
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: unified-radarr-headless
-  namespace: unified-radarr
+  name: radarr-mvp-headless
+  namespace: radarr-mvp
   labels:
+    app.kubernetes.io/name: radarr-mvp
     app.kubernetes.io/component: application
 spec:
   type: ClusterIP
   clusterIP: None
   selector:
+    app.kubernetes.io/name: radarr-mvp
     app.kubernetes.io/component: application
   ports:
   - name: http
-    port: 8080
+    port: 7878
     targetPort: http
     protocol: TCP

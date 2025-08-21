@@ -1,7 +1,6 @@
 //! Quality domain model
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Quality profile for movie requirements
 #[derive(Debug, Clone, Serialize, Deserialize)]

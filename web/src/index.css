@@ -1,0 +1,157 @@
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  :root {
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply font-sans text-secondary-900 bg-gray-50 dark:bg-secondary-900 dark:text-secondary-50;
+  }
+
+  /* Scrollbar styles */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-secondary-800;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-secondary-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-secondary-500;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium transform hover:scale-[1.02] active:scale-[0.98] focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary-200 hover:bg-secondary-300 active:bg-secondary-400 text-secondary-700 px-4 py-2 rounded-lg transition-all duration-200 font-medium transform hover:scale-[1.02] active:scale-[0.98] focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+  }
+
+  .btn-ghost {
+    @apply hover:bg-secondary-100 active:bg-secondary-200 text-secondary-700 px-4 py-2 rounded-lg transition-all duration-200 font-medium transform hover:scale-[1.02] active:scale-[0.98] focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2;
+  }
+
+  .card {
+    @apply bg-white dark:bg-secondary-800 rounded-xl shadow-sm border border-secondary-200 dark:border-secondary-700 transition-all duration-200 hover:shadow-md;
+  }
+
+  .card-interactive {
+    @apply card hover:shadow-lg hover:scale-[1.01] cursor-pointer;
+  }
+
+  .nav-link {
+    @apply flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .nav-link-active {
+    @apply bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300 shadow-sm;
+  }
+
+  .nav-link-inactive {
+    @apply text-secondary-600 hover:text-secondary-900 hover:bg-secondary-100 dark:text-secondary-400 dark:hover:text-secondary-200 dark:hover:bg-secondary-700 hover:shadow-sm;
+  }
+
+  .form-input {
+    @apply block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-secondary-700 dark:border-secondary-600 dark:placeholder-secondary-400 dark:text-white;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-secondary-700 dark:text-secondary-300 mb-2;
+  }
+}
+
+/* Loading animations */
+@layer utilities {
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .loading-dots::after {
+    content: '';
+    animation: dots 1.5s steps(5, end) infinite;
+  }
+
+  /* Accessibility: Disable animations when user prefers reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-pulse, .animate-pulse-slow, .animate-spin, .animate-bounce, .animate-fade-in, .animate-slide-up {
+      animation: none !important;
+    }
+    
+    .transition-all, .transition-colors, .transition-transform, .transition-opacity {
+      transition: none !important;
+    }
+  }
+
+  /* No animations class for manual control */
+  .no-animations * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Responsive text sizes */
+  .text-responsive-lg {
+    @apply text-lg md:text-xl lg:text-2xl;
+  }
+  
+  .text-responsive-md {
+    @apply text-base md:text-lg lg:text-xl;
+  }
+
+  /* Mobile-friendly touch targets */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  /* Safe area support for mobile devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  @keyframes dots {
+    0%, 20% {
+      color: rgba(0, 0, 0, 0);
+      text-shadow:
+        0.25em 0 0 rgba(0, 0, 0, 0),
+        0.5em 0 0 rgba(0, 0, 0, 0);
+    }
+    40% {
+      color: black;
+      text-shadow:
+        0.25em 0 0 rgba(0, 0, 0, 0),
+        0.5em 0 0 rgba(0, 0, 0, 0);
+    }
+    60% {
+      text-shadow:
+        0.25em 0 0 black,
+        0.5em 0 0 rgba(0, 0, 0, 0);
+    }
+    80%, 100% {
+      text-shadow:
+        0.25em 0 0 black,
+        0.5em 0 0 black;
+    }
+  }
+}

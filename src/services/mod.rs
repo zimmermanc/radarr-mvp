@@ -24,6 +24,8 @@ pub struct AppServices {
     pub media_service: Arc<SimplifiedMediaService>,
     /// Database pool
     pub database_pool: DatabasePool,
+    /// Indexer client for direct API access
+    pub indexer_client: Arc<dyn IndexerClient + Send + Sync>,
 }
 
 impl AppServices {
@@ -36,7 +38,7 @@ impl AppServices {
     ) -> Result<Self> {
         let media_service = Arc::new(SimplifiedMediaService::new(
             database_pool.clone(),
-            prowlarr_client,
+            prowlarr_client.clone(),
             qbittorrent_client,
             import_pipeline,
         ));
@@ -44,6 +46,7 @@ impl AppServices {
         Ok(Self {
             media_service,
             database_pool,
+            indexer_client: prowlarr_client,
         })
     }
     

@@ -10,7 +10,7 @@
 //! - Added comprehensive deserialization tests with real API response format
 
 use chrono::{DateTime, Utc, NaiveDateTime};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 
 /// HDBits API search request
 #[derive(Debug, Clone, Serialize)]
@@ -62,8 +62,8 @@ pub struct HDBitsTorrent {
     pub added: String, // ISO date string with timezone
     #[serde(skip_serializing_if = "Option::is_none")]
     pub utadded: Option<u64>, // Unix timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub descr: Option<String>, // Description
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_optional_string_lenient")]
+    pub descr: Option<String>, // Description - can be very long BBCode/HTML
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comments: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,7 +74,7 @@ pub struct HDBitsTorrent {
     pub type_codec: u32,
     pub type_medium: u32,
     pub type_origin: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_u32_or_empty_object")]
     pub type_exclusive: Option<u32>,
     pub freeleech: String, // "yes" or "no"
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -87,6 +87,8 @@ pub struct HDBitsTorrent {
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<u32>, // Owner ID - missing from original struct
     // Optional fields that may not always be present
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imdb: Option<HDBitsImdbInfo>,
@@ -100,6 +102,15 @@ pub struct HDBitsImdbInfo {
     pub id: u32,
     pub rating: Option<f32>,
     pub votes: Option<u32>,
+    // Additional fields that HDBits API returns
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub englishtitle: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub originaltitle: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub genres: Option<Vec<String>>,
 }
 
 /// HDBits category information
@@ -166,8 +177,10 @@ impl Default for MovieSearchRequest {
 
 impl HDBitsTorrent {
     /// Get the download URL for this torrent
-    pub fn download_url(&self, passkey: &str) -> String {
-        format!("https://hdbits.org/download.php/{}/{}.torrent", passkey, self.id)
+    pub fn download_url(&self, session_cookie: &str) -> String {
+        // For session-based authentication, we'll need to handle this differently
+        // This is a placeholder - actual implementation would need session handling
+        format!("https://hdbits.org/download.php?id={}", self.id)
     }
     
     /// Get the info URL for this torrent
@@ -300,4 +313,101 @@ pub mod mediums {
 pub mod origins {
     pub const INTERNAL: u32 = 1;
     pub const SCENE: u32 = 0;
+}
+
+/// Custom deserializer for optional strings that handles edge cases
+/// This is lenient and will return None if deserialization fails
+fn deserialize_optional_string_lenient<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // Try to deserialize as Option<String> first
+    match Option::<String>::deserialize(deserializer) {
+        Ok(value) => Ok(value),
+        Err(_) => {
+            // If that fails, return None instead of propagating the error
+            // This handles cases where the field is malformed or too large
+            Ok(None)
+        }
+    }
+}
+
+/// Custom deserializer for u32 fields that may return empty objects
+/// Handles cases where HDBits API returns {} instead of null or 0
+fn deserialize_u32_or_empty_object<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct U32OrEmptyObjectVisitor;
+
+    impl<'de> Visitor<'de> for U32OrEmptyObjectVisitor {
+        type Value = Option<u32>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("u32, null, or empty object")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value <= u32::MAX as u64 {
+                Ok(Some(value as u32))
+            } else {
+                Err(E::custom(format!("u32 out of range: {}", value)))
+            }
+        }
+
+        fn visit_i32<E>(self, value: i32) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value >= 0 {
+                Ok(Some(value as u32))
+            } else {
+                Err(E::custom(format!("negative value for u32: {}", value)))
+            }
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value >= 0 && value <= u32::MAX as i64 {
+                Ok(Some(value as u32))
+            } else {
+                Err(E::custom(format!("u32 out of range: {}", value)))
+            }
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::MapAccess<'de>,
+        {
+            // For empty object {}, just consume it and return None
+            while map.next_entry::<String, serde_json::Value>()?.is_some() {
+                // Consume all entries (should be none for empty object)
+            }
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_any(U32OrEmptyObjectVisitor)
 }

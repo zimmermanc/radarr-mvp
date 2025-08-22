@@ -36,6 +36,26 @@ pub enum RadarrError {
     
     #[error("Serialization error: {0}")]
     SerializationError(String),
+    
+    #[error("Network error: {message}")]
+    NetworkError { message: String },
+    
+    #[error("Operation timeout: {operation}")]
+    Timeout { operation: String },
+    
+    #[error("Temporary error: {message}")]
+    TemporaryError { message: String },
+    
+    #[error("Retry exhausted after {attempts} attempts for {operation}: {last_error}")]
+    RetryExhausted {
+        operation: String,
+        attempts: u32,
+        #[source]
+        last_error: Box<RadarrError>,
+    },
+    
+    #[error("Circuit breaker open for service: {service}")]
+    CircuitBreakerOpen { service: String },
 }
 
 pub type Result<T> = std::result::Result<T, RadarrError>;

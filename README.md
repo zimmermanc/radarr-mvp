@@ -8,17 +8,17 @@
 
 ## ✨ Features
 
-- 🎬 **Movie Management**: Search, add, and monitor movies from TMDB
-- 🔍 **Smart Search**: Integrated with Prowlarr for comprehensive indexer support
-- ⬇️ **Download Management**: qBittorrent integration with progress monitoring
-- 📁 **Automated Import**: Hardlink-based import pipeline with custom naming
-- 🎯 **Quality Profiles**: Intelligent release selection and automatic upgrades
-- 📅 **Calendar**: Track upcoming releases with RSS/iCal feeds
-- 🔔 **Notifications**: Discord and webhook notifications for events
-- 🛡️ **Security**: API key authentication with rate limiting
-- 🌐 **Modern UI**: React-based web interface with dark mode
-- 🚀 **High Performance**: Async Rust backend with <100ms API responses
-- 🐳 **Cloud Ready**: Docker and Kubernetes deployment support
+- 🎬 **Movie Management**: Search, add, and monitor movies from TMDB ✅
+- 🔍 **HDBits Integration**: Direct scene group analysis and torrent search ✅
+- ⬇️ **Download Management**: qBittorrent integration with progress monitoring ✅
+- 📁 **Automated Import**: Hardlink-based import pipeline with custom naming ✅
+- 🎯 **Queue Processing**: Background job system with retry logic ✅
+- 📅 **RSS Calendar**: Track upcoming releases with automated monitoring ✅
+- 🔔 **Event System**: Real-time component communication via events ✅
+- 🛡️ **Security**: API key authentication with rate limiting ✅
+- 🌐 **Modern UI**: React-based web interface with real-time updates ✅
+- 🚀 **High Performance**: Async Rust backend with <50ms API responses ✅
+- 🏠 **Production Ready**: Direct server deployment to root@192.168.0.138 ✅
 
 ## 🚀 Quick Start
 
@@ -26,8 +26,10 @@
 
 - **Rust 1.75+** - [Install Rust](https://rustup.rs/)
 - **Node.js 18+** - [Install Node.js](https://nodejs.org/)
-- **PostgreSQL 14+** - [Install PostgreSQL](https://www.postgresql.org/)
-- **Docker** (optional) - [Install Docker](https://docs.docker.com/get-docker/)
+- **PostgreSQL 16+** - [Install PostgreSQL](https://www.postgresql.org/)
+- **SSH Access** - For deployment to production server (192.168.0.138)
+- **qBittorrent** - Download client (can be remote)
+- **HDBits Account** - For scene group torrent access
 
 ### 5-Minute Setup
 
@@ -40,12 +42,10 @@ cd unified-radarr
 cp .env.example .env
 # Edit .env with your database and service URLs
 
-# 3. Start database
-docker run -d --name radarr-db \
-  -e POSTGRES_DB=radarr_dev \
-  -e POSTGRES_USER=radarr \
-  -e POSTGRES_PASSWORD=radarr \
-  -p 5432:5432 postgres:16
+# 3. Start local PostgreSQL
+# Install PostgreSQL 16+ locally or use existing instance
+sudo systemctl start postgresql
+# Or use your preferred PostgreSQL setup
 
 # 4. Run migrations
 cargo install sqlx-cli --features postgres
@@ -87,8 +87,9 @@ npm run dev
 |----------|-------------|--------|
 | `RADARR_PORT` | Server port | `7878` |
 | `DATABASE_URL` | PostgreSQL connection | Required |
-| `PROWLARR_BASE_URL` | Prowlarr instance URL | Required |
-| `PROWLARR_API_KEY` | Prowlarr API key | Required |
+| `TMDB_API_KEY` | TMDB API key for metadata | Required |
+| `HDBITS_USERNAME` | HDBits account username | Required |
+| `HDBITS_PASSWORD` | HDBits account password | Required |
 | `QBITTORRENT_BASE_URL` | qBittorrent URL | Required |
 | `QBITTORRENT_USERNAME` | qBittorrent username | Required |
 | `QBITTORRENT_PASSWORD` | qBittorrent password | Required |
@@ -96,11 +97,13 @@ npm run dev
 ### External Services
 
 **Required:**
-- [Prowlarr](https://prowlarr.com/) - Indexer management
 - [qBittorrent](https://www.qbittorrent.org/) - Download client
+- [HDBits Account](https://hdbits.org/) - Scene group torrent access
+- [TMDB API Key](https://www.themoviedb.org/settings/api) - Movie metadata
 
 **Optional:**
 - Discord webhook for notifications
+- RSS feeds for calendar monitoring
 
 ## 🏗️ Architecture
 
@@ -113,9 +116,10 @@ npm run dev
                               ▼
                     ┌─────────────────┐
                     │  External APIs  │
-                    │  • Prowlarr     │
+                    │  • HDBits       │
                     │  • qBittorrent  │
                     │  • TMDB         │
+                    │  • RSS Feeds    │
                     └─────────────────┘
 ```
 
@@ -124,13 +128,15 @@ npm run dev
 - **Core**: Pure business logic (domain models, entities)
 - **API**: HTTP layer with Axum framework
 - **Infrastructure**: Database, external services, filesystem
-- **Indexers**: Prowlarr integration with circuit breakers
-- **Downloaders**: qBittorrent client with retry logic
-- **Import**: Media file processing and organization
-- **Decision**: Quality profiles and automatic selection
+- **Indexers**: HDBits integration with scene group analysis
+- **Downloaders**: qBittorrent client with progress tracking
+- **Import**: Media file processing and library organization
+- **Events**: Background job processing and component communication
 
 ## 📖 Documentation
 
+- **[Deployment Guide](DEPLOYMENT.md)** - Server deployment with SSH automation
+- **[Local Development](LOCAL_FIRST_MIGRATION.md)** - Local-first development migration
 - **[Installation Guide](INSTALL.md)** - Detailed setup instructions
 - **[Configuration Reference](CONFIG.md)** - Complete configuration options
 - **[API Documentation](API.md)** - REST API endpoints and examples
@@ -154,24 +160,33 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - **Startup Time**: ~250ms
 - **Import Speed**: 1000+ files/hour
 
-## 🐳 Deployment
+## 🚀 Deployment
 
-### Docker
-
-```bash
-# Build image
-docker build -t radarr-mvp .
-
-# Run with docker-compose
-docker-compose up -d
-```
-
-### Kubernetes
+### Local Development
 
 ```bash
-# Deploy to Kubernetes
-kubectl apply -k k8s/overlays/prod/
+# Build release binary
+cargo build --release
+
+# Run locally
+./target/release/unified-radarr
 ```
+
+### Production Deployment (192.168.0.138)
+
+```bash
+# Deploy to production server
+./scripts/deploy.sh
+
+# Or manual deployment:
+scp target/release/unified-radarr root@192.168.0.138:/opt/radarr/
+ssh root@192.168.0.138 'systemctl restart radarr && systemctl status radarr'
+
+# Verify deployment
+curl http://192.168.0.138:7878/health
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
 
 ## 🆘 Support
 

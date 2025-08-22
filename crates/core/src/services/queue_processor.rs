@@ -5,10 +5,15 @@
 
 use crate::services::{QueueRepository, DownloadClientService};
 use crate::{Result, RadarrError};
+use crate::retry::{retry_with_backoff, RetryConfig, RetryPolicy, CircuitBreaker};
+use crate::progress::{ProgressTracker, OperationType};
+use crate::events::{EventBus, SystemEvent};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 /// Configuration for queue processor
 #[derive(Debug, Clone)]
@@ -42,6 +47,9 @@ pub struct QueueProcessor<Q: QueueRepository, D: DownloadClientService> {
     config: QueueProcessorConfig,
     queue_repo: Arc<Q>,
     download_client: Arc<D>,
+    download_circuit_breaker: Arc<Mutex<CircuitBreaker>>,
+    progress_tracker: Option<Arc<ProgressTracker>>,
+    event_bus: Option<Arc<EventBus>>,
 }
 
 impl<Q: QueueRepository, D: DownloadClientService> QueueProcessor<Q, D>
@@ -51,11 +59,34 @@ where
 {
     /// Create a new queue processor
     pub fn new(config: QueueProcessorConfig, queue_repo: Arc<Q>, download_client: Arc<D>) -> Self {
+        let download_circuit_breaker = Arc::new(Mutex::new(
+            CircuitBreaker::new(
+                "download_client",
+                3, // Open after 3 failures
+                Duration::from_secs(60), // Reset after 60 seconds
+            )
+        ));
+        
         Self {
             config,
             queue_repo,
             download_client,
+            download_circuit_breaker,
+            progress_tracker: None,
+            event_bus: None,
         }
+    }
+    
+    /// Set progress tracker for this processor
+    pub fn with_progress_tracker(mut self, tracker: Arc<ProgressTracker>) -> Self {
+        self.progress_tracker = Some(tracker);
+        self
+    }
+    
+    /// Set event bus for this processor
+    pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
     }
     
     /// Start the background processor
@@ -106,14 +137,21 @@ where
         loop {
             interval.tick().await;
             
-            match self.process_queue_items().await {
+            // Use retry logic for queue processing
+            let retry_config = RetryConfig::quick();
+            match retry_with_backoff(
+                retry_config,
+                RetryPolicy::Transient,
+                "process_queue_items",
+                || self.process_queue_items(),
+            ).await {
                 Ok(processed_count) => {
                     if processed_count > 0 {
                         debug!("Processed {} queue items", processed_count);
                     }
                 }
                 Err(e) => {
-                    error!("Error processing queue items: {}", e);
+                    error!("Error processing queue items after retries: {}", e);
                 }
             }
         }
@@ -126,14 +164,21 @@ where
         loop {
             interval.tick().await;
             
-            match self.sync_with_download_client().await {
+            // Use retry logic for sync operations
+            let retry_config = RetryConfig::quick();
+            match retry_with_backoff(
+                retry_config,
+                RetryPolicy::Transient,
+                "sync_download_client",
+                || self.sync_with_download_client(),
+            ).await {
                 Ok(updated_count) => {
                     if updated_count > 0 {
                         debug!("Updated {} items from download client", updated_count);
                     }
                 }
                 Err(e) => {
-                    error!("Error syncing with download client: {}", e);
+                    error!("Error syncing with download client after retries: {}", e);
                 }
             }
         }
@@ -219,23 +264,85 @@ where
         Ok(processed_count)
     }
     
-    /// Start a download for a queue item
+    /// Start a download for a queue item with retry and circuit breaker
     async fn start_download(&self, queue_item: &crate::models::QueueItem) -> Result<()> {
         use crate::models::QueueStatus;
         
-        // Add to download client
-        let client_id = self.download_client.add_download(
-            &queue_item.download_url,
-            queue_item.category.clone(),
-            queue_item.download_path.clone(),
-        ).await?;
+        // Start progress tracking if available
+        let progress_id = if let Some(tracker) = &self.progress_tracker {
+            let id = tracker.start_operation(
+                OperationType::Download,
+                format!("Downloading: {}", queue_item.title)
+            ).await;
+            
+            // Emit progress event
+            if let Some(bus) = &self.event_bus {
+                let _ = bus.publish(SystemEvent::ProgressUpdate {
+                    operation_id: id,
+                    operation_type: OperationType::Download,
+                    percentage: 0.0,
+                    message: "Initiating download".to_string(),
+                    eta_seconds: None,
+                }).await;
+            }
+            
+            Some(id)
+        } else {
+            None
+        };
         
-        // Update queue item
+        // Use circuit breaker for download client operations
+        let mut circuit_breaker = self.download_circuit_breaker.lock().await;
+        
+        let client_id = circuit_breaker.execute(|| async {
+            // Retry logic for adding download
+            let retry_config = RetryConfig::slow();
+            retry_with_backoff(
+                retry_config,
+                RetryPolicy::Transient,
+                "add_download",
+                || self.download_client.add_download(
+                    &queue_item.download_url,
+                    queue_item.category.clone(),
+                    queue_item.download_path.clone(),
+                ),
+            ).await
+        }).await?;
+        
+        // Update queue item with retry
         let mut updated_item = queue_item.clone();
         updated_item.set_download_client_id(client_id);
         updated_item.update_status(QueueStatus::Downloading);
         
-        self.queue_repo.update_queue_item(&updated_item).await?;
+        let retry_config = RetryConfig::quick();
+        retry_with_backoff(
+            retry_config,
+            RetryPolicy::Transient,
+            "update_queue_item",
+            || self.queue_repo.update_queue_item(&updated_item),
+        ).await?;
+        
+        // Update progress
+        if let Some(id) = progress_id {
+            if let Some(tracker) = &self.progress_tracker {
+                tracker.update_progress(
+                    id,
+                    10.0,
+                    "Download started, monitoring progress"
+                ).await;
+                
+                // Emit progress event
+                if let Some(bus) = &self.event_bus {
+                    let _ = bus.publish(SystemEvent::ProgressUpdate {
+                        operation_id: id,
+                        operation_type: OperationType::Download,
+                        percentage: 10.0,
+                        message: "Download started".to_string(),
+                        eta_seconds: None,
+                    }).await;
+                }
+            }
+        }
         
         Ok(())
     }

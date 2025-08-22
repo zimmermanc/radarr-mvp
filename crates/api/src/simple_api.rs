@@ -12,10 +12,11 @@ use axum::{
 };
 use crate::security::{SecurityConfig, apply_security};
 use crate::middleware::require_api_key;
-use radarr_core::{Movie, MovieStatus};
-use radarr_infrastructure::DatabasePool;
-use radarr_indexers::{IndexerClient, SearchRequest};
+use radarr_core::{Movie, MovieStatus, RadarrError, repositories::MovieRepository};
+use radarr_infrastructure::{DatabasePool, PostgresMovieRepository};
+use radarr_indexers::{IndexerClient, SearchRequest, SearchResponse, ProwlarrSearchResult};
 use std::sync::Arc;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -27,13 +28,16 @@ use tracing::{info, warn, error};
 pub struct SimpleApiState {
     pub database_pool: DatabasePool,
     pub indexer_client: Option<Arc<dyn IndexerClient + Send + Sync>>,
+    pub movie_repo: Arc<PostgresMovieRepository>,
 }
 
 impl SimpleApiState {
     pub fn new(database_pool: DatabasePool) -> Self {
+        let movie_repo = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
         Self { 
             database_pool,
             indexer_client: None,
+            movie_repo,
         }
     }
     
@@ -138,72 +142,127 @@ async fn health_check() -> Json<Value> {
 
 /// List movies endpoint
 async fn list_movies(
-    State(_state): State<SimpleApiState>,
+    State(state): State<SimpleApiState>,
     Query(params): Query<SimpleQueryParams>,
 ) -> Json<Value> {
-    // For MVP, return mock data
-    let movies = vec![
-        serde_json::json!({
-            "id": Uuid::new_v4(),
-            "tmdbId": 603,
-            "title": "The Matrix",
-            "year": 1999,
-            "status": "released",
-            "monitored": true,
-            "createdAt": "2024-01-01T00:00:00Z"
-        }),
-        serde_json::json!({
-            "id": Uuid::new_v4(),
-            "tmdbId": 13,
-            "title": "Forrest Gump", 
-            "year": 1994,
-            "status": "released",
-            "monitored": true,
-            "createdAt": "2024-01-01T00:00:00Z"
-        })
-    ];
+    info!("Listing movies with pagination: page={}, limit={}", params.page, params.limit);
     
-    Json(serde_json::json!({
-        "page": params.page,
-        "pageSize": params.limit,
-        "totalCount": movies.len(),
-        "records": movies
-    }))
+    // Calculate offset from page and limit
+    let offset = ((params.page - 1) * params.limit) as i64;
+    let limit = params.limit as i32;
+    
+    // Get movies from database
+    match state.movie_repo.list(offset, limit).await {
+        Ok(movies) => {
+            // Convert to SimpleMovieResponse format
+            let movie_responses: Vec<SimpleMovieResponse> = movies
+                .into_iter()
+                .map(SimpleMovieResponse::from)
+                .collect();
+            
+            // Get total count
+            let total_count = match state.movie_repo.count().await {
+                Ok(count) => count,
+                Err(e) => {
+                    error!("Failed to get movie count: {}", e);
+                    movie_responses.len() as i64
+                }
+            };
+            
+            info!("Retrieved {} movies from database", movie_responses.len());
+            
+            Json(serde_json::json!({
+                "page": params.page,
+                "pageSize": params.limit,
+                "totalCount": total_count,
+                "records": movie_responses
+            }))
+        }
+        Err(e) => {
+            error!("Failed to list movies: {}", e);
+            // Return empty result on error
+            Json(serde_json::json!({
+                "page": params.page,
+                "pageSize": params.limit,
+                "totalCount": 0,
+                "records": []
+            }))
+        }
+    }
 }
 
 /// Get movie by ID endpoint
 async fn get_movie(
-    State(_state): State<SimpleApiState>,
+    State(state): State<SimpleApiState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, StatusCode> {
-    // For MVP, return mock data
-    Ok(Json(serde_json::json!({
-        "id": id,
-        "tmdbId": 603,
-        "title": "The Matrix",
-        "year": 1999,
-        "status": "released",
-        "monitored": true,
-        "createdAt": "2024-01-01T00:00:00Z"
-    })))
+    info!("Getting movie by ID: {}", id);
+    
+    match state.movie_repo.find_by_id(id).await {
+        Ok(Some(movie)) => {
+            info!("Found movie: {}", movie.title);
+            let response = SimpleMovieResponse::from(movie);
+            Ok(Json(serde_json::to_value(&response).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "error": "Failed to serialize movie response"
+                })
+            })))
+        }
+        Ok(None) => {
+            warn!("Movie not found: {}", id);
+            Err(StatusCode::NOT_FOUND)
+        }
+        Err(e) => {
+            error!("Database error while getting movie {}: {}", id, e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Create movie endpoint
 async fn create_movie(
-    State(_state): State<SimpleApiState>,
+    State(state): State<SimpleApiState>,
     Json(request): Json<SimpleCreateMovieRequest>,
 ) -> Result<(StatusCode, Json<Value>), StatusCode> {
-    // For MVP, return mock created movie
-    let movie_id = Uuid::new_v4();
+    info!("Creating movie: {} (TMDB: {})", request.title, request.tmdb_id);
     
-    Ok((StatusCode::CREATED, Json(serde_json::json!({
-        "id": movie_id,
-        "tmdbId": request.tmdb_id,
-        "title": request.title,
-        "status": "announced",
-        "monitored": request.monitored,
-        "createdAt": chrono::Utc::now().to_rfc3339()
-    }))))
+    // Check if movie already exists
+    match state.movie_repo.find_by_tmdb_id(request.tmdb_id).await {
+        Ok(Some(_)) => {
+            warn!("Movie with TMDB ID {} already exists", request.tmdb_id);
+            return Err(StatusCode::CONFLICT);
+        }
+        Ok(None) => {} // Good, doesn't exist yet
+        Err(e) => {
+            error!("Database error checking for existing movie: {}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+    // Create new movie
+    let mut movie = Movie::new(
+        request.tmdb_id,
+        request.title.clone(),
+    );
+    
+    // Set monitored flag from request
+    movie.monitored = request.monitored;
+    
+    match state.movie_repo.create(&movie).await {
+        Ok(created_movie) => {
+            info!("Movie created successfully: {}", created_movie.title);
+            let response = SimpleMovieResponse::from(created_movie);
+            Ok((StatusCode::CREATED, Json(serde_json::to_value(&response).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "error": "Failed to serialize movie response"
+                })
+            }))))
+        }
+        Err(e) => {
+            error!("Failed to create movie: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// Delete movie endpoint
@@ -266,6 +325,15 @@ async fn search_movies(
     let search_result = perform_search_with_retry(indexer_client.as_ref(), &search_request, 3).await;
     
     let execution_time = start_time.elapsed().as_millis();
+    
+    // If Prowlarr fails, try HDBits directly as fallback
+    let search_result = match search_result {
+        Err(_) if search_request.query.is_some() => {
+            info!("Prowlarr failed, attempting HDBits fallback");
+            search_hdbits_fallback(&search_request.query.unwrap_or_default()).await
+        },
+        result => result
+    };
     
     match search_result {
         Ok(response) => {
@@ -561,6 +629,80 @@ fn calculate_quality_score(title: &str) -> i32 {
 }
 
 /// Create mock search response for fallback
+/// Fallback search using HDBits directly when Prowlarr is unavailable
+async fn search_hdbits_fallback(query: &str) -> Result<SearchResponse, RadarrError> {
+    use radarr_indexers::{HDBitsClient, HDBitsConfig, MovieSearchRequest};
+    use std::env;
+    
+    // Try to get HDBits credentials from environment
+    let username = env::var("HDBITS_USERNAME").map_err(|_| RadarrError::ExternalServiceError {
+        service: "hdbits".to_string(),
+        error: "HDBITS_USERNAME not configured".to_string(),
+    })?;
+    
+    let session_cookie = env::var("HDBITS_SESSION_COOKIE").map_err(|_| RadarrError::ExternalServiceError {
+        service: "hdbits".to_string(),
+        error: "HDBITS_SESSION_COOKIE not configured".to_string(),
+    })?;
+    
+    // Create HDBits config
+    let config = HDBitsConfig {
+        username,
+        session_cookie,
+        timeout_seconds: 30,
+        rate_limit_per_hour: 120,
+    };
+    
+    // Create HDBits client  
+    let hdbits = HDBitsClient::new(config).map_err(|e| RadarrError::ExternalServiceError {
+        service: "hdbits".to_string(),
+        error: format!("Failed to create HDBits client: {}", e),
+    })?;
+    
+    // Build search request
+    let search_request = MovieSearchRequest {
+        title: Some(query.to_string()),
+        year: None,
+        imdb_id: None,
+        limit: Some(20),
+        min_seeders: None,
+    };
+    
+    // Search HDBits
+    let results = hdbits.search_movies(&search_request).await.map_err(|e| RadarrError::ExternalServiceError {
+        service: "hdbits".to_string(),
+        error: format!("HDBits search failed: {}", e),
+    })?;
+    
+    // Convert HDBits Release results to SearchResponse format
+    let search_response = SearchResponse {
+        total: results.len() as i32,
+        results: results.into_iter().map(|release| ProwlarrSearchResult {
+            indexer: "HDBits".to_string(),
+            indexer_id: release.indexer_id,
+            title: release.title.clone(),
+            download_url: release.download_url.clone(),
+            info_url: release.info_url,
+            size: release.size_bytes.map(|s| s as i64),
+            seeders: release.seeders,
+            leechers: release.leechers,
+            imdb_id: None, // TODO: Extract from release metadata
+            tmdb_id: None,
+            freeleech: Some(false), // TODO: Parse from quality info
+            download_factor: Some(1.0),
+            upload_factor: Some(1.0),
+            publish_date: release.published_date,
+            categories: vec![], // TODO: Map HDBits categories
+            attributes: HashMap::new(),
+        }).collect(),
+        indexers_searched: 1,
+        indexers_with_errors: 0,
+        errors: vec![],
+    };
+    
+    Ok(search_response)
+}
+
 fn create_mock_search_response() -> Value {
     serde_json::json!({
         "total": 2,

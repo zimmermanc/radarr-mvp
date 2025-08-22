@@ -1,0 +1,30 @@
+[Unit]
+Description=Radarr MVP - Movie Management System
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=radarr
+Group=radarr
+WorkingDirectory=/opt/radarr
+ExecStart=/opt/radarr/unified-radarr
+EnvironmentFile=/opt/radarr/.env
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=radarr
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/radarr /var/log/radarr
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

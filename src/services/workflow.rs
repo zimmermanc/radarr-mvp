@@ -1,15 +1,19 @@
 //! Workflow coordination and orchestration
 //!
 //! This module provides workflow management for complex multi-step operations
-//! that span multiple services and components.
+//! that span multiple services and components, as well as event handlers for
+//! basic download→import workflows.
 
 use std::sync::Arc;
 use std::collections::HashMap;
-use radarr_core::{RadarrError, Result};
+use radarr_core::{RadarrError, Result, EventHandler, SystemEvent};
+use radarr_import::ImportPipeline;
+use radarr_infrastructure::DatabasePool;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
-use tracing::{info, debug, warn, instrument};
+use tracing::{info, debug, warn, error, instrument};
+use async_trait::async_trait;
 
 /// Workflow step definition
 #[derive(Debug, Clone)]
@@ -234,7 +238,7 @@ impl WorkflowManager {
     pub async fn get_workflows_by_status(&self, status: WorkflowStatus) -> Result<Vec<WorkflowExecution>> {
         let executions = self.executions.read().await;
         Ok(executions.values()
-            .filter(|e| matches!(e.status, status))
+            .filter(|e| std::mem::discriminant(&e.status) == std::mem::discriminant(&status))
             .cloned()
             .collect())
     }
@@ -436,6 +440,107 @@ pub mod movie_workflows {
                 estimated_duration: 2,
             },
         ]
+    }
+}
+
+/// Handler that triggers imports when downloads complete
+pub struct DownloadImportHandler {
+    import_pipeline: Arc<ImportPipeline>,
+    database_pool: DatabasePool,
+}
+
+impl DownloadImportHandler {
+    pub fn new(import_pipeline: Arc<ImportPipeline>, database_pool: DatabasePool) -> Self {
+        Self {
+            import_pipeline,
+            database_pool,
+        }
+    }
+}
+
+#[async_trait]
+impl EventHandler for DownloadImportHandler {
+    async fn handle_event(&self, event: &SystemEvent) -> Result<()> {
+        match event {
+            SystemEvent::DownloadComplete { movie_id, file_path, .. } => {
+                info!("Download completed for movie {}, triggering import from {}", movie_id, file_path);
+                
+                // TODO: Get actual movie information from database
+                // For now, trigger import with the file path
+                use std::path::Path;
+                
+                let source_path = Path::new(file_path);
+                // Use parent directory as destination for now (normally would be media library path)
+                let dest_dir = source_path.parent().unwrap_or_else(|| Path::new("/downloads"));
+                
+                match self.import_pipeline.import_file(source_path, dest_dir).await {
+                    Ok(import_result) => {
+                        info!("Import triggered successfully for {}: success={}", 
+                              file_path, import_result.success);
+                        // TODO: Publish ImportComplete event
+                    }
+                    Err(e) => {
+                        error!("Failed to trigger import for {}: {}", file_path, e);
+                        // TODO: Publish ImportFailed event
+                        return Err(RadarrError::ExternalServiceError {
+                            service: "import_pipeline".to_string(),
+                            error: format!("Import failed: {}", e),
+                        });
+                    }
+                }
+            }
+            _ => {
+                // This handler only cares about download completion
+            }
+        }
+        Ok(())
+    }
+
+    fn should_handle(&self, event: &SystemEvent) -> bool {
+        matches!(event, SystemEvent::DownloadComplete { .. })
+    }
+}
+
+/// Handler that logs all events for debugging
+pub struct LoggingEventHandler;
+
+impl LoggingEventHandler {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl EventHandler for LoggingEventHandler {
+    async fn handle_event(&self, event: &SystemEvent) -> Result<()> {
+        debug!("Event processed: {}", event.description());
+        
+        // Log additional details for certain events
+        match event {
+            SystemEvent::DownloadProgress { progress, speed, eta_seconds, .. } => {
+                if let (Some(speed), Some(eta)) = (speed, eta_seconds) {
+                    debug!("Download speed: {} bytes/s, ETA: {} seconds", speed, eta);
+                }
+            }
+            SystemEvent::ImportComplete { file_count, destination_path, .. } => {
+                info!("Import completed: {} files imported to {}", file_count, destination_path);
+            }
+            SystemEvent::SystemHealth { component, status, message } => {
+                let log_msg = format!("Health check: {} is {}", component, status);
+                if let Some(msg) = message {
+                    info!("{} - {}", log_msg, msg);
+                } else {
+                    info!("{}", log_msg);
+                }
+            }
+            _ => {}
+        }
+        
+        Ok(())
+    }
+
+    fn should_handle(&self, _event: &SystemEvent) -> bool {
+        true // Log all events
     }
 }
 

@@ -19,6 +19,7 @@ once_cell = { workspace = true }
 md5 = { workspace = true }
 regex = { workspace = true }
 uuid = { workspace = true }
+scraper = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use radarr_core::{RadarrError, Result};
 
+
 /// Simplified Prowlarr configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProwlarrConfig {

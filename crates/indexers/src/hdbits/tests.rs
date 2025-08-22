@@ -191,7 +191,8 @@ mod tests {
               "bookmarked": 0,
               "wishlisted": 0,
               "tags": [""],
-              "username": "Terma"
+              "username": "Terma",
+              "owner": 0
             }
           ]
         }"#;
@@ -244,7 +245,8 @@ mod tests {
               "type_category": 1,
               "type_codec": 1,
               "type_medium": 1,
-              "type_origin": 1
+              "type_origin": 1,
+              "owner": 0
             }
           ]
         }"#;
@@ -255,6 +257,111 @@ mod tests {
         assert_eq!(torrent.freeleech, "yes");
         assert!(torrent.is_freeleech());
         assert!(torrent.is_internal());
+    }
+    
+    #[test]
+    fn test_hdbits_response_with_complex_imdb() {
+        let json_response = r#"{
+          "status": 0,
+          "data": [
+            {
+              "id": 789988,
+              "hash": "31D6E90726B20B75701475C8F648C5B2F686505B",
+              "leechers": 0,
+              "seeders": 6,
+              "name": "Test Movie 2024 1080p BluRay-GROUP",
+              "descr": "[quote]This release is sourced from Amazon[/quote][url=https://img.hdbits.org/test][img]https://t.hdbits.org/test.jpg[/img][/url]",
+              "times_completed": 22,
+              "size": 26956719691,
+              "utadded": 1754732065,
+              "added": "2025-08-09T09:34:25+0000",
+              "comments": 1,
+              "numfiles": 32,
+              "filename": "test.torrent",
+              "freeleech": "no",
+              "type_category": 1,
+              "type_codec": 3,
+              "type_medium": 1,
+              "type_origin": 0,
+              "type_exclusive": 0,
+              "torrent_status": "",
+              "bookmarked": 0,
+              "wishlisted": 0,
+              "tags": [],
+              "username": "testuser",
+              "owner": 12345,
+              "imdb": {
+                "id": 26249690,
+                "englishtitle": "Test Movie",
+                "originaltitle": "Test Movie Original",
+                "year": 2024,
+                "genres": ["Action", "Drama"],
+                "rating": 8.3
+              }
+            }
+          ]
+        }"#;
+        
+        let response: Result<super::super::models::HDBitsResponse, _> = serde_json::from_str(json_response);
+        assert!(response.is_ok(), "Failed to deserialize complex response: {:?}", response.err());
+        
+        let response = response.unwrap();
+        assert_eq!(response.status, 0);
+        assert!(response.data.is_some());
+        
+        let torrents = response.data.unwrap();
+        assert_eq!(torrents.len(), 1);
+        
+        let torrent = &torrents[0];
+        assert_eq!(torrent.id, 789988);
+        assert_eq!(torrent.owner, Some(12345));
+        assert!(torrent.descr.is_some());
+        assert!(torrent.descr.as_ref().unwrap().contains("Amazon"));
+        
+        // Test IMDB data
+        assert!(torrent.imdb.is_some());
+        let imdb = torrent.imdb.as_ref().unwrap();
+        assert_eq!(imdb.id, 26249690);
+        assert_eq!(imdb.rating, Some(8.3));
+        assert_eq!(imdb.englishtitle, Some("Test Movie".to_string()));
+        assert_eq!(imdb.originaltitle, Some("Test Movie Original".to_string()));
+        assert_eq!(imdb.year, Some(2024));
+        assert!(imdb.genres.is_some());
+        assert_eq!(imdb.genres.as_ref().unwrap().len(), 2);
+    }
+    
+    #[test]
+    fn test_hdbits_response_with_malformed_descr() {
+        // Test that the lenient deserializer handles malformed/problematic descr fields
+        let json_response = r#"{
+          "status": 0,
+          "data": [
+            {
+              "id": 789988,
+              "hash": "31D6E90726B20B75701475C8F648C5B2F686505B",
+              "leechers": 0,
+              "seeders": 6,
+              "name": "Test Movie 2024 1080p BluRay-GROUP",
+              "descr": null,
+              "times_completed": 22,
+              "size": 26956719691,
+              "added": "2025-08-09T09:34:25+0000",
+              "freeleech": "no",
+              "type_category": 1,
+              "type_codec": 3,
+              "type_medium": 1,
+              "type_origin": 0,
+              "owner": 0
+            }
+          ]
+        }"#;
+        
+        let response: Result<super::super::models::HDBitsResponse, _> = serde_json::from_str(json_response);
+        assert!(response.is_ok(), "Failed to deserialize response with null descr: {:?}", response.err());
+        
+        let response = response.unwrap();
+        let torrent = &response.data.unwrap()[0];
+        assert_eq!(torrent.descr, None);
     }
 
     // Note: Integration tests that actually call the HDBits API are excluded 

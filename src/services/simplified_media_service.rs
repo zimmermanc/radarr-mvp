@@ -20,7 +20,7 @@ pub struct SimplifiedMediaService {
     /// Download client for managing downloads
     download_client: Arc<QBittorrentClient>,
     /// Import pipeline for processing completed downloads
-    import_pipeline: Arc<ImportPipeline>,
+    pub import_pipeline: Arc<ImportPipeline>,
 }
 
 impl SimplifiedMediaService {

@@ -10,6 +10,15 @@ license = "GPL-3.0"
 name = "radarr-mvp"
 path = "src/main.rs"
 
+[[bin]]
+name = "test_hdbits_integration"
+path = "test_hdbits_integration.rs"
+
+[[bin]]
+name = "test_integration_workflow"
+path = "test_integration_workflow.rs"
+
+
 [dependencies]
 # Internal crates
 radarr-core = { path = "crates/core" }
@@ -36,6 +45,9 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { workspace = true }
+dotenv = "0.15"
+anyhow = "1.0"
+env_logger = "0.10"
 
 [workspace]
 members = [

@@ -38,6 +38,7 @@ pub mod file_analyzer;
 pub mod hardlink_manager;
 pub mod rename_engine;
 pub mod pipeline;
+pub mod integration;
 
 // Re-export main types for convenience
 pub use file_scanner::{FileScanner, ScanConfig, DetectedFile, MediaType};
@@ -45,6 +46,7 @@ pub use file_analyzer::{FileAnalyzer, AnalyzedFile, QualityInfo};
 pub use hardlink_manager::{HardlinkManager, HardlinkConfig, HardlinkResult, HardlinkStats};
 pub use rename_engine::{RenameEngine, RenameConfig, RenameResult};
 pub use pipeline::{ImportPipeline, ImportConfig, ImportResult, ImportStats};
+pub use integration::{ImportService, IntegratedImportConfig, IntegratedImportResult};
 
 // Re-export core error types
 pub use radarr_core::{RadarrError, Result};

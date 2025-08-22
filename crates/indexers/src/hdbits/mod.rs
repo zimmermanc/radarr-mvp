@@ -24,8 +24,7 @@ pub use models::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HDBitsConfig {
     pub username: String,
-    pub passkey: String,
-    pub api_url: String,
+    pub session_cookie: String,  // Changed from passkey to session_cookie
     pub rate_limit_per_hour: u32,
     pub timeout_seconds: u64,
 }
@@ -34,8 +33,7 @@ impl Default for HDBitsConfig {
     fn default() -> Self {
         Self {
             username: "blargdiesel".to_string(),
-            passkey: "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863".to_string(),
-            api_url: "https://hdbits.org/api/torrents".to_string(),
+            session_cookie: "your_session_cookie_here".to_string(),
             rate_limit_per_hour: 150,
             timeout_seconds: 30,
         }
@@ -48,11 +46,8 @@ impl HDBitsConfig {
         let username = std::env::var("HDBITS_USERNAME")
             .unwrap_or_else(|_| "blargdiesel".to_string());
         
-        let passkey = std::env::var("HDBITS_PASSKEY")
-            .unwrap_or_else(|_| "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863".to_string());
-        
-        let api_url = std::env::var("HDBITS_API_URL")
-            .unwrap_or_else(|_| "https://hdbits.org/api/torrents".to_string());
+        let session_cookie = std::env::var("HDBITS_SESSION_COOKIE")
+            .unwrap_or_else(|_| "your_session_cookie_here".to_string());
             
         let rate_limit_per_hour: u32 = std::env::var("HDBITS_RATE_LIMIT")
             .unwrap_or_else(|_| "150".to_string())
@@ -72,8 +67,7 @@ impl HDBitsConfig {
 
         Ok(Self {
             username,
-            passkey,
-            api_url,
+            session_cookie,
             rate_limit_per_hour,
             timeout_seconds,
         })
@@ -88,24 +82,10 @@ impl HDBitsConfig {
             });
         }
         
-        if self.passkey.is_empty() {
+        if self.session_cookie.is_empty() {
             return Err(RadarrError::ConfigurationError {
-                field: "passkey".to_string(),
-                message: "Passkey cannot be empty".to_string(),
-            });
-        }
-        
-        if self.passkey.len() != 128 {
-            return Err(RadarrError::ConfigurationError {
-                field: "passkey".to_string(),
-                message: "Passkey must be 128 characters long".to_string(),
-            });
-        }
-        
-        if !self.api_url.starts_with("https://") {
-            return Err(RadarrError::ConfigurationError {
-                field: "api_url".to_string(),
-                message: "API URL must use HTTPS".to_string(),
+                field: "session_cookie".to_string(),
+                message: "Session cookie cannot be empty".to_string(),
             });
         }
         
@@ -176,9 +156,9 @@ impl RateLimiter {
 /// Convert HDBits search error to RadarrError
 pub fn map_hdbits_error(error: &str) -> RadarrError {
     match error {
-        e if e.contains("Invalid passkey") => RadarrError::ExternalServiceError {
+        e if e.contains("login") || e.contains("session") => RadarrError::ExternalServiceError {
             service: "HDBits".to_string(),
-            error: "Invalid passkey - check credentials".to_string(),
+            error: "Authentication failed - check session cookie".to_string(),
         },
         e if e.contains("Rate limit") => RadarrError::ExternalServiceError {
             service: "HDBits".to_string(),
@@ -188,7 +168,7 @@ pub fn map_hdbits_error(error: &str) -> RadarrError {
             resource: "HDBits search results".to_string(),
         },
         e => RadarrError::IndexerError {
-            message: format!("HDBits API error: {}", e),
+            message: format!("HDBits scraping error: {}", e),
         },
     }
 }

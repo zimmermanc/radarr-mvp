@@ -21,6 +21,9 @@ tokio = { workspace = true }
 # Optional infrastructure dependencies
 sqlx = { workspace = true, optional = true }
 
+# Retry and resilience
+rand = "0.8"
+
 [features]
 default = []
 postgres = ["sqlx"]

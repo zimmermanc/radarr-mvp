@@ -39,7 +39,10 @@ use tracing::{info, warn, debug, instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
+mod retry_config;
 mod services;
+mod websocket;
+mod api;
 
 use config::AppConfig;
 use services::{AppServices, ServiceBuilder as AppServiceBuilder};
@@ -49,6 +52,8 @@ use services::{AppServices, ServiceBuilder as AppServiceBuilder};
 pub struct AppState {
     pub services: AppServices,
     pub config: AppConfig,
+    pub progress_tracker: Arc<radarr_core::progress::ProgressTracker>,
+    pub event_bus: Arc<radarr_core::events::EventBus>,
 }
 
 #[tokio::main]
@@ -70,10 +75,16 @@ async fn main() -> Result<()> {
     let services = initialize_services(&config).await?;
     info!("✅ All services initialized successfully");
 
+    // Create progress tracker and event bus
+    let progress_tracker = Arc::new(radarr_core::progress::ProgressTracker::new());
+    let event_bus = Arc::new(radarr_core::events::EventBus::new());
+
     // Create application state
     let app_state = AppState {
         services,
         config: config.clone(),
+        progress_tracker,
+        event_bus,
     };
 
     // Build HTTP server
@@ -215,7 +226,7 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
         timeout: config.qbittorrent.timeout,
     };
     let qbittorrent_client = Arc::new(
-        QBittorrentClient::new(qbittorrent_config)
+        QBittorrentClient::new(qbittorrent_config.clone())
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "qbittorrent".to_string(),
                 error: format!("Failed to create qBittorrent client: {}", e),
@@ -236,10 +247,11 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
     info!("✅ Import pipeline initialized");
 
     // Build services using service builder
-    let services = AppServiceBuilder::new()
+    let mut services = AppServiceBuilder::new()
         .with_database(database_pool)
         .with_prowlarr(prowlarr_client)
         .with_qbittorrent(qbittorrent_client)
+        .with_qbittorrent_config(qbittorrent_config)
         .with_import_pipeline(import_pipeline)
         .build()
         .await?;
@@ -248,6 +260,19 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
     services.initialize().await?;
     info!("✅ All services initialized and tested");
 
+    // Start event processing system
+    services.start_event_processing().await?;
+    info!("✅ Event processing system started");
+
+    // Start queue processor
+    services.start_queue_processor().await?;
+    info!("✅ Queue processor started");
+    
+    // Initialize and start RSS service
+    services.initialize_rss_service(RssServiceConfig::default())?;
+    services.start_rss_service().await?;
+    info!("✅ RSS monitoring service started");
+
     Ok(services)
 }
 
@@ -255,6 +280,18 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
 fn build_router(app_state: AppState) -> Router {
     // Initialize metrics collector
     let metrics = Arc::new(MetricsCollector::new().expect("Failed to create metrics collector"));
+    
+    // Create WebSocket state
+    let ws_state = Arc::new(websocket::WsState {
+        event_bus: app_state.event_bus.clone(),
+        progress_tracker: app_state.progress_tracker.clone(),
+    });
+    
+    // Create retry config state
+    let retry_config = Arc::new(retry_config::ApplicationRetryConfig::from_env());
+    
+    // Get RSS service if available
+    let rss_service = app_state.services.rss_service.clone();
     
     // Create simple API state with database pool and indexer client
     let simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
@@ -267,12 +304,34 @@ fn build_router(app_state: AppState) -> Router {
         .route("/health/detailed", get(detailed_health_check_simple))
         .route("/api/v1/system/status", get(system_status_simple))
         .route("/api/v1/test/connectivity", post(test_connectivity_simple))
+        // Add queue status endpoint
+        .route("/api/queue/status", get(queue_status))
+        // Add WebSocket endpoint for progress tracking
+        .route("/ws", get(websocket::websocket_handler))
+        // Add retry status endpoint
+        .route("/api/retry/status", get(api::get_retry_status))
+        // Add RSS endpoints
+        .route("/api/rss/feeds", get(api::get_feeds).post(api::add_feed))
+        .route("/api/rss/feeds/:id", delete(api::remove_feed))
+        .route("/api/rss/test", get(api::test_feed))
+        .route("/api/rss/calendar", get(api::get_calendar).post(api::add_calendar_entry))
         // Add Prometheus metrics endpoint
         .route("/metrics", get(metrics_endpoint))
         
         // Add metrics collector and services to extensions
         .layer(axum::Extension(metrics))
         .layer(axum::Extension(Arc::new(app_state.services)))
+        .layer(axum::Extension(ws_state))
+        .layer(axum::Extension(retry_config));
+    
+    // Add RSS service if available
+    let router = if let Some(rss) = rss_service {
+        router.layer(axum::Extension(rss))
+    } else {
+        router
+    };
+    
+    router
         
         // Add CORS layer first (before auth) to handle preflight
         .layer(
@@ -551,6 +610,30 @@ async fn test_connectivity_simple() -> impl axum::response::IntoResponse {
             "api": {"success": true, "error": null}
         },
         "overall_success": true
+    })))
+}
+
+/// Queue status endpoint to check if queue processor is running
+async fn queue_status(
+    services: axum::extract::Extension<Arc<AppServices>>,
+) -> impl axum::response::IntoResponse {
+    let status = if services.queue_processor.is_some() {
+        json!({
+            "running": true,
+            "status": "active",
+            "message": "Queue processor is running"
+        })
+    } else {
+        json!({
+            "running": false,
+            "status": "inactive", 
+            "message": "Queue processor is not initialized"
+        })
+    };
+    
+    (StatusCode::OK, Json(json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "queue_processor": status
     })))
 }
 

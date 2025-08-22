@@ -155,6 +155,36 @@ impl ImportPipeline {
         Ok(stats)
     }
 
+    /// Import all files from source directory to destination, returning both stats and individual results
+    #[instrument(skip(self), fields(source = %source_dir.display(), dest = %dest_dir.display()))]
+    pub async fn import_directory_with_results(
+        &self,
+        source_dir: &Path,
+        dest_dir: &Path,
+    ) -> Result<(ImportStats, Vec<ImportResult>), RadarrError> {
+        let start_time = Instant::now();
+        info!("Starting import from {} to {}", source_dir.display(), dest_dir.display());
+
+        // Phase 1: Scan for media files
+        let detected_files = self.scan_phase(source_dir).await?;
+        info!("Scan phase complete: {} files detected", detected_files.len());
+
+        // Phase 2: Analyze detected files
+        let analyzed_files = self.analyze_phase(&detected_files).await?;
+        info!("Analysis phase complete: {} files analyzed", analyzed_files.len());
+
+        // Phase 3: Import files (hardlink + rename)
+        let import_results = self.import_phase(&analyzed_files, dest_dir).await?;
+        info!("Import phase complete: {} files processed", import_results.len());
+
+        // Generate statistics
+        let stats = self.generate_stats(&detected_files, &import_results, start_time.elapsed());
+        info!("Import operation complete: {} successful, {} failed, {} skipped", 
+              stats.successful_imports, stats.failed_imports, stats.skipped_files);
+
+        Ok((stats, import_results))
+    }
+
     /// Import a single file from source to destination
     #[instrument(skip(self))]
     pub async fn import_file(

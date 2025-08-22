@@ -8,6 +8,8 @@ Cargo.lock
 .env
 .env.local
 .env.*.local
+.env.production
+.env.server
 
 # IDE
 .vscode/
@@ -41,3 +43,6 @@ web/node_modules/
 # Temporary files
 tmp/
 temp/
+
+# Archived Kubernetes manifests (local-first development)
+k8s.archived/

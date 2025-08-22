@@ -57,19 +57,21 @@ cargo doc --no-deps
 cargo doc --no-deps --open
 ```
 
-### Kubernetes Deployment
+### Server Deployment
 ```bash
-# Validate K8s manifests
-kubectl apply --dry-run=client -f k8s/base/
+# Build for deployment
+cargo build --release
 
-# Deploy to different environments
-kubectl apply -k k8s/overlays/dev/
-kubectl apply -k k8s/overlays/staging/
-kubectl apply -k k8s/overlays/prod/
+# Deploy to test server
+./scripts/deploy.sh
+
+# Manual deployment
+scp target/release/unified-radarr root@192.168.0.138:/opt/radarr/
+ssh root@192.168.0.138 'systemctl restart radarr'
 
 # Check deployment status
-kubectl -n unified-radarr get pods
-kubectl -n unified-radarr logs -l app=unified-radarr
+ssh root@192.168.0.138 'systemctl status radarr'
+ssh root@192.168.0.138 'journalctl -u radarr -f'
 ```
 
 ## Architecture Overview
@@ -88,10 +90,8 @@ unified-radarr/
 │   ├── decision/       # Release selection and quality profiles
 │   ├── downloaders/    # Download client integrations
 │   └── import/         # Media import pipeline
-├── k8s/                # Kubernetes manifests
-│   ├── base/          # Base K8s resources
-│   └── overlays/      # Environment-specific configurations
-└── scripts/           # Build and deployment automation
+├── scripts/           # Build and deployment automation
+└── systemd/           # Service files for server deployment
 ```
 
 ### Key Architectural Principles
@@ -124,13 +124,13 @@ unified-radarr/
 - Evidence-based reputation scoring
 - CLI tools for standalone execution
 
-**Kubernetes Deployment**: Complete manifests with:
-- Multi-environment support (dev/staging/prod) via Kustomize overlays
-- PostgreSQL and Redis stateful sets
-- Horizontal Pod Autoscaling (HPA)
-- Pod Disruption Budgets (PDB)
-- Network policies for security
-- Monitoring integration hooks
+**Server Deployment**: Complete deployment automation with:
+- SSH-based deployment scripts
+- Systemd service configuration
+- Environment variable management
+- Log rotation and monitoring
+- Automatic restart on failure
+- Health check integration
 
 ### Development Workflow
 
@@ -168,19 +168,22 @@ cargo run --bin hdbits-browse-analyzer -- \
   --output ./browse_results
 ```
 
-### Working with Kubernetes
+### Working with Server Deployment
 ```bash
-# Create namespace
-kubectl create namespace unified-radarr
+# Build and deploy
+./scripts/deploy.sh
 
-# Deploy to dev environment
-kubectl apply -k k8s/overlays/dev/
+# Check service status
+ssh root@192.168.0.138 'systemctl status radarr'
 
-# Check logs
-kubectl -n unified-radarr logs -f deployment/unified-radarr
+# View logs
+ssh root@192.168.0.138 'journalctl -u radarr -f'
 
-# Port forward for local access
-kubectl -n unified-radarr port-forward svc/unified-radarr 8080:80
+# Restart service
+ssh root@192.168.0.138 'systemctl restart radarr'
+
+# Access application (ensure port forwarding or direct access)
+curl http://192.168.0.138:7878/health
 ```
 
 ## Performance Optimization

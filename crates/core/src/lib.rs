@@ -8,6 +8,10 @@ pub mod domain;
 pub mod error;
 pub mod notifications;
 pub mod services;
+pub mod events;
+pub mod retry;
+pub mod progress;
+pub mod rss;
 
 // Re-export core types
 pub use models::*;
@@ -15,3 +19,5 @@ pub use domain::*;
 pub use error::*;
 pub use notifications::*;
 pub use services::*;
+pub use events::*;
+pub use retry::*;

@@ -11,7 +11,7 @@ use radarr_indexers::{IndexerClient};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
 use radarr_infrastructure::{DatabasePool, PostgresQueueRepository, QBittorrentDownloadClient};
-use tracing::{info, debug, error};
+use tracing::{info, debug, error, warn, instrument};
 
 pub mod simplified_media_service;
 pub mod workflow;

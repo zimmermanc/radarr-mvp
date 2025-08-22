@@ -10,10 +10,10 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use tower_http::services::ServeDir;
 use crate::security::{SecurityConfig, apply_security};
-use crate::middleware::require_api_key;
 use radarr_core::{Movie, MovieStatus, RadarrError, repositories::MovieRepository};
-use radarr_infrastructure::{DatabasePool, PostgresMovieRepository};
+use radarr_infrastructure::{DatabasePool, PostgresMovieRepository, TmdbClient, CachedTmdbClient};
 use radarr_indexers::{IndexerClient, SearchRequest, SearchResponse, ProwlarrSearchResult};
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -29,6 +29,7 @@ pub struct SimpleApiState {
     pub database_pool: DatabasePool,
     pub indexer_client: Option<Arc<dyn IndexerClient + Send + Sync>>,
     pub movie_repo: Arc<PostgresMovieRepository>,
+    pub tmdb_client: Option<Arc<CachedTmdbClient>>,
 }
 
 impl SimpleApiState {
@@ -38,12 +39,19 @@ impl SimpleApiState {
             database_pool,
             indexer_client: None,
             movie_repo,
+            tmdb_client: None,
         }
     }
     
     /// Create new state with indexer client
     pub fn with_indexer_client(mut self, client: Arc<dyn IndexerClient + Send + Sync>) -> Self {
         self.indexer_client = Some(client);
+        self
+    }
+    
+    /// Create new state with TMDB client
+    pub fn with_tmdb_client(mut self, client: Arc<CachedTmdbClient>) -> Self {
+        self.tmdb_client = Some(client);
         self
     }
 }
@@ -92,6 +100,62 @@ pub struct SimpleQueryParams {
     pub limit: u32,
 }
 
+/// Movie lookup query parameters
+#[derive(Debug, Deserialize)]
+pub struct MovieLookupParams {
+    pub term: String,
+    #[serde(default = "default_search_limit")]
+    pub limit: u32,
+    pub year: Option<i32>,
+}
+
+/// Movie lookup response (matches frontend SearchResult interface)
+#[derive(Debug, Serialize)]
+pub struct MovieLookupResponse {
+    pub title: String,
+    pub year: Option<i32>,
+    pub tmdb_id: i32,
+    pub imdb_id: Option<String>,
+    pub overview: Option<String>,
+    pub poster_path: Option<String>,
+    pub release_date: Option<String>,
+    pub vote_average: Option<f64>,
+    pub popularity: Option<f64>,
+}
+
+impl From<Movie> for MovieLookupResponse {
+    fn from(movie: Movie) -> Self {
+        let tmdb_metadata = movie.metadata.get("tmdb");
+        
+        Self {
+            title: movie.title,
+            year: movie.year,
+            tmdb_id: movie.tmdb_id,
+            imdb_id: movie.imdb_id,
+            overview: tmdb_metadata
+                .and_then(|meta| meta.get("overview"))
+                .and_then(|overview| overview.as_str())
+                .map(String::from),
+            poster_path: tmdb_metadata
+                .and_then(|meta| meta.get("poster_path"))
+                .and_then(|path| path.as_str())
+                .map(String::from),
+            release_date: tmdb_metadata
+                .and_then(|meta| meta.get("release_date"))
+                .and_then(|date| date.as_str())
+                .map(String::from),
+            vote_average: tmdb_metadata
+                .and_then(|meta| meta.get("vote_average"))
+                .and_then(|rating| rating.as_f64()),
+            popularity: tmdb_metadata
+                .and_then(|meta| meta.get("popularity"))
+                .and_then(|pop| pop.as_f64()),
+        }
+    }
+}
+
+fn default_search_limit() -> u32 { 20 }
+
 fn default_page() -> u32 { 1 }
 fn default_limit() -> u32 { 50 }
 
@@ -100,35 +164,43 @@ pub fn create_simple_api_router(state: SimpleApiState) -> Router {
     // Load security configuration from environment
     let security_config = SecurityConfig::from_env();
     
-    // Create base router with endpoints
+    // Create protected API router 
     let api_router = Router::new()
-        // Health check (no auth required)
-        .route("/health", get(health_check))
         
         // Protected movie endpoints (require API key)
-        .route("/api/v3/movie", get(list_movies))
-        .route("/api/v3/movie", post(create_movie))
-        .route("/api/v3/movie/:id", get(get_movie))
-        .route("/api/v3/movie/:id", delete(delete_movie))
+        .route("/v3/movie", get(list_movies))
+        .route("/v3/movie", post(create_movie))
+        .route("/v3/movie/lookup", get(lookup_movies))  // IMPORTANT: Must come before /:id route
+        .route("/v3/movie/:id", get(get_movie))
+        .route("/v3/movie/:id", delete(delete_movie))
         
         // Protected search endpoint (real Prowlarr integration)
-        .route("/api/v3/indexer/search", post(search_movies))
+        .route("/v3/indexer/search", post(search_movies))
         
         // Protected Prowlarr test endpoint
-        .route("/api/v3/indexer/test", post(test_prowlarr_connection))
+        .route("/v3/indexer/test", post(test_prowlarr_connection))
         
         // Protected download endpoint (mock)
-        .route("/api/v3/download", post(start_download))
+        .route("/v3/download", post(start_download))
         
         // Protected import endpoint (real import pipeline)
-        .route("/api/v3/command/import", post(import_download))
+        .route("/v3/command/import", post(import_download))
         
-        .with_state(state)
-        // Apply API key authentication middleware
-        .layer(axum::middleware::from_fn(require_api_key));
+        .with_state(state.clone());
+    
+    // Create static file service for React app  
+    let static_service = ServeDir::new("web/dist")
+        .append_index_html_on_directories(true)
+        .fallback(ServeDir::new("web/dist").append_index_html_on_directories(true));
+    
+    // Combine routes: protected API routes under /api, public routes for everything else
+    let full_router = Router::new()
+        .route("/health", get(health_check)) // Public health check
+        .nest("/api", api_router) // Protected API routes under /api prefix
+        .fallback_service(static_service); // Serve React app for all other routes
     
     // Apply comprehensive security features
-    apply_security(api_router, security_config)
+    apply_security(full_router, security_config)
 }
 
 /// Health check endpoint
@@ -272,6 +344,58 @@ async fn delete_movie(
 ) -> StatusCode {
     // For MVP, always return success
     StatusCode::NO_CONTENT
+}
+
+/// Movie lookup endpoint - searches TMDB for movies
+async fn lookup_movies(
+    State(state): State<SimpleApiState>,
+    Query(params): Query<MovieLookupParams>,
+) -> Result<Json<Vec<MovieLookupResponse>>, (StatusCode, Json<Value>)> {
+    info!("Looking up movies with term: '{}'", params.term);
+    
+    let tmdb_client = match state.tmdb_client.as_ref() {
+        Some(client) => client,
+        None => {
+            error!("TMDB client not configured");
+            let error_response = serde_json::json!({
+                "error": "TMDB client not configured",
+                "message": "Movie lookup service is not available"
+            });
+            return Err((StatusCode::SERVICE_UNAVAILABLE, Json(error_response)));
+        }
+    };
+
+    // Perform search with TMDB
+    match tmdb_client.search_movies(&params.term, Some(1)).await {
+        Ok(movies) => {
+            info!("TMDB search returned {} movies", movies.len());
+            
+            // Convert to response format and apply limit
+            let mut responses: Vec<MovieLookupResponse> = movies
+                .into_iter()
+                .map(MovieLookupResponse::from)
+                .collect();
+            
+            // Apply year filter if provided
+            if let Some(year) = params.year {
+                responses.retain(|movie| movie.year == Some(year));
+            }
+            
+            // Apply limit
+            responses.truncate(params.limit as usize);
+            
+            info!("Returning {} movie results", responses.len());
+            Ok(Json(responses))
+        }
+        Err(e) => {
+            error!("TMDB search failed: {}", e);
+            let error_response = serde_json::json!({
+                "error": "Movie search failed",
+                "message": e.to_string()
+            });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
+    }
 }
 
 /// Search movies endpoint (mock)

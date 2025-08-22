@@ -4,7 +4,11 @@ import {
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
   PlusIcon,
-  ExclamationTriangleIcon 
+  ExclamationTriangleIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
+  PauseIcon,
+  PlayIcon
 } from '@heroicons/react/24/outline';
 import { Link } from 'react-router-dom';
 import { radarrApi, isApiError } from '../lib/api';
@@ -12,6 +16,9 @@ import type { Movie, MovieFilters, MovieSortField, SortDirection } from '../type
 import { usePageTitle } from '../contexts/UIContext';
 import { useToast, useApiErrorHandler } from '../components/ui/Toast';
 import { MovieCardSkeleton, LoadingButton } from '../components/ui/Loading';
+import { MovieDetailModal } from '../components/MovieDetailModal';
+
+type ViewMode = 'grid' | 'list';
 
 export const Movies: React.FC = () => {
   usePageTitle('Movies');
@@ -25,6 +32,10 @@ export const Movies: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [filters, setFilters] = useState<MovieFilters>({});
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [selectedMovies, setSelectedMovies] = useState<Set<number>>(new Set());
+  const [showBulkActions, setShowBulkActions] = useState(false);
 
   const { success } = useToast();
   const handleApiError = useApiErrorHandler();
@@ -84,6 +95,50 @@ export const Movies: React.FC = () => {
   const clearFilters = () => {
     setFilters({});
     setSearchTerm('');
+  };
+
+  const handleMovieClick = (movie: Movie) => {
+    setSelectedMovie(movie);
+  };
+
+  const handleMovieUpdate = (updatedMovie: Movie) => {
+    setMovies(prev => prev.map(m => m.id === updatedMovie.id ? updatedMovie : m));
+    setSelectedMovie(updatedMovie);
+  };
+
+  const toggleMovieSelection = (movieId: number) => {
+    setSelectedMovies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(movieId)) {
+        newSet.delete(movieId);
+      } else {
+        newSet.add(movieId);
+      }
+      setShowBulkActions(newSet.size > 0);
+      return newSet;
+    });
+  };
+
+  const selectAllMovies = () => {
+    if (selectedMovies.size === movies.length) {
+      setSelectedMovies(new Set());
+      setShowBulkActions(false);
+    } else {
+      setSelectedMovies(new Set(movies.map(m => m.id)));
+      setShowBulkActions(true);
+    }
+  };
+
+  const handleBulkMonitor = async (monitored: boolean) => {
+    try {
+      // TODO: Implement bulk update API
+      success(`Bulk Update`, `${selectedMovies.size} movies ${monitored ? 'monitored' : 'unmonitored'}`);
+      setSelectedMovies(new Set());
+      setShowBulkActions(false);
+      loadMovies();
+    } catch (err) {
+      console.error('Failed to update movies:', err);
+    }
   };
 
   const getStatusColor = (movie: Movie) => {
@@ -150,13 +205,77 @@ export const Movies: React.FC = () => {
           </h1>
           <p className="text-secondary-600 dark:text-secondary-400">
             {movies.length} movies in your library
+            {selectedMovies.size > 0 && ` • ${selectedMovies.size} selected`}
           </p>
         </div>
-        <Link to="/add-movie" className="btn-primary">
-          <PlusIcon className="h-5 w-5 mr-2" />
-          Add Movie
-        </Link>
+        <div className="flex items-center space-x-3">
+          {/* View mode toggle */}
+          <div className="flex rounded-lg bg-secondary-100 dark:bg-secondary-700 p-1">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded ${viewMode === 'grid' ? 'bg-white dark:bg-secondary-600 shadow' : 'hover:bg-secondary-200 dark:hover:bg-secondary-600'}`}
+              title="Grid view"
+            >
+              <Squares2X2Icon className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded ${viewMode === 'list' ? 'bg-white dark:bg-secondary-600 shadow' : 'hover:bg-secondary-200 dark:hover:bg-secondary-600'}`}
+              title="List view"
+            >
+              <ListBulletIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <Link to="/add-movie" className="btn-primary">
+            <PlusIcon className="h-5 w-5 mr-2" />
+            Add Movie
+          </Link>
+        </div>
       </div>
+
+      {/* Bulk Actions */}
+      {showBulkActions && (
+        <div className="card p-4 bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={selectAllMovies}
+                className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              >
+                {selectedMovies.size === movies.length ? 'Deselect All' : 'Select All'}
+              </button>
+              <span className="text-sm text-secondary-600 dark:text-secondary-400">
+                {selectedMovies.size} movie{selectedMovies.size !== 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handleBulkMonitor(true)}
+                className="btn-primary text-sm"
+              >
+                <PlayIcon className="h-4 w-4 mr-1" />
+                Monitor Selected
+              </button>
+              <button
+                onClick={() => handleBulkMonitor(false)}
+                className="btn-secondary text-sm"
+              >
+                <PauseIcon className="h-4 w-4 mr-1" />
+                Unmonitor Selected
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedMovies(new Set());
+                  setShowBulkActions(false);
+                }}
+                className="btn-ghost text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="card p-4">
@@ -274,11 +393,21 @@ export const Movies: React.FC = () => {
             Add Movie
           </Link>
         </div>
-      ) : (
+      ) : viewMode === 'list' ? (
         <div className="space-y-4">
           {movies.map((movie) => (
             <div key={movie.id} className="card-interactive p-4 animate-fade-in">
               <div className="flex items-center space-x-4">
+                {/* Selection checkbox */}
+                <div className="flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={selectedMovies.has(movie.id)}
+                    onChange={() => toggleMovieSelection(movie.id)}
+                    className="h-4 w-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500"
+                  />
+                </div>
+                
                 {/* Poster */}
                 <div className="flex-shrink-0">
                   {movie.poster_path ? (
@@ -322,7 +451,10 @@ export const Movies: React.FC = () => {
                           <span>{movie.vote_average.toFixed(1)}</span>
                         </div>
                       )}
-                      <button className="btn-ghost text-sm">
+                      <button 
+                        onClick={() => handleMovieClick(movie)}
+                        className="btn-ghost text-sm"
+                      >
                         Details
                       </button>
                     </div>
@@ -332,6 +464,86 @@ export const Movies: React.FC = () => {
             </div>
           ))}
         </div>
+      ) : (
+        /* Grid View */
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+          {movies.map((movie) => (
+            <div key={movie.id} className="card-interactive group relative animate-fade-in">
+              {/* Selection checkbox */}
+              <div className="absolute top-2 left-2 z-10">
+                <input
+                  type="checkbox"
+                  checked={selectedMovies.has(movie.id)}
+                  onChange={() => toggleMovieSelection(movie.id)}
+                  className="h-4 w-4 text-primary-600 rounded border-secondary-300 focus:ring-primary-500 bg-white dark:bg-secondary-800"
+                />
+              </div>
+
+              {/* Movie Card */}
+              <div 
+                className="cursor-pointer"
+                onClick={() => handleMovieClick(movie)}
+              >
+                {/* Poster */}
+                <div className="aspect-[2/3] overflow-hidden rounded-t-lg">
+                  {movie.poster_path ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w342${movie.poster_path}`}
+                      alt={movie.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-secondary-300 dark:bg-secondary-600 flex items-center justify-center">
+                      <FilmIcon className="h-16 w-16 text-secondary-500" />
+                    </div>
+                  )}
+                  
+                  {/* Overlay on hover */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button className="btn-primary text-sm">
+                      View Details
+                    </button>
+                  </div>
+                </div>
+
+                {/* Movie Info */}
+                <div className="p-3">
+                  <h3 className="font-semibold text-secondary-900 dark:text-white truncate" title={movie.title}>
+                    {movie.title}
+                  </h3>
+                  <p className="text-sm text-secondary-600 dark:text-secondary-400">
+                    {movie.year}
+                  </p>
+                  
+                  {/* Status Badge */}
+                  <div className="mt-2">
+                    <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(movie)}`}>
+                      {getStatusText(movie)}
+                    </span>
+                  </div>
+
+                  {/* Rating */}
+                  {movie.vote_average && (
+                    <div className="mt-2 flex items-center space-x-1 text-sm text-secondary-600 dark:text-secondary-400">
+                      <span>⭐</span>
+                      <span>{movie.vote_average.toFixed(1)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Movie Detail Modal */}
+      {selectedMovie && (
+        <MovieDetailModal
+          movie={selectedMovie}
+          isOpen={!!selectedMovie}
+          onClose={() => setSelectedMovie(null)}
+          onUpdate={handleMovieUpdate}
+        />
       )}
     </div>
   );

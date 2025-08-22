@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   MagnifyingGlassIcon,
   PlusIcon,
@@ -13,8 +14,10 @@ import { usePageTitle } from '../contexts/UIContext';
 
 export const AddMovie: React.FC = () => {
   usePageTitle('Add Movie');
+  const [searchParams] = useSearchParams();
+  const initialSearchTerm = searchParams.get('search') || '';
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [selectedQualityProfile, setSelectedQualityProfile] = useState<number>(1);
@@ -28,7 +31,11 @@ export const AddMovie: React.FC = () => {
 
   useEffect(() => {
     loadQualityProfiles();
-  }, []);
+    // If there's an initial search term from URL, perform search automatically
+    if (initialSearchTerm) {
+      performSearch(initialSearchTerm);
+    }
+  }, [initialSearchTerm]);
 
   const loadQualityProfiles = async () => {
     try {
@@ -51,16 +58,15 @@ export const AddMovie: React.FC = () => {
     }
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchTerm.trim()) return;
+  const performSearch = async (term: string) => {
+    if (!term.trim()) return;
 
     try {
       setSearching(true);
       setError(null);
       
       const response = await radarrApi.searchMovies({
-        term: searchTerm.trim(),
+        term: term.trim(),
         limit: 20,
       });
 
@@ -75,6 +81,11 @@ export const AddMovie: React.FC = () => {
     } finally {
       setSearching(false);
     }
+  };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    performSearch(searchTerm);
   };
 
   const handleAddMovie = async (movie: SearchResult) => {

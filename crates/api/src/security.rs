@@ -40,7 +40,7 @@ impl Default for SecurityConfig {
             ],
             enable_hsts: true,
             hsts_max_age: 31536000, // 1 year
-            csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'".to_string(),
+            csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws: wss:".to_string(),
             environment: "development".to_string(),
         }
     }
@@ -64,7 +64,7 @@ impl SecurityConfig {
                 .parse()
                 .unwrap_or(31536000),
             csp_policy: std::env::var("CSP_POLICY")
-                .unwrap_or_else(|_| "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'".to_string()),
+                .unwrap_or_else(|_| "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws: wss:".to_string()),
             environment: std::env::var("ENVIRONMENT")
                 .unwrap_or_else(|_| "development".to_string()),
         }

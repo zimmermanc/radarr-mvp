@@ -230,6 +230,11 @@ class RadarrApiClient {
       return false;
     }
   }
+
+  // Check if API key is set
+  hasApiKey(): boolean {
+    return Boolean(this.config.apiKey && this.config.apiKey.length > 0);
+  }
 }
 
 // Create and export a singleton instance
@@ -250,9 +255,10 @@ const getBaseUrl = (): string => {
   return `${window.location.protocol}//${window.location.hostname}:7878`;
 };
 
+// Create API client without API key initially - will be set by AuthContext
 const apiConfig: ApiConfig = {
   baseUrl: getBaseUrl(),
-  apiKey: import.meta.env.VITE_API_KEY || 'mysecurekey123',
+  apiKey: '', // Will be set by AuthContext after authentication
   timeout: 30000,
 };
 

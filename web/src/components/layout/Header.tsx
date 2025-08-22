@@ -1,30 +1,43 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Bars3Icon, 
   BellIcon, 
   MagnifyingGlassIcon,
-  Cog6ToothIcon 
+  Cog6ToothIcon,
+  ArrowRightOnRectangleIcon,
+  UserCircleIcon
 } from '@heroicons/react/24/outline';
 import { useUI } from '../../contexts/UIContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { useToast } from '../ui/Toast';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 export const Header: React.FC = () => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const { 
     toggleSidebar, 
     notificationCount, 
     clearNotifications,
     toggleGlobalSearch 
   } = useUI();
-  const { info } = useToast();
+  const { authState, logout } = useAuth();
+  const { isConnected, connectionError } = useWebSocket();
+  const { info, success } = useToast();
+  
+  // Click outside to close user menu
+  const userMenuRef = useClickOutside<HTMLDivElement>(() => setShowUserMenu(false));
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      info('Search', `Searching for "${searchQuery}"...`);
-      // TODO: Implement actual search functionality
-      console.log('Search query:', searchQuery);
+      // Navigate to Add Movie page with search query
+      navigate(`/add-movie?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery(''); // Clear search after navigation
     }
   };
 
@@ -33,6 +46,12 @@ export const Header: React.FC = () => {
       clearNotifications();
       info('Notifications', 'All notifications cleared');
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    success('Logout', 'Successfully logged out');
+    setShowUserMenu(false);
   };
 
   return (
@@ -107,12 +126,55 @@ export const Header: React.FC = () => {
               <Cog6ToothIcon className="h-5 w-5" />
             </button>
 
-            {/* System status */}
+            {/* User menu */}
+            <div ref={userMenuRef} className="relative pl-3 border-l border-secondary-200 dark:border-secondary-600">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center space-x-2 p-2 text-secondary-400 hover:text-secondary-500 dark:hover:text-secondary-300 hover:bg-secondary-100 dark:hover:bg-secondary-700 rounded-lg transition-colors duration-200 touch-target"
+                aria-label="User menu"
+              >
+                <UserCircleIcon className="h-5 w-5" />
+                <span className="text-sm text-secondary-600 dark:text-secondary-400 hidden sm:inline">
+                  {authState.user?.username || 'User'}
+                </span>
+              </button>
+
+              {/* User dropdown menu */}
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-secondary-800 rounded-md shadow-lg py-1 z-50 border border-secondary-200 dark:border-secondary-700">
+                  <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-700">
+                    <p className="text-sm text-secondary-900 dark:text-white font-medium">
+                      {authState.user?.username}
+                    </p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400">
+                      API Key: {authState.apiKey ? '••••••••' : 'Not set'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-secondary-700 dark:text-secondary-300 hover:bg-secondary-100 dark:hover:bg-secondary-700 flex items-center space-x-2"
+                  >
+                    <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* WebSocket connection status */}
             <div className="flex items-center space-x-2 pl-3 border-l border-secondary-200 dark:border-secondary-600">
-              <div className="flex items-center space-x-1">
-                <div className="h-2 w-2 bg-success-500 rounded-full animate-pulse"></div>
+              <div className="flex items-center space-x-1" title={connectionError || (isConnected ? 'Real-time updates connected' : 'Real-time updates disconnected')}>
+                <div 
+                  className={`h-2 w-2 rounded-full ${
+                    isConnected 
+                      ? 'bg-success-500 animate-pulse' 
+                      : connectionError 
+                        ? 'bg-error-500' 
+                        : 'bg-warning-500'
+                  }`}
+                ></div>
                 <span className="text-xs text-secondary-500 dark:text-secondary-400 hidden sm:inline">
-                  Healthy
+                  {isConnected ? 'Live' : connectionError ? 'Error' : 'Offline'}
                 </span>
               </div>
             </div>

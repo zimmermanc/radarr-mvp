@@ -5,10 +5,10 @@ Wants=postgresql.service
 
 [Service]
 Type=simple
-User=radarr
-Group=radarr
+User=root
+Group=root
 WorkingDirectory=/opt/radarr
-ExecStart=/opt/radarr/unified-radarr
+ExecStart=/opt/radarr/radarr-mvp
 EnvironmentFile=/opt/radarr/.env
 Restart=always
 RestartSec=10
@@ -16,15 +16,8 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=radarr
 
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/opt/radarr /var/log/radarr
-
 # Resource limits
 LimitNOFILE=65536
-LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target

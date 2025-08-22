@@ -1,0 +1,39 @@
+[package]
+name = "radarr-notifications"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+radarr-core = { path = "../core" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client for webhooks
+reqwest = { workspace = true }
+
+# Email support
+lettre = { version = "0.11", features = ["smtp-transport", "tokio1-rustls-tls", "builder"], default-features = false }
+mime = "0.3"
+
+# Template engine
+handlebars = "5.1"
+
+# Logging
+tracing = { workspace = true }
+
+# Date/time handling
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

@@ -3,9 +3,10 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Extension,
+        Extension, Query,
     },
     response::Response,
+    http::StatusCode,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use radarr_core::{
@@ -14,6 +15,7 @@ use radarr_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
@@ -79,12 +81,39 @@ pub struct WsState {
     pub progress_tracker: Arc<ProgressTracker>,
 }
 
-/// Handle WebSocket upgrade request
+/// WebSocket query parameters for authentication
+#[derive(Debug, Deserialize)]
+pub struct WsQuery {
+    pub apikey: Option<String>,
+}
+
+/// Handle WebSocket upgrade request with authentication
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
+    Query(params): Query<WsQuery>,
     Extension(state): Extension<Arc<WsState>>,
-) -> Response {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
+) -> Result<Response, StatusCode> {
+    // Verify API key
+    let expected_api_key = std::env::var("RADARR_API_KEY")
+        .map_err(|_| {
+            error!("RADARR_API_KEY environment variable not set");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    
+    match params.apikey {
+        Some(provided_key) if provided_key == expected_api_key => {
+            info!("WebSocket client authenticated successfully");
+            Ok(ws.on_upgrade(|socket| handle_socket(socket, state)))
+        }
+        Some(_) => {
+            warn!("WebSocket authentication failed: invalid API key");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+        None => {
+            warn!("WebSocket authentication failed: no API key provided");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
 }
 
 /// Handle WebSocket connection
@@ -110,96 +139,97 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
         let _ = sender.send(Message::Text(msg)).await;
     }
     
-    // Spawn task to handle incoming messages
-    let state_clone = state.clone();
-    let mut sender_clone = sender.clone();
-    let incoming_task = tokio::spawn(async move {
-        while let Some(msg) = receiver.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
-                        handle_message(ws_msg, &state_clone, &mut sender_clone, &mut subscribed_operations).await;
+    // Handle WebSocket communication in a single task
+    loop {
+        tokio::select! {
+            // Handle incoming WebSocket messages
+            ws_msg = receiver.next() => {
+                match ws_msg {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
+                            handle_message(ws_msg, &state, &mut sender, &mut subscribed_operations).await;
+                        }
                     }
-                }
-                Ok(Message::Ping(data)) => {
-                    let _ = sender_clone.send(Message::Pong(data)).await;
-                }
-                Ok(Message::Close(_)) => {
-                    info!("WebSocket client disconnected");
-                    break;
-                }
-                _ => {}
-            }
-        }
-    });
-    
-    // Forward events to WebSocket
-    let event_task = tokio::spawn(async move {
-        while let Ok(event) = event_receiver.recv().await {
-            // Convert event to WsResponse
-            let response = match &event {
-                SystemEvent::ProgressUpdate { 
-                    operation_id, 
-                    operation_type, 
-                    percentage, 
-                    message, 
-                    eta_seconds 
-                } => {
-                    // Check if subscribed to this operation type
-                    if subscribed_operations.contains(operation_type) {
-                        Some(WsResponse::Progress {
-                            operation_id: *operation_id,
-                            operation_type: *operation_type,
-                            percentage: *percentage,
-                            message: message.clone(),
-                            eta_seconds: *eta_seconds,
-                            status: "in_progress".to_string(),
-                        })
-                    } else {
-                        None
+                    Some(Ok(Message::Ping(data))) => {
+                        let _ = sender.send(Message::Pong(data)).await;
                     }
-                }
-                SystemEvent::OperationComplete { 
-                    operation_id, 
-                    operation_type, 
-                    success, 
-                    message 
-                } => {
-                    if subscribed_operations.contains(operation_type) {
-                        Some(WsResponse::Complete {
-                            operation_id: *operation_id,
-                            operation_type: *operation_type,
-                            success: *success,
-                            message: message.clone(),
-                        })
-                    } else {
-                        None
+                    Some(Ok(Message::Close(_))) => {
+                        info!("WebSocket client disconnected");
+                        break;
                     }
-                }
-                _ => {
-                    // Forward all other events
-                    Some(WsResponse::Event { event: event.clone() })
-                }
-            };
-            
-            // Send response if we have one
-            if let Some(response) = response {
-                if let Ok(msg) = serde_json::to_string(&response) {
-                    if sender.send(Message::Text(msg)).await.is_err() {
-                        break; // Client disconnected
+                    Some(Err(_)) => {
+                        break; // Connection error
                     }
+                    None => {
+                        break; // Stream ended
+                    }
+                    _ => {}
                 }
             }
-        }
-    });
-    
-    // Wait for either task to complete
-    tokio::select! {
-        _ = incoming_task => {
-            debug!("Incoming message handler completed");
-        }
-        _ = event_task => {
-            debug!("Event forwarding task completed");
+            // Handle events from event bus
+            event = event_receiver.recv() => {
+                match event {
+                    Ok(event) => {
+                        // Convert event to WsResponse
+                        let response = match &event {
+                            SystemEvent::ProgressUpdate { 
+                                operation_id, 
+                                operation_type, 
+                                percentage, 
+                                message, 
+                                eta_seconds 
+                            } => {
+                                // Check if subscribed to this operation type
+                                if subscribed_operations.contains(operation_type) {
+                                    Some(WsResponse::Progress {
+                                        operation_id: *operation_id,
+                                        operation_type: *operation_type,
+                                        percentage: *percentage,
+                                        message: message.clone(),
+                                        eta_seconds: *eta_seconds,
+                                        status: "in_progress".to_string(),
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                            SystemEvent::OperationComplete { 
+                                operation_id, 
+                                operation_type, 
+                                success, 
+                                message 
+                            } => {
+                                if subscribed_operations.contains(operation_type) {
+                                    Some(WsResponse::Complete {
+                                        operation_id: *operation_id,
+                                        operation_type: *operation_type,
+                                        success: *success,
+                                        message: message.clone(),
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => {
+                                // Forward all other events
+                                Some(WsResponse::Event { event: event.clone() })
+                            }
+                        };
+                        
+                        // Send response if we have one
+                        if let Some(response) = response {
+                            if let Ok(msg) = serde_json::to_string(&response) {
+                                if sender.send(Message::Text(msg)).await.is_err() {
+                                    break; // Client disconnected
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        break; // Event bus error
+                    }
+                }
+            }
         }
     }
     

@@ -12,7 +12,7 @@ use axum::{
     http::StatusCode,
     middleware,
     response::Json,
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use radarr_core::{RadarrError, Result};
@@ -39,12 +39,13 @@ use tracing::{info, warn, debug, instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
-mod retry_config;
 mod services;
 mod websocket;
 mod api;
 
 use config::AppConfig;
+use services::RssServiceConfig;
+use config::retry_config as retry_config;
 use services::{AppServices, ServiceBuilder as AppServiceBuilder};
 
 /// Application state shared across all handlers
@@ -293,13 +294,28 @@ fn build_router(app_state: AppState) -> Router {
     // Get RSS service if available
     let rss_service = app_state.services.rss_service.clone();
     
+    // Create TMDB client if configured
+    let tmdb_client = if app_state.config.tmdb.enabled && !app_state.config.tmdb.api_key.is_empty() {
+        use radarr_infrastructure::{TmdbClient, CachedTmdbClient};
+        let tmdb = TmdbClient::new(app_state.config.tmdb.api_key.clone());
+        let cached_tmdb = CachedTmdbClient::new(tmdb);
+        Some(Arc::new(cached_tmdb))
+    } else {
+        warn!("TMDB client disabled or not configured - movie lookup will not work");
+        None
+    };
+
     // Create simple API state with database pool and indexer client
-    let simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
+    let mut simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
         .with_indexer_client(app_state.services.indexer_client.clone());
+        
+    // Add TMDB client if available
+    if let Some(tmdb) = tmdb_client {
+        simple_api_state = simple_api_state.with_tmdb_client(tmdb);
+    }
     
-    // Return the simple API router with additional endpoints
-    // The v3 API endpoints are already defined in create_simple_api_router
-    create_simple_api_router(simple_api_state)
+    // Build the base router with all endpoints
+    let mut router = create_simple_api_router(simple_api_state)
         // Add legacy health check endpoints
         .route("/health/detailed", get(detailed_health_check_simple))
         .route("/api/v1/system/status", get(system_status_simple))
@@ -325,11 +341,9 @@ fn build_router(app_state: AppState) -> Router {
         .layer(axum::Extension(retry_config));
     
     // Add RSS service if available
-    let router = if let Some(rss) = rss_service {
-        router.layer(axum::Extension(rss))
-    } else {
-        router
-    };
+    if let Some(rss) = rss_service {
+        router = router.layer(axum::Extension(rss));
+    }
     
     router
         
@@ -365,7 +379,7 @@ fn build_router(app_state: AppState) -> Router {
                     axum::http::header::CONTENT_LENGTH,
                 ])
         )
-        // Add other middleware layers
+        // Add other middleware layers (auth middleware now handles static files properly)
         .layer(
             ServiceBuilder::new()
                 .layer(TimeoutLayer::new(Duration::from_secs(30)))

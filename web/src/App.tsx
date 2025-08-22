@@ -2,13 +2,18 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { UIProvider } from './contexts/UIContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ConfirmDialogProvider } from './components/ui/ConfirmDialog';
+import { WebSocketProvider } from './contexts/WebSocketContext';
 import { Layout } from './components/layout/Layout';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { LoginPage } from './components/auth/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { Movies } from './pages/Movies';
 import { AddMovie } from './pages/AddMovie';
 import { Settings } from './pages/Settings';
+import { Queue } from './pages/Queue';
 
 function App() {
   return (
@@ -16,21 +21,33 @@ function App() {
       <UIProvider>
         <ToastProvider>
           <ConfirmDialogProvider>
-            <Router>
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="movies" element={<Movies />} />
-                  <Route path="add-movie" element={<AddMovie />} />
-                  <Route path="settings" element={<Settings />} />
-                  
-                  {/* Placeholder routes for future implementation */}
-                  <Route path="activity" element={<PlaceholderPage title="Activity" />} />
-                  <Route path="search" element={<PlaceholderPage title="Search" />} />
-                  <Route path="queue" element={<PlaceholderPage title="Queue" />} />
-                </Route>
-              </Routes>
-            </Router>
+            <AuthProvider>
+              <WebSocketProvider>
+                <Router>
+                  <Routes>
+                    {/* Public login route */}
+                    <Route path="/login" element={<LoginPage />} />
+                    
+                    {/* Protected routes */}
+                    <Route path="/" element={
+                      <ProtectedRoute>
+                        <Layout />
+                      </ProtectedRoute>
+                    }>
+                      <Route index element={<Dashboard />} />
+                      <Route path="movies" element={<Movies />} />
+                      <Route path="add-movie" element={<AddMovie />} />
+                      <Route path="settings" element={<Settings />} />
+                      <Route path="queue" element={<Queue />} />
+                      
+                      {/* Placeholder routes for future implementation */}
+                      <Route path="activity" element={<PlaceholderPage title="Activity" />} />
+                      <Route path="search" element={<PlaceholderPage title="Search" />} />
+                    </Route>
+                  </Routes>
+                </Router>
+              </WebSocketProvider>
+            </AuthProvider>
           </ConfirmDialogProvider>
         </ToastProvider>
       </UIProvider>

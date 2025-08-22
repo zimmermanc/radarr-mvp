@@ -111,8 +111,10 @@ impl RssService {
         loop {
             check_interval.tick().await;
             
-            let monitor = self.monitor.read().await;
-            let due_feeds = monitor.get_due_feeds();
+            let due_feeds = {
+                let monitor = self.monitor.read().await;
+                monitor.get_due_feeds().into_iter().cloned().collect::<Vec<_>>()
+            };
             
             for feed in due_feeds {
                 let feed_id = feed.id;
@@ -131,7 +133,7 @@ impl RssService {
                 };
                 
                 // Check the feed
-                match self.check_feed(feed).await {
+                match self.check_feed(&feed).await {
                     Ok(new_items) => {
                         info!("Found {} new items in feed {}", new_items, feed_name);
                         
@@ -154,9 +156,10 @@ impl RssService {
                 }
                 
                 // Mark feed as checked
-                drop(monitor);
-                let mut monitor = self.monitor.write().await;
-                monitor.mark_feed_checked(feed_id);
+                {
+                    let mut monitor = self.monitor.write().await;
+                    monitor.mark_feed_checked(feed_id);
+                }
             }
         }
     }

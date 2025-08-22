@@ -27,6 +27,8 @@ radarr-indexers = { path = "crates/indexers" }
 radarr-downloaders = { path = "crates/downloaders" }
 radarr-import = { path = "crates/import" }
 radarr-api = { path = "crates/api" }
+radarr-notifications = { path = "crates/notifications" }
+radarr-decision = { path = "crates/decision" }
 
 # External dependencies from workspace
 tokio = { workspace = true }
@@ -58,7 +60,7 @@ members = [
     "crates/indexers",
     "crates/decision",
     "crates/downloaders",
-    "crates/import",
+    "crates/import", "crates/notifications",
 ]
 resolver = "2"
 
@@ -69,7 +71,7 @@ futures = "0.3"
 async-trait = "0.1"
 
 # Web framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "ws"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace", "metrics", "timeout"] }
 

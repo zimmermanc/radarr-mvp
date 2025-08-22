@@ -1,0 +1,30 @@
+{
+  "project": "radarr-mvp",
+  "version": "3.0",
+  "generated": "20250818_121933",
+  "architecture_mode": {
+    "enabled": true,
+    "default_mode": "PLANNING",
+    "execution_triggers": ["g", "go"],
+    "min_options": 4,
+    "max_options": 8
+  },
+  "agents": {
+    "enabled": true,
+    "sources": [
+      "/home/thetu/.claude/agents/awesome",
+      "/home/thetu/.claude/agents/studio",
+      "/home/thetu/radarr-mvp/.agents/custom"
+    ],
+    "total_available": 100
+  },
+  "model_defaults": {
+    "planning": "opus-4.1",
+    "execution": "sonnet-4",
+    "simple": "haiku-3.5"
+  },
+  "workflows": {
+    "enabled": true,
+    "path": "/home/thetu/radarr-mvp/workflows"
+  }
+}

@@ -1,0 +1,153 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main]
+  schedule:
+    - cron: '0 0 * * *'  # Daily security scan
+
+jobs:
+  # Static Application Security Testing (SAST)
+  sast:
+    name: SAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Rust Security Audit
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Security Audit
+        run: |
+          cargo audit
+          cargo audit --json > audit-results.json
+      
+      # Semgrep for code patterns
+      - name: Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/rust
+            p/secrets
+            p/owasp-top-ten
+      
+      # CodeQL Analysis
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: rust
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        
+      # Upload results to GitHub Security
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: results.sarif
+
+  # Software Composition Analysis (SCA)
+  sca:
+    name: Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # cargo-deny for license and vulnerability checking
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+      
+      - name: Dependency Check
+        run: |
+          cargo deny check advisories
+          cargo deny check licenses
+          cargo deny check bans
+          cargo deny check sources
+      
+      # Snyk for comprehensive vulnerability database
+      - name: Snyk Security Scan
+        uses: snyk/actions/rust@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+      
+      # OWASP Dependency Check
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'radarr-rust'
+          path: '.'
+          format: 'ALL'
+      
+      # Trivy for container scanning if using Docker
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+  # Secret Scanning
+  secrets:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+      
+      # TruffleHog for secret detection
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+      
+      # Gitleaks
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # License Compliance
+  license:
+    name: License Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: License Finder
+        run: |
+          cargo install cargo-license
+          cargo license --json > licenses.json
+          
+      - name: FOSSA Analysis
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+
+  # SBOM Generation
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate SBOM
+        run: |
+          cargo install cargo-cyclonedx
+          cargo cyclonedx --format json
+          
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom
+          path: bom.json

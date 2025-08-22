@@ -1,0 +1,166 @@
+# Radarr Rust Development Plan
+
+## Project Status Overview
+- **Codebase Size**: ~8,200 lines across 39 Rust files
+- **Current State**: Core architecture implemented, compilation errors need fixing
+- **Architecture**: Hybrid SQLite + EdgeDB with advanced suggestion system
+
+## Immediate Priorities (Current Sprint)
+
+### 1. [IN PROGRESS] Fix Compilation Issues
+**Status**: 49 compilation errors identified and being resolved
+
+**Key Issues to Fix**:
+- EdgeDB client initialization (Client::new() API changes)
+- EdgeQL query parameter syntax ($0, $1, etc.)
+- Type mismatches (Uuid vs i32 in trending service)
+- Missing error type conversions (GraphError -> ImportError)
+- Unused import warnings (26 warnings)
+
+**Files Requiring Fixes**:
+- `src/graph/client.rs` - EdgeDB API updates (partially fixed)
+- `src/import/mod.rs` - Error type conversions (partially fixed)
+- `src/services/trending.rs` - Type mismatches (partially fixed)
+- Multiple files - Unused import cleanup needed
+
+### 2. [PENDING] EdgeDB Setup & Schema Migration
+**Dependencies**: Compilation fixes must complete first
+
+**Tasks**:
+- Install EdgeDB locally or configure connection
+- Apply schema from `dbschema/default.esdl` (347 lines)
+- Verify graph database connectivity
+- Test basic CRUD operations
+
+### 3. [PENDING] TMDB Bulk Import Pipeline
+**Critical for suggestion intelligence**
+
+**Implementation Points**:
+- Download daily exports from `http://files.tmdb.org/p/exports/`
+- Process ~900k movies, ~3M people, ~10k collections
+- Rate limiting (40 requests/10s)
+- Batch processing (1000 records)
+- Error handling and retry logic
+
+### 4. [PENDING] Suggestion Placeholder System
+**Core feature for Plex integration**
+
+**Components**:
+- Create empty `.mp4` files in suggestion directory
+- Generate proper directory structure: "Movie Title (Year)/"
+- Trigger Plex library scans
+- Manage placeholder lifecycle (creation, approval, cleanup)
+
+### 5. [PENDING] Leptos Web Interface
+**User-facing suggestion management**
+
+**Features Needed**:
+- Movie search and suggestion creation
+- Voting system for suggestions
+- Collection gap visualization
+- Auto-approval rule configuration
+
+## Technical Architecture Completed
+
+### ✅ Core Infrastructure
+- **HTTP Server**: Axum-based async server
+- **Database Layer**: SQLite with repository pattern
+- **Configuration**: YAML-based with environment variables
+- **Error Handling**: thiserror-based custom error types
+
+### ✅ External Integrations
+- **qBittorrent Client**: Full API implementation (484 lines)
+- **TMDB Service**: Complete metadata client (641 lines)
+- **Graph Database**: EdgeDB schema and client (604 lines)
+
+### ✅ Advanced Features (Skeleton)
+- **Franchise Intelligence**: Viewing orders, sequel prep alerts
+- **Contextual Suggestions**: Seasonal, weather, news-based
+- **Deep Analysis**: ML-powered theme/style matching
+- **Trending Aggregation**: Multi-source data pipeline
+
+## Next Phase Development
+
+### Short-term (Next 2 Sprints)
+1. **Streaming Integration**: JustWatch/ReelGood APIs for availability
+2. **Library Analysis**: Plex/Jellyfin taste profile building
+3. **Indexer Integration**: Prowlarr + direct private tracker APIs
+4. **Download Queue**: Management and monitoring
+5. **Import Lists**: Trakt, IMDb integration
+
+### Medium-term (3-6 Sprints)
+1. **ML Model Integration**: Local ONNX or API-based analysis
+2. **Multi-user Support**: Permissions and user management
+3. **Mobile API**: REST endpoints for mobile apps
+4. **Performance Optimization**: Caching, indexing, pagination
+
+## Development Guidelines
+
+### Code Quality Standards
+- **No unwrap() in production code** - Use proper error handling
+- **Comprehensive testing** - Unit + integration tests required
+- **Documentation** - Public APIs must have detailed docs
+- **Security** - Never expose secrets, use secure defaults
+
+### Branch Strategy
+- `feat-*` for features (e.g., `feat-suggestion-library`)
+- `fix-*` for bug fixes
+- `hotfix-*` for urgent production fixes
+- PRs < 300 lines, single responsibility
+
+### CI/CD Pipeline (Planned)
+- SAST scanning (cargo-audit, Semgrep, CodeQL)
+- SCA dependency checking (cargo-deny, Snyk)
+- Secret scanning (TruffleHog, Gitleaks)
+- Code quality (rustfmt, clippy strict)
+- Security Docker builds (distroless)
+
+## Suggested Development Flow
+
+### For Opus Handoff:
+1. **Complete compilation fixes** (highest priority)
+2. **Set up EdgeDB** and verify connectivity
+3. **Implement basic TMDB import** (start with small dataset)
+4. **Create minimal placeholder system** (MVP for Plex)
+5. **Build simple web interface** (basic suggestion CRUD)
+
+### Success Metrics:
+- ✅ Project compiles without errors
+- ✅ EdgeDB schema applied and functional
+- ✅ Can import sample movies from TMDB
+- ✅ Placeholders appear in Plex
+- ✅ Web interface allows suggestion management
+
+## Configuration Files Status
+
+### ✅ Completed
+- `Cargo.toml` - Dependencies configured
+- `dbschema/default.esdl` - Complete EdgeDB schema
+- `config-example.yaml` - Comprehensive configuration template
+- `CLAUDE.md` - Full project documentation (1,489 lines)
+
+### 🔄 Security Setup (Ready to Apply)
+- `.github/workflows/` - Complete CI/CD pipeline
+- `cargo-deny.toml` - License and vulnerability config
+- `.gitleaks.toml` - Secret scanning rules
+- `.pre-commit-config.yaml` - Quality hooks
+
+## Resources & Dependencies
+
+### External Services Required:
+- **TMDB API Key** - For metadata fetching
+- **EdgeDB Instance** - Graph database (local or cloud)
+- **Plex Server** - For placeholder testing
+- **Optional**: Trakt, JustWatch APIs for enhanced data
+
+### Development Environment:
+- Rust 1.75+ with cargo
+- EdgeDB CLI for migrations
+- Docker (optional, for containerized deployment)
+- Git with pre-commit hooks
+
+---
+
+**Current State**: Ready for systematic compilation fix and feature completion.
+**Next Developer**: Focus on compilation errors first, then EdgeDB setup.
+**Estimated Completion**: 2-3 sprints for MVP, 6+ sprints for full feature set.

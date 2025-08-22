@@ -1,0 +1,35 @@
+name: Code Quality
+
+on: [push, pull_request]
+
+jobs:
+  rust-checks:
+    name: Rust Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      # Format checking
+      - name: Check formatting
+        run: cargo fmt -- --check
+      
+      # Clippy linting with reasonable settings
+      - name: Clippy analysis
+        run: |
+          cargo clippy -- \
+            -D warnings \
+            -D clippy::all \
+            -D clippy::pedantic
+      
+      # Basic build check
+      - name: Build check
+        run: cargo check
+      
+      # Test suite
+      - name: Run tests
+        run: cargo test

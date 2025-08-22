@@ -1,0 +1,122 @@
+# Codacy configuration for Radarr Rust project
+# https://docs.codacy.com/repositories-configure/codacy-configuration-file/
+
+engines:
+  # Rust-specific tools
+  clippy:
+    enabled: true
+    # Use project-specific clippy configuration
+    
+  # Security analysis
+  bandit:
+    enabled: false  # Python-specific
+    
+  # General code quality
+  duplication:
+    enabled: true
+    # Exclude test files and generated code
+    exclude_paths:
+      - "src/bin/test-*.rs"
+      - "target/**"
+      - "**/*_test.rs"
+      - "**/*_tests.rs"
+    
+  # Comment quality
+  detekt:
+    enabled: false  # Kotlin-specific
+    
+  # Documentation
+  remark-lint:
+    enabled: true
+    # Lint markdown files for documentation quality
+
+exclude_paths:
+  # Build artifacts
+  - "target/**"
+  - "Cargo.lock"
+  
+  # Dependencies
+  - "**/.cargo/**"
+  
+  # Docker build context
+  - "docker/**"
+  - "Dockerfile*"
+  
+  # IDE and editor files
+  - "**/.idea/**"
+  - "**/.vscode/**"
+  - "**/*.swp"
+  - "**/*.swo"
+  - "**/*~"
+  
+  # Git files
+  - ".git/**"
+  - ".gitignore"
+  
+  # CI/CD files (but keep them in review)
+  - ".github/workflows/*.disabled"
+  
+  # Configuration examples (not production code)
+  - "config-example.yaml"
+  - ".env.example"
+  
+  # Generated EdgeDB files
+  - "dbschema/migrations/**/*.edgeql"
+
+# Coverage settings
+coverage:
+  # Exclude test files from coverage metrics
+  exclude_paths:
+    - "src/bin/test-*.rs"
+    - "**/*_test.rs"
+    - "**/*_tests.rs"
+    - "src/main.rs"  # Entry point, minimal logic
+
+# Duplication settings
+duplication:
+  # Configure duplication detection
+  exclude_paths:
+    - "src/models/**"  # Data models may have similar structures
+    - "src/config/**"  # Configuration structs may have similar patterns
+  
+# File size limits
+file_size:
+  # Flag files that are getting too large
+  max_file_size: 1000  # lines
+  exclude_paths:
+    - "src/services/tmdb.rs"  # Legacy service, expected to be large
+    - "src/graph/models.rs"   # Data models, expected to be comprehensive
+
+# Complexity settings
+complexity:
+  # Rust-specific complexity thresholds
+  max_complexity: 15
+  exclude_paths:
+    - "src/bin/**"  # Test binaries can be more complex
+    - "**/*_test.rs"
+
+# Language-specific settings
+languages:
+  rust:
+    # Rust-specific patterns and analysis
+    extensions:
+      - ".rs"
+    
+# Quality gates
+quality_gates:
+  # Minimum quality standards for merging
+  coverage:
+    # Target minimum coverage (start conservative)
+    threshold: 60
+    
+  duplication:
+    # Maximum allowed duplication
+    threshold: 10  # percent
+    
+  complexity:
+    # Maximum average complexity
+    threshold: 12
+    
+  issues:
+    # Maximum new issues per PR
+    threshold: 5

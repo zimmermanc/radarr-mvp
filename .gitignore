@@ -1,0 +1,56 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+test-results/
+coverage/
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
+
+# Credentials and sensitive data
+**/credentials/
+**/secrets/
+*.key
+*.pem
+*.cert
+
+# Analysis outputs (keep structure but not data)
+**/analysis_results/*.json
+**/hdbits_analysis_results/*.json
+scene_analysis_results.json
+real_scene_analysis.json
+
+# Session data
+session_cookie.txt
+cookies.txt

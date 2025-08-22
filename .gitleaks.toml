@@ -1,0 +1,24 @@
+# .gitleaks.toml
+title = "Radarr Rust Secret Scanning"
+
+[[rules]]
+id = "api-key"
+description = "API Key"
+regex = '''(?i)(api[_\-\s]?key|apikey)[\s]*[:=][\s]*['"]?([a-zA-Z0-9_\-]{20,})['"]?'''
+
+[[rules]]
+id = "jwt-secret"
+description = "JWT Secret"
+regex = '''(?i)(jwt[_\-\s]?secret|jwt_secret)[\s]*[:=][\s]*['"]?([a-zA-Z0-9_\-]{32,})['"]?'''
+
+[[rules]]
+id = "tmdb-key"
+description = "TMDB API Key"
+regex = '''(?i)(tmdb[_\-\s]?api[_\-\s]?key)[\s]*[:=][\s]*['"]?([a-zA-Z0-9]{32})['"]?'''
+
+[allowlist]
+paths = [
+    "config-example.yaml",
+    "**/*.md",
+    "**/tests/**",
+]

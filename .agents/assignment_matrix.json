@@ -1,0 +1,96 @@
+{
+  "movie-management": {
+    "coordinator": "orchestrator",
+    "phases": {
+      "research": {
+        "primary": [
+          "orchestrator",
+          "api-architect"
+        ],
+        "support": [
+          "trend-researcher",
+          "context-manager"
+        ],
+        "model": "opus-4.1"
+      },
+      "analysis": {
+        "primary": [
+          "database-architect",
+          "code-archaeologist"
+        ],
+        "support": [
+          "dependency-mapper",
+          "pattern-detector"
+        ],
+        "model": "opus-4.1"
+      },
+      "options": {
+        "primary": [
+          "solution-architect",
+          "decision-expert"
+        ],
+        "support": [
+          "trade-off-analyzer",
+          "complexity-estimator"
+        ],
+        "model": "opus-4.1"
+      },
+      "execution": {
+        "primary": [
+          "rust-specialist",
+          "backend-developer"
+        ],
+        "support": [
+          "test-engineer",
+          "code-reviewer"
+        ],
+        "model": "sonnet-4"
+      }
+    }
+  },
+  "release-parser": {
+    "coordinator": "parser-expert",
+    "phases": {
+      "research": {
+        "primary": [
+          "parser-expert",
+          "orchestrator"
+        ],
+        "support": [
+          "trend-researcher"
+        ],
+        "model": "opus-4.1"
+      },
+      "analysis": {
+        "primary": [
+          "parser-expert",
+          "pattern-detector"
+        ],
+        "support": [
+          "code-archaeologist"
+        ],
+        "model": "opus-4.1"
+      },
+      "options": {
+        "primary": [
+          "parser-expert",
+          "solution-architect"
+        ],
+        "support": [
+          "performance-engineer"
+        ],
+        "model": "opus-4.1"
+      },
+      "execution": {
+        "primary": [
+          "rust-specialist"
+        ],
+        "support": [
+          "test-engineer",
+          "benchmark-expert"
+        ],
+        "model": "sonnet-4"
+      }
+    }
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "version": "3.0",
+  "generated": "2025-08-18 01:02:04",
+  "total_agents": 8,
+  "categories": {
+    "core-development": [
+      "backend-developer",
+      "frontend-developer",
+      "database-architect",
+      "api-architect"
+    ],
+    "language-specialists": [
+      "rust-specialist"
+    ],
+    "quality-security": [
+      "test-engineer"
+    ],
+    "coordination": [
+      "orchestrator"
+    ],
+    "custom-media": [
+      "parser-expert"
+    ]
+  },
+  "agents": {
+    "backend-developer": {
+      "category": "core-development",
+      "specialization": "Server-side architecture",
+      "mode": "EXECUTION",
+      "model": "sonnet-4",
+      "auto_activates": [
+        "API endpoints",
+        "database operations",
+        "auth systems"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "MultiEdit",
+        "Bash",
+        "npm",
+        "pip"
+      ]
+    },
+    "frontend-developer": {
+      "category": "core-development",
+      "specialization": "UI/UX development",
+      "mode": "EXECUTION",
+      "model": "sonnet-4",
+      "auto_activates": [
+        "UI components",
+        "state management",
+        "styling"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "MultiEdit",
+        "npm",
+        "webpack"
+      ]
+    },
+    "rust-specialist": {
+      "category": "language-specialists",
+      "specialization": "Rust systems programming",
+      "mode": "EXECUTION",
+      "model": "sonnet-4",
+      "auto_activates": [
+        "Rust code",
+        "cargo operations",
+        "memory management"
+      ],
+      "tools": [
+        "cargo",
+        "rustc",
+        "clippy",
+        "rustfmt"
+      ]
+    },
+    "database-architect": {
+      "category": "core-development",
+      "specialization": "Database design",
+      "mode": "PLANNING",
+      "model": "opus-4.1",
+      "auto_activates": [
+        "Database design",
+        "schema",
+        "migrations"
+      ],
+      "tools": [
+        "Read",
+        "sql",
+        "migration tools"
+      ]
+    },
+    "api-architect": {
+      "category": "core-development",
+      "specialization": "API design",
+      "mode": "PLANNING",
+      "model": "opus-4.1",
+      "auto_activates": [
+        "API design",
+        "REST",
+        "GraphQL",
+        "WebSocket"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "openapi",
+        "graphql"
+      ]
+    },
+    "test-engineer": {
+      "category": "quality-security",
+      "specialization": "Testing strategies",
+      "mode": "EXECUTION",
+      "model": "sonnet-4",
+      "auto_activates": [
+        "Test creation",
+        "coverage",
+        "TDD"
+      ],
+      "tools": [
+        "jest",
+        "pytest",
+        "cypress"
+      ]
+    },
+    "orchestrator": {
+      "category": "coordination",
+      "specialization": "Multi-agent coordination",
+      "mode": "PLANNING",
+      "model": "opus-4.1",
+      "auto_activates": [
+        "Complex workflows",
+        "agent coordination"
+      ],
+      "tools": [
+        "agent communication protocols"
+      ]
+    },
+    "parser-expert": {
+      "category": "custom-media",
+      "specialization": "Media release parsing",
+      "mode": "PLANNING",
+      "model": "opus-4.1",
+      "auto_activates": [
+        "Parser design",
+        "regex patterns",
+        "quality detection"
+      ],
+      "tools": [
+        "regex tools",
+        "parser generators"
+      ]
+    }
+  }
+}

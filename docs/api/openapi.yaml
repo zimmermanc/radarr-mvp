@@ -1,0 +1,700 @@
+openapi: 3.0.3
+info:
+  title: Radarr Rust API
+  description: |
+    High-performance Rust rewrite of Radarr with GraphDB-powered intelligent movie suggestions.
+    
+    This API provides full compatibility with Radarr v3 endpoints while adding advanced 
+    features like graph-based movie recommendations, contextual suggestions, and 
+    intelligent collection gap detection.
+  version: 0.1.0
+  contact:
+    name: Radarr Rust Project
+    url: https://github.com/zimmermanc/radarr-rust
+  license:
+    name: GPL-3.0
+    url: https://opensource.org/licenses/GPL-3.0
+
+servers:
+  - url: http://localhost:7878
+    description: Development server
+  - url: https://api.radarr-rust.dev
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+paths:
+  # System Endpoints
+  /ping:
+    get:
+      summary: Health check
+      description: Simple health check endpoint that returns "pong"
+      tags: [System]
+      security: []  # No auth required
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+
+  /:
+    get:
+      summary: API information
+      description: Returns API version, features, and endpoint discovery
+      tags: [System]
+      security: []  # No auth required
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiInfo'
+
+  /api/v3/system/status:
+    get:
+      summary: System status
+      description: Get system status and health information
+      tags: [System]
+      security: []  # No auth required
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  # Movie Endpoints
+  /api/v3/movie:
+    get:
+      summary: List movies
+      description: Get paginated list of movies in library
+      tags: [Movies]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: sortKey
+          in: query
+          schema:
+            type: string
+            enum: [title, year, added, status]
+        - name: sortDirection
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: monitored
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Paginated list of movies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MoviePagedResponse'
+
+    post:
+      summary: Add movie
+      description: Add a new movie to the library
+      tags: [Movies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMovieRequest'
+      responses:
+        '201':
+          description: Movie added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '409':
+          description: Movie already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v3/movie/{id}:
+    get:
+      summary: Get movie
+      description: Get specific movie by database ID
+      tags: [Movies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Movie details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '404':
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update movie
+      description: Update an existing movie
+      tags: [Movies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMovieRequest'
+      responses:
+        '200':
+          description: Movie updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+
+    delete:
+      summary: Delete movie
+      description: Remove movie from library
+      tags: [Movies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Movie deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/v3/movie/search:
+    get:
+      summary: Search movies
+      description: Search for movies using TMDB
+      tags: [Movies]
+      parameters:
+        - name: term
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - name: year
+          in: query
+          schema:
+            type: integer
+            minimum: 1800
+            maximum: 2030
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MovieSearchResult'
+
+  # Queue Endpoints
+  /api/v3/queue:
+    get:
+      summary: Get download queue
+      description: Get paginated list of download queue items
+      tags: [Queue]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Download queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuePagedResponse'
+
+  /api/v3/queue/status:
+    get:
+      summary: Queue statistics
+      description: Get download queue statistics and health
+      tags: [Queue]
+      responses:
+        '200':
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStats'
+
+  # Suggestion Endpoints
+  /api/v3/suggestions:
+    get:
+      summary: List suggestions
+      description: Get list of movie suggestions with filtering
+      tags: [Suggestions]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected, downloaded, placeholder]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: minScore
+          in: query
+          schema:
+            type: number
+            minimum: 0
+            maximum: 10
+      responses:
+        '200':
+          description: List of suggestions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Suggestion'
+
+    post:
+      summary: Create suggestion
+      description: Create a new movie suggestion
+      tags: [Suggestions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSuggestionRequest'
+      responses:
+        '201':
+          description: Suggestion created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Suggestion'
+
+  /api/v3/suggestions/gaps:
+    get:
+      summary: Collection gaps
+      description: Find missing movies from owned collections
+      tags: [Suggestions]
+      responses:
+        '200':
+          description: Collection gaps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CollectionGap'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Radarr API Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token authentication
+
+  schemas:
+    # Response Types
+    ApiInfo:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Radarr Rust API
+        version:
+          type: string
+          example: 0.1.0
+        description:
+          type: string
+        api_version:
+          type: string
+          example: v3
+        features:
+          type: array
+          items:
+            type: string
+        endpoints:
+          type: object
+
+    SystemStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        database_connected:
+          type: boolean
+        graph_connected:
+          type: boolean
+        version:
+          type: string
+
+    Movie:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        originalTitle:
+          type: string
+        year:
+          type: integer
+        tmdbId:
+          type: integer
+        imdbId:
+          type: string
+          nullable: true
+        status:
+          type: string
+        monitored:
+          type: boolean
+        downloaded:
+          type: boolean
+        hasFile:
+          type: boolean
+        path:
+          type: string
+        qualityProfileId:
+          type: integer
+        minimumAvailability:
+          type: string
+        runtime:
+          type: integer
+        overview:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        ratings:
+          $ref: '#/components/schemas/Ratings'
+
+    Ratings:
+      type: object
+      properties:
+        imdb:
+          $ref: '#/components/schemas/Rating'
+        tmdb:
+          $ref: '#/components/schemas/Rating'
+        rottenTomatoes:
+          $ref: '#/components/schemas/Rating'
+
+    Rating:
+      type: object
+      properties:
+        value:
+          type: number
+          format: float
+        votes:
+          type: integer
+          nullable: true
+
+    # Request Types
+    AddMovieRequest:
+      type: object
+      required: [tmdbId, title, year, rootFolderPath, qualityProfileId, monitored, minimumAvailability]
+      properties:
+        tmdbId:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+        titleSlug:
+          type: string
+        year:
+          type: integer
+          minimum: 1800
+          maximum: 2030
+        rootFolderPath:
+          type: string
+          minLength: 1
+        qualityProfileId:
+          type: integer
+          minimum: 1
+        monitored:
+          type: boolean
+        minimumAvailability:
+          type: string
+          enum: [announced, in_cinemas, released]
+        tags:
+          type: array
+          items:
+            type: integer
+
+    CreateSuggestionRequest:
+      type: object
+      required: [tmdb_id, title, year, suggested_by]
+      properties:
+        tmdb_id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+          minimum: 1800
+          maximum: 2030
+        suggested_by:
+          type: string
+          minLength: 1
+        reasoning:
+          type: string
+
+    # Pagination
+    MoviePagedResponse:
+      allOf:
+        - $ref: '#/components/schemas/PagedResponse'
+        - type: object
+          properties:
+            records:
+              type: array
+              items:
+                $ref: '#/components/schemas/Movie'
+
+    QueuePagedResponse:
+      allOf:
+        - $ref: '#/components/schemas/PagedResponse'
+        - type: object
+          properties:
+            records:
+              type: array
+              items:
+                $ref: '#/components/schemas/QueueItem'
+
+    PagedResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalRecords:
+          type: integer
+          minimum: 0
+
+    # Error Responses
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    # Additional Types (simplified for brevity)
+    QueueItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        movieId:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+
+    QueueStats:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        count:
+          type: integer
+        errors:
+          type: boolean
+        warnings:
+          type: boolean
+
+    Suggestion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tmdb_id:
+          type: integer
+        title:
+          type: string
+        year:
+          type: integer
+        status:
+          type: string
+          enum: [pending, approved, rejected, downloaded, placeholder]
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+        reasoning:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CollectionGap:
+      type: object
+      properties:
+        collection_name:
+          type: string
+        collection_tmdb_id:
+          type: integer
+        total_movies:
+          type: integer
+        owned_movies:
+          type: integer
+        completion_percentage:
+          type: number
+          format: float
+        missing_movies:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissingMovie'
+
+    MissingMovie:
+      type: object
+      properties:
+        tmdb_id:
+          type: integer
+        title:
+          type: string
+        year:
+          type: integer
+        suggestion_score:
+          type: number
+          format: float
+
+    MovieSearchResult:
+      type: object
+      properties:
+        tmdbId:
+          type: integer
+        title:
+          type: string
+        titleSlug:
+          type: string
+        year:
+          type: integer
+        overview:
+          type: string
+        remotePoster:
+          type: string
+          nullable: true
+        inLibrary:
+          type: boolean
+        status:
+          type: string
+
+tags:
+  - name: System
+    description: System information and health endpoints
+  - name: Movies
+    description: Movie library management
+  - name: Queue
+    description: Download queue management
+  - name: Suggestions
+    description: Intelligent movie suggestions
+
+externalDocs:
+  description: Radarr Rust Documentation
+  url: https://docs.radarr-rust.dev

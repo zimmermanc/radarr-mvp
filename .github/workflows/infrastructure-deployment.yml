@@ -1,0 +1,482 @@
+name: Infrastructure Deployment
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/**'
+      - 'k8s/**'
+      - '.github/workflows/infrastructure-deployment.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/**'
+      - 'k8s/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      force_deploy:
+        description: 'Force deployment without approval'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  TERRAFORM_VERSION: '1.6.0'
+  GCLOUD_VERSION: '455.0.0'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'staging' || 'dev') }}
+    
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    
+    outputs:
+      plan-changed: ${{ steps.plan.outputs.changed }}
+      environment: ${{ matrix.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        terraform_wrapper: false
+    
+    - name: Setup Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        version: ${{ env.GCLOUD_VERSION }}
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+    
+    - name: Set environment variables
+      run: |
+        case "${{ matrix.environment }}" in
+          "dev")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_DEV }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+          "staging")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_STAGING }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+          "prod")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_PROD }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+        esac
+    
+    - name: Cache Terraform
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.terraform.d/plugin-cache
+          infrastructure/terraform/.terraform
+        key: terraform-${{ matrix.environment }}-${{ hashFiles('infrastructure/terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          terraform-${{ matrix.environment }}-
+    
+    - name: Terraform Init
+      working-directory: infrastructure/terraform
+      run: |
+        terraform init \
+          -backend-config="bucket=radarr-mvp-terraform-state" \
+          -backend-config="prefix=environments/${{ matrix.environment }}"
+    
+    - name: Terraform Workspace
+      working-directory: infrastructure/terraform
+      run: |
+        terraform workspace select ${{ matrix.environment }} || terraform workspace new ${{ matrix.environment }}
+    
+    - name: Terraform Format Check
+      working-directory: infrastructure/terraform
+      run: terraform fmt -check -recursive
+    
+    - name: Terraform Validate
+      working-directory: infrastructure/terraform
+      run: terraform validate
+    
+    - name: Terraform Plan
+      id: plan
+      working-directory: infrastructure/terraform
+      run: |
+        set -e
+        
+        # Run terraform plan
+        terraform plan \
+          -var-file="environments/${{ matrix.environment }}.tfvars" \
+          -var="project_id=${{ env.PROJECT_ID }}" \
+          -var="region=${{ env.REGION }}" \
+          -out="tfplan-${{ matrix.environment }}" \
+          -detailed-exitcode
+        
+        # Check if plan has changes
+        if [ $? -eq 2 ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Save Terraform Plan
+      uses: actions/upload-artifact@v3
+      with:
+        name: tfplan-${{ matrix.environment }}
+        path: infrastructure/terraform/tfplan-${{ matrix.environment }}
+        retention-days: 5
+    
+    - name: Comment PR with Plan
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          
+          // Get terraform plan output
+          const planOutput = execSync('cd infrastructure/terraform && terraform show -no-color tfplan-${{ matrix.environment }}', { encoding: 'utf8' });
+          
+          const comment = `
+          ## Terraform Plan Results (${{ matrix.environment }})
+          
+          <details>
+          <summary>📋 Plan Output</summary>
+          
+          \`\`\`
+          ${planOutput.substring(0, 60000)}
+          \`\`\`
+          
+          ${planOutput.length > 60000 ? '*(Output truncated due to length)*' : ''}
+          </details>
+          
+          **Plan Changed:** ${{ steps.plan.outputs.changed }}
+          **Environment:** ${{ matrix.environment }}
+          **Commit:** ${{ github.sha }}
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [terraform-plan]
+    if: needs.terraform-plan.outputs.plan-changed == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: infrastructure/terraform
+        framework: terraform
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+        quiet: true
+    
+    - name: Upload Checkov Results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: checkov-results.sarif
+    
+    - name: Run TFSec
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: infrastructure/terraform
+        format: sarif
+        sarif_file: tfsec-results.sarif
+    
+    - name: Upload TFSec Results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: tfsec-results.sarif
+
+  approve-production:
+    name: Approve Production Deployment
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, security-scan]
+    if: |
+      needs.terraform-plan.outputs.environment == 'prod' && 
+      needs.terraform-plan.outputs.plan-changed == 'true' &&
+      github.event.inputs.force_deploy != 'true'
+    
+    environment:
+      name: production-approval
+    
+    steps:
+    - name: Request Production Approval
+      run: |
+        echo "Production deployment requires manual approval"
+        echo "Environment: ${{ needs.terraform-plan.outputs.environment }}"
+        echo "Changes detected: ${{ needs.terraform-plan.outputs.plan-changed }}"
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, security-scan]
+    if: |
+      needs.terraform-plan.outputs.plan-changed == 'true' &&
+      (needs.terraform-plan.outputs.environment != 'prod' || 
+       github.event.inputs.force_deploy == 'true' || 
+       success('approve-production'))
+    
+    environment:
+      name: ${{ needs.terraform-plan.outputs.environment }}
+    
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        terraform_wrapper: false
+    
+    - name: Setup Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        version: ${{ env.GCLOUD_VERSION }}
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+    
+    - name: Set environment variables
+      run: |
+        case "${{ needs.terraform-plan.outputs.environment }}" in
+          "dev")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_DEV }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+          "staging")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_STAGING }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+          "prod")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_PROD }}" >> $GITHUB_ENV
+            echo "REGION=us-central1" >> $GITHUB_ENV
+            ;;
+        esac
+    
+    - name: Download Terraform Plan
+      uses: actions/download-artifact@v3
+      with:
+        name: tfplan-${{ needs.terraform-plan.outputs.environment }}
+        path: infrastructure/terraform/
+    
+    - name: Terraform Init
+      working-directory: infrastructure/terraform
+      run: |
+        terraform init \
+          -backend-config="bucket=radarr-mvp-terraform-state" \
+          -backend-config="prefix=environments/${{ needs.terraform-plan.outputs.environment }}"
+    
+    - name: Terraform Workspace
+      working-directory: infrastructure/terraform
+      run: |
+        terraform workspace select ${{ needs.terraform-plan.outputs.environment }}
+    
+    - name: Terraform Apply
+      working-directory: infrastructure/terraform
+      run: |
+        terraform apply -auto-approve tfplan-${{ needs.terraform-plan.outputs.environment }}
+    
+    - name: Save Terraform Outputs
+      working-directory: infrastructure/terraform
+      run: |
+        terraform output -json > terraform-outputs-${{ needs.terraform-plan.outputs.environment }}.json
+    
+    - name: Upload Terraform Outputs
+      uses: actions/upload-artifact@v3
+      with:
+        name: terraform-outputs-${{ needs.terraform-plan.outputs.environment }}
+        path: infrastructure/terraform/terraform-outputs-${{ needs.terraform-plan.outputs.environment }}.json
+
+  kubernetes-deploy:
+    name: Kubernetes Deployment
+    runs-on: ubuntu-latest
+    needs: [terraform-apply, terraform-plan]
+    if: success('terraform-apply')
+    
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        version: ${{ env.GCLOUD_VERSION }}
+        components: 'gke-gcloud-auth-plugin'
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+    
+    - name: Set environment variables
+      run: |
+        case "${{ needs.terraform-plan.outputs.environment }}" in
+          "dev")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_DEV }}" >> $GITHUB_ENV
+            ;;
+          "staging")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_STAGING }}" >> $GITHUB_ENV
+            ;;
+          "prod")
+            echo "PROJECT_ID=${{ secrets.GCP_PROJECT_ID_PROD }}" >> $GITHUB_ENV
+            ;;
+        esac
+    
+    - name: Download Terraform Outputs
+      uses: actions/download-artifact@v3
+      with:
+        name: terraform-outputs-${{ needs.terraform-plan.outputs.environment }}
+        path: ./
+    
+    - name: Get Cluster Credentials
+      run: |
+        CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform-outputs-${{ needs.terraform-plan.outputs.environment }}.json)
+        CLUSTER_LOCATION=$(jq -r '.cluster_location.value' terraform-outputs-${{ needs.terraform-plan.outputs.environment }}.json)
+        
+        gcloud container clusters get-credentials "$CLUSTER_NAME" \
+          --location "$CLUSTER_LOCATION" \
+          --project "$PROJECT_ID"
+    
+    - name: Setup Kustomize
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
+    
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.13.0'
+    
+    - name: Install External Secrets Operator
+      run: |
+        if ! kubectl get crd externalsecrets.external-secrets.io &> /dev/null; then
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm repo update
+          helm upgrade --install external-secrets external-secrets/external-secrets \
+            --namespace external-secrets-system \
+            --create-namespace \
+            --set installCRDs=true \
+            --wait
+        fi
+    
+    - name: Deploy Application
+      working-directory: k8s/overlays/${{ needs.terraform-plan.outputs.environment }}
+      run: |
+        # Update image tag for staging/prod
+        if [ "${{ needs.terraform-plan.outputs.environment }}" != "dev" ]; then
+          kustomize edit set image radarr-mvp:${{ github.sha }}
+        fi
+        
+        # Apply manifests
+        kustomize build . | kubectl apply -f -
+    
+    - name: Wait for Deployment
+      run: |
+        kubectl wait --for=condition=available deployment/radarr-mvp \
+          --namespace=radarr-mvp \
+          --timeout=600s
+    
+    - name: Validate Deployment
+      run: |
+        # Check pod status
+        kubectl get pods -n radarr-mvp
+        
+        # Check service status
+        kubectl get svc -n radarr-mvp
+        
+        # Check ingress status
+        kubectl get ingress -n radarr-mvp
+
+  deployment-notification:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [kubernetes-deploy, terraform-plan]
+    if: always()
+    
+    steps:
+    - name: Notify Slack
+      if: needs.terraform-plan.outputs.environment == 'prod'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: |
+          Production deployment ${{ job.status }}!
+          Environment: ${{ needs.terraform-plan.outputs.environment }}
+          Commit: ${{ github.sha }}
+          Actor: ${{ github.actor }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  cleanup:
+    name: Cleanup Artifacts
+    runs-on: ubuntu-latest
+    needs: [kubernetes-deploy, terraform-plan]
+    if: always()
+    
+    steps:
+    - name: Delete Terraform Plan Artifacts
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.runId,
+          });
+          
+          for (const artifact of artifacts.data.artifacts) {
+            if (artifact.name.startsWith('tfplan-')) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+          }

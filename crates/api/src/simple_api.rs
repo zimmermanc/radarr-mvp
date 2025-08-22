@@ -22,6 +22,8 @@ use serde_json::Value;
 use uuid::Uuid;
 use chrono;
 use tracing::{info, warn, error};
+use radarr_core::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState};
+use std::time::Duration;
 
 /// Simple application state for MVP
 #[derive(Clone)]
@@ -30,16 +32,55 @@ pub struct SimpleApiState {
     pub indexer_client: Option<Arc<dyn IndexerClient + Send + Sync>>,
     pub movie_repo: Arc<PostgresMovieRepository>,
     pub tmdb_client: Option<Arc<CachedTmdbClient>>,
+    // Circuit breakers for testing
+    pub tmdb_circuit_breaker: Arc<CircuitBreaker>,
+    pub hdbits_circuit_breaker: Arc<CircuitBreaker>,
+    pub qbittorrent_circuit_breaker: Arc<CircuitBreaker>,
+    pub database_circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl SimpleApiState {
     pub fn new(database_pool: DatabasePool) -> Self {
         let movie_repo = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
+        
+        // Create circuit breakers for testing
+        let tmdb_cb = Arc::new(CircuitBreaker::new(
+            CircuitBreakerConfig::new("TMDB")
+                .with_failure_threshold(3)
+                .with_timeout(Duration::from_secs(30))
+                .with_request_timeout(Duration::from_secs(10))
+        ));
+        
+        let hdbits_cb = Arc::new(CircuitBreaker::new(
+            CircuitBreakerConfig::new("HDBits")
+                .with_failure_threshold(5)
+                .with_timeout(Duration::from_secs(60))
+                .with_request_timeout(Duration::from_secs(15))
+        ));
+        
+        let qbittorrent_cb = Arc::new(CircuitBreaker::new(
+            CircuitBreakerConfig::new("qBittorrent")
+                .with_failure_threshold(4)
+                .with_timeout(Duration::from_secs(45))
+                .with_request_timeout(Duration::from_secs(8))
+        ));
+        
+        let database_cb = Arc::new(CircuitBreaker::new(
+            CircuitBreakerConfig::new("PostgreSQL")
+                .with_failure_threshold(2)
+                .with_timeout(Duration::from_secs(15))
+                .with_request_timeout(Duration::from_secs(5))
+        ));
+        
         Self { 
             database_pool,
             indexer_client: None,
             movie_repo,
             tmdb_client: None,
+            tmdb_circuit_breaker: tmdb_cb,
+            hdbits_circuit_breaker: hdbits_cb,
+            qbittorrent_circuit_breaker: qbittorrent_cb,
+            database_circuit_breaker: database_cb,
         }
     }
     
@@ -185,6 +226,11 @@ pub fn create_simple_api_router(state: SimpleApiState) -> Router {
         
         // Protected import endpoint (real import pipeline)
         .route("/v3/command/import", post(import_download))
+        
+        // Circuit breaker test endpoints
+        .route("/v3/test/circuit-breaker/status", get(circuit_breaker_status))
+        .route("/v3/test/circuit-breaker/simulate-failure/:service", post(simulate_service_failure))
+        .route("/v3/test/circuit-breaker/reset/:service", post(reset_circuit_breaker))
         
         .with_state(state.clone());
     
@@ -672,6 +718,224 @@ async fn import_download(
     
     info!("Import simulation completed");
     Ok(Json(mock_response))
+}
+
+/// Circuit breaker status endpoint - shows all circuit breaker states
+async fn circuit_breaker_status(
+    State(state): State<SimpleApiState>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    info!("Getting circuit breaker status for all services");
+    
+    let mut services = Vec::new();
+    
+    // TMDB circuit breaker
+    let tmdb_metrics = state.tmdb_circuit_breaker.get_metrics().await;
+    services.push(serde_json::json!({
+        "service": "TMDB",
+        "state": tmdb_metrics.state.as_str(),
+        "total_requests": tmdb_metrics.total_requests,
+        "successful_requests": tmdb_metrics.successful_requests,
+        "failed_requests": tmdb_metrics.failed_requests,
+        "rejected_requests": tmdb_metrics.rejected_requests,
+        "consecutive_failures": tmdb_metrics.consecutive_failures,
+        "consecutive_successes": tmdb_metrics.consecutive_successes,
+        "last_failure_time": tmdb_metrics.last_failure_time.map(|t| t.elapsed().as_secs()),
+        "last_success_time": tmdb_metrics.last_success_time.map(|t| t.elapsed().as_secs()),
+        "healthy": state.tmdb_circuit_breaker.is_healthy().await
+    }));
+    
+    // HDBits circuit breaker
+    let hdbits_metrics = state.hdbits_circuit_breaker.get_metrics().await;
+    services.push(serde_json::json!({
+        "service": "HDBits", 
+        "state": hdbits_metrics.state.as_str(),
+        "total_requests": hdbits_metrics.total_requests,
+        "successful_requests": hdbits_metrics.successful_requests,
+        "failed_requests": hdbits_metrics.failed_requests,
+        "rejected_requests": hdbits_metrics.rejected_requests,
+        "consecutive_failures": hdbits_metrics.consecutive_failures,
+        "consecutive_successes": hdbits_metrics.consecutive_successes,
+        "last_failure_time": hdbits_metrics.last_failure_time.map(|t| t.elapsed().as_secs()),
+        "last_success_time": hdbits_metrics.last_success_time.map(|t| t.elapsed().as_secs()),
+        "healthy": state.hdbits_circuit_breaker.is_healthy().await
+    }));
+    
+    // qBittorrent circuit breaker
+    let qbit_metrics = state.qbittorrent_circuit_breaker.get_metrics().await;
+    services.push(serde_json::json!({
+        "service": "qBittorrent",
+        "state": qbit_metrics.state.as_str(), 
+        "total_requests": qbit_metrics.total_requests,
+        "successful_requests": qbit_metrics.successful_requests,
+        "failed_requests": qbit_metrics.failed_requests,
+        "rejected_requests": qbit_metrics.rejected_requests,
+        "consecutive_failures": qbit_metrics.consecutive_failures,
+        "consecutive_successes": qbit_metrics.consecutive_successes,
+        "last_failure_time": qbit_metrics.last_failure_time.map(|t| t.elapsed().as_secs()),
+        "last_success_time": qbit_metrics.last_success_time.map(|t| t.elapsed().as_secs()),
+        "healthy": state.qbittorrent_circuit_breaker.is_healthy().await
+    }));
+    
+    // Database circuit breaker
+    let db_metrics = state.database_circuit_breaker.get_metrics().await;
+    services.push(serde_json::json!({
+        "service": "PostgreSQL",
+        "state": db_metrics.state.as_str(),
+        "total_requests": db_metrics.total_requests,
+        "successful_requests": db_metrics.successful_requests,
+        "failed_requests": db_metrics.failed_requests,
+        "rejected_requests": db_metrics.rejected_requests,
+        "consecutive_failures": db_metrics.consecutive_failures,
+        "consecutive_successes": db_metrics.consecutive_successes,
+        "last_failure_time": db_metrics.last_failure_time.map(|t| t.elapsed().as_secs()),
+        "last_success_time": db_metrics.last_success_time.map(|t| t.elapsed().as_secs()),
+        "healthy": state.database_circuit_breaker.is_healthy().await
+    }));
+    
+    let response = serde_json::json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "services": services,
+        "overall_healthy": services.iter().all(|s| s["healthy"].as_bool().unwrap_or(false))
+    });
+    
+    info!("Returned circuit breaker status for {} services", services.len());
+    Ok(Json(response))
+}
+
+/// Simulate service failure endpoint - forces a service to fail multiple times
+async fn simulate_service_failure(
+    State(state): State<SimpleApiState>,
+    Path(service): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    info!("Simulating failures for service: {}", service);
+    
+    let circuit_breaker = match service.to_lowercase().as_str() {
+        "tmdb" => &state.tmdb_circuit_breaker,
+        "hdbits" => &state.hdbits_circuit_breaker,
+        "qbittorrent" | "qbit" => &state.qbittorrent_circuit_breaker,
+        "database" | "postgresql" | "postgres" => &state.database_circuit_breaker,
+        _ => {
+            let error_response = serde_json::json!({
+                "error": "Invalid service name",
+                "message": format!("Service '{}' not found. Valid services: tmdb, hdbits, qbittorrent, database", service),
+                "valid_services": ["tmdb", "hdbits", "qbittorrent", "database"]
+            });
+            return Err((StatusCode::BAD_REQUEST, Json(error_response)));
+        }
+    };
+    
+    // Get the failure threshold for this service
+    let metrics_before = circuit_breaker.get_metrics().await;
+    let failures_needed = if metrics_before.state == CircuitBreakerState::Open {
+        0 // Already open
+    } else {
+        // Calculate how many more failures we need to trigger the circuit breaker
+        let current_failures = metrics_before.consecutive_failures;
+        let threshold = match service.to_lowercase().as_str() {
+            "tmdb" => 3,
+            "hdbits" => 5, 
+            "qbittorrent" | "qbit" => 4,
+            "database" | "postgresql" | "postgres" => 2,
+            _ => 3, // Default
+        };
+        
+        if current_failures >= threshold {
+            0 // Already at threshold
+        } else {
+            threshold - current_failures
+        }
+    };
+    
+    // Simulate the required number of failures
+    let mut simulated_failures = 0;
+    for i in 0..failures_needed {
+        let result = circuit_breaker.call(async {
+            Err::<(), RadarrError>(RadarrError::ExternalServiceError {
+                service: service.clone(),
+                error: format!("Simulated failure #{}", i + 1),
+            })
+        }).await;
+        
+        if result.is_err() {
+            simulated_failures += 1;
+        }
+        
+        // Small delay between failures to make it realistic
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    
+    let metrics_after = circuit_breaker.get_metrics().await;
+    
+    let response = serde_json::json!({
+        "service": service,
+        "simulated_failures": simulated_failures,
+        "state_before": metrics_before.state.as_str(),
+        "state_after": metrics_after.state.as_str(),
+        "consecutive_failures_before": metrics_before.consecutive_failures,
+        "consecutive_failures_after": metrics_after.consecutive_failures,
+        "circuit_opened": metrics_after.state == CircuitBreakerState::Open && metrics_before.state != CircuitBreakerState::Open,
+        "message": if metrics_after.state == CircuitBreakerState::Open {
+            format!("Circuit breaker for {} is now OPEN after {} simulated failures", service, simulated_failures)
+        } else {
+            format!("Simulated {} failures for {}, circuit breaker state: {}", simulated_failures, service, metrics_after.state.as_str())
+        }
+    });
+    
+    info!("Simulated {} failures for {}, circuit state: {} -> {}", 
+          simulated_failures, service, metrics_before.state.as_str(), metrics_after.state.as_str());
+    
+    Ok(Json(response))
+}
+
+/// Reset circuit breaker endpoint - manually resets a circuit breaker to closed state
+async fn reset_circuit_breaker(
+    State(state): State<SimpleApiState>,
+    Path(service): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    info!("Resetting circuit breaker for service: {}", service);
+    
+    let circuit_breaker = match service.to_lowercase().as_str() {
+        "tmdb" => &state.tmdb_circuit_breaker,
+        "hdbits" => &state.hdbits_circuit_breaker,
+        "qbittorrent" | "qbit" => &state.qbittorrent_circuit_breaker,
+        "database" | "postgresql" | "postgres" => &state.database_circuit_breaker,
+        _ => {
+            let error_response = serde_json::json!({
+                "error": "Invalid service name",
+                "message": format!("Service '{}' not found. Valid services: tmdb, hdbits, qbittorrent, database", service),
+                "valid_services": ["tmdb", "hdbits", "qbittorrent", "database"]
+            });
+            return Err((StatusCode::BAD_REQUEST, Json(error_response)));
+        }
+    };
+    
+    let state_before = circuit_breaker.get_state().await;
+    
+    // Force close the circuit breaker and reset metrics
+    circuit_breaker.force_close().await;
+    circuit_breaker.reset_metrics().await;
+    
+    let state_after = circuit_breaker.get_state().await;
+    let metrics_after = circuit_breaker.get_metrics().await;
+    
+    let response = serde_json::json!({
+        "service": service,
+        "state_before": state_before.as_str(),
+        "state_after": state_after.as_str(),
+        "metrics_reset": true,
+        "current_metrics": {
+            "total_requests": metrics_after.total_requests,
+            "successful_requests": metrics_after.successful_requests,
+            "failed_requests": metrics_after.failed_requests,
+            "rejected_requests": metrics_after.rejected_requests,
+            "consecutive_failures": metrics_after.consecutive_failures
+        },
+        "message": format!("Circuit breaker for {} has been reset to CLOSED state with cleared metrics", service)
+    });
+    
+    info!("Reset circuit breaker for {}: {} -> {}", service, state_before.as_str(), state_after.as_str());
+    
+    Ok(Json(response))
 }
 
 /// Perform search with exponential backoff retry logic

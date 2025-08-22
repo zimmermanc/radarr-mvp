@@ -6,7 +6,7 @@
 use super::{models::*, parser::parse_quality, HDBitsConfig, RateLimiter, map_hdbits_error};
 use crate::{IndexerClient, models::*};
 use async_trait::async_trait;
-use radarr_core::{RadarrError, models::release::{Release, ReleaseProtocol}};
+use radarr_core::{RadarrError, circuit_breaker::{CircuitBreaker, CircuitBreakerConfig}, models::release::{Release, ReleaseProtocol}};
 use reqwest::{Client, ClientBuilder, cookie::Jar};
 use scraper::{Html, Selector};
 use std::sync::Arc;
@@ -24,6 +24,7 @@ pub struct HDBitsClient {
     client: Client,
     rate_limiter: RateLimiter,
     base_url: String,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl HDBitsClient {
@@ -46,11 +47,19 @@ impl HDBitsClient {
         
         let rate_limiter = RateLimiter::new(config.rate_limit_per_hour);
         
+        // Configure circuit breaker for HDBits with appropriate settings
+        let circuit_breaker_config = CircuitBreakerConfig::new("HDBits")
+            .with_failure_threshold(3) // Lower threshold due to scraping sensitivity
+            .with_timeout(Duration::from_secs(60)) // Longer timeout for recovery
+            .with_request_timeout(Duration::from_secs(config.timeout_seconds))
+            .with_success_threshold(1);
+        
         Ok(Self {
             config,
             client,
             rate_limiter,
             base_url: "https://hdbits.org".to_string(),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
         })
     }
     
@@ -62,40 +71,57 @@ impl HDBitsClient {
     
     /// Search for movies using HTML scraping
     pub async fn search_movies(&self, request: &MovieSearchRequest) -> Result<Vec<Release>> {
-        // Authenticate if needed
-        self.ensure_authenticated().await?;
+        let request_clone = request.clone();
+        let base_url_clone = self.base_url.clone();
+        let client_clone = self.client.clone();
+        let config_clone = self.config.clone();
         
-        // Execute search with rate limiting
+        // Wrap the entire search operation in circuit breaker
+        let html_result: Result<String> = self.circuit_breaker.call(async move {
+            // Authenticate if needed (clone for inner closure)
+            if config_clone.session_cookie == "your_session_cookie_here" {
+                return Err(RadarrError::ConfigurationError {
+                    field: "session_cookie".to_string(),
+                    message: "Please set a valid HDBits session cookie".to_string(),
+                });
+            }
+            
+            info!("Searching HDBits for movies: {:?}", request_clone);
+            
+            // Build search URL
+            let search_url = Self::build_search_url_static(&base_url_clone, &request_clone)?;
+            
+            let response = client_clone
+                .get(&search_url)
+                .send()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "HDBits".to_string(),
+                    error: format!("Request failed: {}", e),
+                })?;
+            
+            if !response.status().is_success() {
+                return Err(RadarrError::ExternalServiceError {
+                    service: "HDBits".to_string(),
+                    error: format!("HTTP error: {}", response.status()),
+                });
+            }
+            
+            let html = response
+                .text()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "HDBits".to_string(),
+                    error: format!("Failed to read response: {}", e),
+                })?;
+                
+            Ok(html)
+        }).await;
+        
+        let html = html_result?;
+        
+        // Rate limiting and parsing outside circuit breaker (they don't involve external calls)
         self.rate_limiter.acquire().await?;
-        
-        info!("Searching HDBits for movies: {:?}", request);
-        
-        // Build search URL
-        let search_url = self.build_search_url(request)?;
-        
-        let response = self.client
-            .get(&search_url)
-            .send()
-            .await
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "HDBits".to_string(),
-                error: format!("Request failed: {}", e),
-            })?;
-        
-        if !response.status().is_success() {
-            return Err(RadarrError::ExternalServiceError {
-                service: "HDBits".to_string(),
-                error: format!("HTTP error: {}", response.status()),
-            });
-        }
-        
-        let html = response
-            .text()
-            .await
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "HDBits".to_string(),
-                error: format!("Failed to read response: {}", e),
-            })?;
         
         // Parse HTML and extract torrents
         let torrents = self.parse_browse_page(&html)?;
@@ -180,9 +206,9 @@ impl HDBitsClient {
         release
     }
     
-    /// Build HDBits browse search URL
-    fn build_search_url(&self, request: &MovieSearchRequest) -> Result<String> {
-        let mut url = Url::parse(&format!("{}/browse", self.base_url))
+    /// Build HDBits browse search URL (static version for use in circuit breaker)
+    fn build_search_url_static(base_url: &str, request: &MovieSearchRequest) -> Result<String> {
+        let mut url = Url::parse(&format!("{}/browse", base_url))
             .map_err(|e| RadarrError::ConfigurationError {
                 field: "base_url".to_string(),
                 message: format!("Invalid base URL: {}", e),
@@ -212,6 +238,11 @@ impl HDBitsClient {
         }
         
         Ok(url.to_string())
+    }
+
+    /// Build HDBits browse search URL
+    fn build_search_url(&self, request: &MovieSearchRequest) -> Result<String> {
+        Self::build_search_url_static(&self.base_url, request)
     }
     
     /// Ensure we have a valid session by setting cookies
@@ -399,6 +430,16 @@ impl HDBitsClient {
         
         info!("HDBits connection test successful");
         Ok(true)
+    }
+
+    /// Get circuit breaker metrics for monitoring
+    pub async fn get_circuit_breaker_metrics(&self) -> radarr_core::CircuitBreakerMetrics {
+        self.circuit_breaker.get_metrics().await
+    }
+
+    /// Check if HDBits service is healthy
+    pub async fn is_healthy(&self) -> bool {
+        self.circuit_breaker.is_healthy().await
     }
 }
 

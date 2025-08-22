@@ -8,7 +8,7 @@ use std::time::Duration;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use radarr_core::{Result, RadarrError};
+use radarr_core::{Result, RadarrError, circuit_breaker::{CircuitBreaker, CircuitBreakerConfig}};
 use reqwest::Client;
 use url::Url;
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,7 @@ pub struct QBittorrentClient {
     client: Client,
     base_url: Url,
     session_state: Arc<RwLock<SessionState>>,
+    circuit_breaker: CircuitBreaker,
 }
 
 /// Torrent information from qBittorrent
@@ -157,11 +158,45 @@ impl QBittorrentClient {
                 error: format!("Failed to create HTTP client: {}", e),
             })?;
 
+        // Configure circuit breaker for qBittorrent
+        let circuit_breaker_config = CircuitBreakerConfig::new("qBittorrent")
+            .with_failure_threshold(3)
+            .with_timeout(Duration::from_secs(30))
+            .with_request_timeout(Duration::from_secs(config.timeout))
+            .with_success_threshold(1);
+
         Ok(Self {
             config,
             client,
             base_url,
             session_state: Arc::new(RwLock::new(SessionState::default())),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
+        })
+    }
+
+    /// Create a new qBittorrent client with custom circuit breaker config
+    pub fn new_with_circuit_breaker(config: QBittorrentConfig, circuit_breaker_config: CircuitBreakerConfig) -> Result<Self> {
+        let base_url = Url::parse(&config.base_url)
+            .map_err(|e| RadarrError::ExternalServiceError {
+                service: "qBittorrent".to_string(),
+                error: format!("Invalid base URL: {}", e),
+            })?;
+
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.timeout))
+            .cookie_store(true)
+            .build()
+            .map_err(|e| RadarrError::ExternalServiceError {
+                service: "qBittorrent".to_string(),
+                error: format!("Failed to create HTTP client: {}", e),
+            })?;
+
+        Ok(Self {
+            config,
+            client,
+            base_url,
+            session_state: Arc::new(RwLock::new(SessionState::default())),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
         })
     }
 
@@ -583,14 +618,92 @@ impl QBittorrentClient {
     pub async fn test_connection(&self) -> Result<()> {
         debug!("Testing connection to qBittorrent");
         
-        // Try to login first
-        self.login().await?;
+        let base_url_clone = self.base_url.clone();
+        let client_clone = self.client.clone();
+        let username_clone = self.config.username.clone();
+        let password_clone = self.config.password.clone();
         
-        // Then try to get preferences to verify we're authenticated
-        let _prefs = self.get_preferences().await?;
+        // Wrap the connection test in circuit breaker
+        self.circuit_breaker.call(async move {
+            // Try to login first
+            let login_url = base_url_clone.join("api/v2/auth/login")
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Failed to construct login URL: {}", e),
+                })?;
+
+            let mut form = HashMap::new();
+            form.insert("username", &username_clone);
+            form.insert("password", &password_clone);
+
+            let response = client_clone
+                .post(login_url)
+                .form(&form)
+                .send()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Login request failed: {}", e),
+                })?;
+
+            if !response.status().is_success() {
+                return Err(RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Login failed with status: {}", response.status()),
+                });
+            }
+
+            let response_text = response.text().await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Failed to read login response: {}", e),
+                })?;
+
+            if response_text.contains("Fails") || response_text.contains("fail") {
+                return Err(RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: "Authentication failed - invalid credentials".to_string(),
+                });
+            }
+            
+            // Test getting preferences
+            let prefs_url = base_url_clone.join("api/v2/app/preferences")
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Failed to construct preferences URL: {}", e),
+                })?;
+
+            let prefs_response = client_clone
+                .get(prefs_url)
+                .send()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Get preferences request failed: {}", e),
+                })?;
+
+            if !prefs_response.status().is_success() {
+                return Err(RadarrError::ExternalServiceError {
+                    service: "qBittorrent".to_string(),
+                    error: format!("Get preferences failed with status: {}", prefs_response.status()),
+                });
+            }
+            
+            Ok(())
+        }).await?;
         
         info!("qBittorrent connection test successful");
         Ok(())
+    }
+
+    /// Get circuit breaker metrics for monitoring
+    pub async fn get_circuit_breaker_metrics(&self) -> radarr_core::CircuitBreakerMetrics {
+        self.circuit_breaker.get_metrics().await
+    }
+
+    /// Check if qBittorrent service is healthy
+    pub async fn is_healthy(&self) -> bool {
+        self.circuit_breaker.is_healthy().await
     }
 }
 

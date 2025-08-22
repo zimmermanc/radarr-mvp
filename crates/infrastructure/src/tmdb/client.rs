@@ -1,6 +1,7 @@
-use radarr_core::{Movie, MovieStatus, RadarrError};
+use radarr_core::{Movie, MovieStatus, RadarrError, circuit_breaker::{CircuitBreaker, CircuitBreakerConfig}};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tracing::{debug, error};
 
 /// TMDB API error types
@@ -29,59 +30,102 @@ impl From<TmdbError> for RadarrError {
 }
 
 /// TMDB API client
-#[derive(Clone)]
 pub struct TmdbClient {
     client: Client,
     api_key: String,
     base_url: String,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl TmdbClient {
     pub fn new(api_key: String) -> Self {
+        let circuit_breaker_config = CircuitBreakerConfig::new("TMDB")
+            .with_failure_threshold(5)
+            .with_timeout(Duration::from_secs(30))
+            .with_request_timeout(Duration::from_secs(10))
+            .with_success_threshold(2);
+            
         Self {
             client: Client::new(),
             api_key,
             base_url: "https://api.themoviedb.org/3".to_string(),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
+        }
+    }
+    
+    pub fn new_with_circuit_breaker(api_key: String, circuit_breaker_config: CircuitBreakerConfig) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+            base_url: "https://api.themoviedb.org/3".to_string(),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
         }
     }
 
     /// Search for movies by query
     pub async fn search_movies(&self, query: &str, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
-        let url = format!("{}/search/movie", self.base_url);
+        let query_clone = query.to_string();
+        let api_key_clone = self.api_key.clone();
+        let base_url_clone = self.base_url.clone();
+        let client_clone = self.client.clone();
         
-        debug!("Searching TMDB for movies: query={}, page={}", query, page);
-        
-        let response = self.client
-            .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("query", &query.to_string()),
-                ("page", &page.to_string()),
-            ])
-            .send()
-            .await?;
+        let result = self.circuit_breaker.call(async move {
+            let url = format!("{}/search/movie", base_url_clone);
+            
+            debug!("Searching TMDB for movies: query={}, page={}", query_clone, page);
+            
+            let response = client_clone
+                .get(&url)
+                .query(&[
+                    ("api_key", &api_key_clone),
+                    ("query", &query_clone),
+                    ("page", &page.to_string()),
+                ])
+                .send()
+                .await
+                .map_err(TmdbError::HttpError)?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            error!("TMDB API error: {} - {}", status, text);
-            return Err(TmdbError::ApiError {
-                message: format!("HTTP {}: {}", status, text),
-            });
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                error!("TMDB API error: {} - {}", status, text);
+                return Err(TmdbError::ApiError {
+                    message: format!("HTTP {}: {}", status, text),
+                });
+            }
+
+            let search_response: TmdbSearchResponse = response.json().await
+                .map_err(TmdbError::HttpError)?;
+            
+            debug!("TMDB search returned {} results", search_response.results.len());
+            
+            Ok(search_response)
+        }).await;
+        
+        match result {
+            Ok(search_response) => {
+                // Convert TMDB results to our Movie model
+                let movies = search_response.results
+                    .into_iter()
+                    .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+                    .collect();
+                Ok(movies)
+            }
+            Err(RadarrError::CircuitBreakerOpen { service }) => {
+                Err(TmdbError::ApiError {
+                    message: format!("TMDB service unavailable: circuit breaker open for {}", service),
+                })
+            }
+            Err(RadarrError::Timeout { operation }) => {
+                Err(TmdbError::ApiError {
+                    message: format!("TMDB request timed out: {}", operation),
+                })
+            }
+            Err(e) => Err(TmdbError::ApiError {
+                message: format!("TMDB service error: {}", e),
+            }),
         }
-
-        let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB search returned {} results", search_response.results.len());
-        
-        // Convert TMDB results to our Movie model
-        let movies = search_response.results
-            .into_iter()
-            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
-            .collect();
-
-        Ok(movies)
     }
 
     /// Get a specific movie by TMDB ID
@@ -243,6 +287,16 @@ impl TmdbClient {
         });
 
         movie
+    }
+
+    /// Get circuit breaker metrics for monitoring
+    pub async fn get_circuit_breaker_metrics(&self) -> radarr_core::CircuitBreakerMetrics {
+        self.circuit_breaker.get_metrics().await
+    }
+
+    /// Check if TMDB service is healthy
+    pub async fn is_healthy(&self) -> bool {
+        self.circuit_breaker.is_healthy().await
     }
 }
 

@@ -6,11 +6,10 @@ use axum::{
     Router,
 };
 
-/// Create health check and monitoring routes
+/// Create health check and monitoring routes  
 pub fn create_health_routes() -> Router {
     Router::new()
         .route("/health", get(health::health_check))
-        .route("/health/live", get(health::liveness))
-        .route("/health/ready", get(health::readiness))
-        .route("/metrics", get(health::metrics))
+        .route("/health/detailed", get(health::detailed_health_check))
+        .route("/health/services/:service", get(health::service_health_check))
 }

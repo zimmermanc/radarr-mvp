@@ -32,10 +32,10 @@ CREATE INDEX idx_dead_letter_queue_status ON dead_letter_queue(status);
 CREATE INDEX idx_dead_letter_queue_original_type ON dead_letter_queue(original_type);
 CREATE INDEX idx_dead_letter_queue_last_failed_at ON dead_letter_queue(last_failed_at);
 
--- Add retry attempts tracking to queue_items
-ALTER TABLE queue_items ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
-ALTER TABLE queue_items ADD COLUMN IF NOT EXISTS last_retry_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE queue_items ADD COLUMN IF NOT EXISTS max_retries INTEGER DEFAULT 3;
+-- Add retry attempts tracking to queue
+ALTER TABLE queue ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
+ALTER TABLE queue ADD COLUMN IF NOT EXISTS last_retry_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE queue ADD COLUMN IF NOT EXISTS max_retries INTEGER DEFAULT 3;
 
 -- Function to move failed items to dead letter queue
 CREATE OR REPLACE FUNCTION move_to_dead_letter_queue(

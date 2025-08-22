@@ -9,7 +9,7 @@ set -e  # Exit on any error
 SERVER="root@192.168.0.138"
 REMOTE_DIR="/opt/radarr"
 SERVICE_NAME="radarr"
-BINARY_NAME="unified-radarr"
+BINARY_NAME="radarr-mvp"
 
 # Colors for output
 RED='\033[0;31m'

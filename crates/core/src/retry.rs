@@ -297,25 +297,32 @@ mod tests {
     
     #[tokio::test]
     async fn test_retry_success_on_second_attempt() {
-        let mut attempt = 0;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        
+        let attempt = Arc::new(AtomicU32::new(0));
         let config = RetryConfig {
             max_attempts: 3,
             initial_delay: Duration::from_millis(10),
             ..Default::default()
         };
         
+        let attempt_clone = attempt.clone();
         let result = retry_with_backoff(
             config,
             RetryPolicy::All,
             "test_operation",
-            || async {
-                attempt += 1;
-                if attempt == 2 {
-                    Ok(42)
-                } else {
-                    Err(RadarrError::TemporaryError {
-                        message: "simulated failure".to_string(),
-                    })
+            move || {
+                let attempt = attempt_clone.clone();
+                async move {
+                    let current_attempt = attempt.fetch_add(1, Ordering::SeqCst) + 1;
+                    if current_attempt == 2 {
+                        Ok(42)
+                    } else {
+                        Err(RadarrError::TemporaryError {
+                            message: "simulated failure".to_string(),
+                        })
+                    }
                 }
             }
         ).await;

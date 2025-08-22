@@ -254,6 +254,12 @@ pub async fn cleanup_completed(
 /// Format bytes as human readable string
 fn format_bytes(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    
+    // Special case for 0 bytes
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    
     let mut size = bytes as f64;
     let mut unit_index = 0;
     
@@ -262,7 +268,10 @@ fn format_bytes(bytes: i64) -> String {
         unit_index += 1;
     }
     
-    if size >= 100.0 {
+    if unit_index == 0 {
+        // For bytes, don't show decimal places
+        format!("{:.0} {}", size, UNITS[unit_index])
+    } else if size >= 100.0 {
         format!("{:.0} {}", size, UNITS[unit_index])
     } else if size >= 10.0 {
         format!("{:.1} {}", size, UNITS[unit_index])

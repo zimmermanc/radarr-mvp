@@ -345,7 +345,7 @@ impl SceneGroupAnalyzer {
                     if let Some(group) = captures.get(1) {
                         let group_name = group.as_str().to_uppercase();
                         // Filter out common false positives
-                        if !["x264", "x265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
+                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
                             return Some(group_name);
                         }
                     }
@@ -621,6 +621,24 @@ mod tests {
     fn test_reputation_score_calculation() {
         let mut analyzer = SceneGroupAnalyzer::new();
         
+        // Create some sample release history
+        let mut release_history = Vec::new();
+        for i in 0..10 {
+            release_history.push(ReleaseMetric {
+                torrent_id: format!("torrent_{}", i),
+                name: format!("Test.Movie.{}.1080p.BluRay-TEST", 2020 + i),
+                seeders: 20 + i as u32,
+                leechers: 2 + (i % 3) as u32,
+                size_gb: 18.0 + (i as f64 * 0.5),
+                completion_rate: 0.75 + (i as f64 * 0.02),
+                is_internal: i % 2 == 0,
+                added_date: Utc::now() - chrono::Duration::days(30 - i as i64),
+                category: "Movies".to_string(),
+                codec: "x264".to_string(),
+                medium: "BluRay".to_string(),
+            });
+        }
+
         let mut metrics = SceneGroupMetrics {
             group_name: "TEST".to_string(),
             total_releases: 50,
@@ -641,7 +659,7 @@ mod tests {
             seeder_health_score: 0.9,
             first_seen: Utc::now() - chrono::Duration::days(365),
             last_seen: Utc::now() - chrono::Duration::days(7),
-            release_history: Vec::new(),
+            release_history,
         };
 
         SceneGroupAnalyzer::calculate_group_metrics_static(&mut metrics);

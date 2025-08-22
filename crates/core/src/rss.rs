@@ -257,8 +257,8 @@ impl RssParser {
         
         // Basic XML parsing (would use quick-xml or similar in production)
         if content.contains("<rss") || content.contains("<feed") {
-            // Extract items between <item> tags
-            let item_regex = regex::Regex::new(r"<item>(.*?)</item>")
+            // Extract items between <item> tags (with multiline support)
+            let item_regex = regex::Regex::new(r"(?s)<item>(.*?)</item>")
                 .map_err(|e| RadarrError::ValidationError {
                     field: "regex".to_string(),
                     message: e.to_string(),

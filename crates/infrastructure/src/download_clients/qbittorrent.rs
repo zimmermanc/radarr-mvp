@@ -1,8 +1,7 @@
 //! qBittorrent download client adapter
 
 use async_trait::async_trait;
-use radarr_core::{Result, DownloadClientService};
-use radarr_core::services::DownloadStatus;
+use radarr_core::{Result, DownloadClientService, ClientDownloadStatus};
 use radarr_downloaders::{QBittorrentClient, QBittorrentConfig, TorrentData, AddTorrentParams};
 
 /// qBittorrent download client adapter
@@ -46,10 +45,10 @@ impl DownloadClientService for QBittorrentDownloadClient {
         self.client.add_torrent(params).await
     }
     
-    async fn get_download_status(&self, client_id: &str) -> Result<Option<DownloadStatus>> {
+    async fn get_download_status(&self, client_id: &str) -> Result<Option<ClientDownloadStatus>> {
         match self.client.get_torrent_status(client_id).await? {
             Some(torrent_info) => {
-                let status = DownloadStatus {
+                let status = ClientDownloadStatus {
                     client_id: torrent_info.hash,
                     name: torrent_info.name,
                     status: torrent_info.state,
@@ -81,12 +80,12 @@ impl DownloadClientService for QBittorrentDownloadClient {
         self.client.resume_torrent(client_id).await
     }
     
-    async fn get_all_downloads(&self) -> Result<Vec<DownloadStatus>> {
+    async fn get_all_downloads(&self) -> Result<Vec<ClientDownloadStatus>> {
         let torrents = self.client.get_torrents().await?;
         let mut downloads = Vec::new();
         
         for torrent_info in torrents {
-            let status = DownloadStatus {
+            let status = ClientDownloadStatus {
                 client_id: torrent_info.hash,
                 name: torrent_info.name,
                 status: torrent_info.state,

@@ -91,6 +91,11 @@ mod tests {
             tmdb_id: None,
             categories: vec![],
             indexer_ids: vec![],
+            limit: None,
+            offset: None,
+            min_seeders: None,
+            min_size: None,
+            max_size: None,
         };
         
         let api_request = client.convert_search_request(&search_request).unwrap();
@@ -116,6 +121,11 @@ mod tests {
             tmdb_id: None,
             categories: vec![],
             indexer_ids: vec![],
+            limit: None,
+            offset: None,
+            min_seeders: None,
+            min_size: None,
+            max_size: None,
         };
         
         let api_request = client.convert_search_request(&search_request).unwrap();

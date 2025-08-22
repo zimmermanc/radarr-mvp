@@ -6,7 +6,6 @@
 use radarr_core::{Movie, MovieStatus, MinimumAvailability};
 use radarr_indexers::{
     IndexerClient, SearchRequest, SearchResponse, ProwlarrSearchResult, Category,
-    MockIndexerClient,
 };
 use radarr_downloaders::{
     QBittorrentClient, QBittorrentConfig, AddTorrentParams, TorrentData, TorrentInfo,
@@ -14,6 +13,54 @@ use radarr_downloaders::{
 use std::collections::HashMap;
 use chrono::Utc;
 use uuid::Uuid;
+use async_trait::async_trait;
+use serde_json;
+
+/// Mock indexer client for testing
+pub struct MockIndexerClient {
+    pub search_responses: Vec<SearchResponse>,
+}
+
+impl MockIndexerClient {
+    pub fn new() -> Self {
+        Self {
+            search_responses: Vec::new(),
+        }
+    }
+    
+    pub fn with_search_response(mut self, response: SearchResponse) -> Self {
+        self.search_responses.push(response);
+        self
+    }
+}
+
+#[async_trait]
+impl IndexerClient for MockIndexerClient {
+    async fn search(&self, _request: &SearchRequest) -> radarr_core::Result<SearchResponse> {
+        if let Some(response) = self.search_responses.first() {
+            Ok(response.clone())
+        } else {
+            Ok(SearchResponse {
+                total: 0,
+                results: vec![],
+                indexers_searched: 0,
+                indexers_failed: vec![],
+            })
+        }
+    }
+    
+    async fn get_indexers(&self) -> radarr_core::Result<Vec<radarr_indexers::ProwlarrIndexer>> {
+        Ok(vec![])
+    }
+    
+    async fn test_indexer(&self, _indexer_id: i32) -> radarr_core::Result<bool> {
+        Ok(true)
+    }
+    
+    async fn health_check(&self) -> radarr_core::Result<bool> {
+        Ok(true)
+    }
+}
 
 /// Mock qBittorrent client for testing
 pub struct MockQBittorrentClient {
@@ -375,25 +422,28 @@ mod tests {
     fn create_test_movie() -> Movie {
         Movie {
             id: Uuid::new_v4(),
+            tmdb_id: 603,
+            imdb_id: Some("tt0133093".to_string()),
             title: "The Matrix".to_string(),
             original_title: Some("The Matrix".to_string()),
             year: Some(1999),
-            tmdb_id: Some(603),
-            imdb_id: Some("tt0133093".to_string()),
-            overview: Some("A computer hacker learns about the true nature of reality.".to_string()),
-            status: MovieStatus::Wanted,
-            monitored: true,
-            minimum_availability: MinimumAvailability::Released,
-            quality_profile_id: 1,
-            path: Some("/media/movies/The Matrix (1999)".to_string()),
-            size_on_disk: Some(0),
             runtime: Some(136),
-            genres: vec!["Action".to_string(), "Sci-Fi".to_string()],
-            ratings: None,
-            poster_url: None,
-            backdrop_url: None,
-            added_at: Utc::now(),
+            status: MovieStatus::Released,
+            monitored: true,
+            quality_profile_id: Some(1),
+            minimum_availability: MinimumAvailability::Released,
+            has_file: false,
+            movie_file_id: None,
+            metadata: serde_json::json!({
+                "overview": "A computer hacker learns about the true nature of reality.",
+                "genres": ["Action", "Sci-Fi"],
+                "path": "/media/movies/The Matrix (1999)"
+            }),
+            alternative_titles: serde_json::json!([]),
+            created_at: Utc::now(),
             updated_at: Utc::now(),
+            last_search_time: None,
+            last_info_sync: None,
         }
     }
     

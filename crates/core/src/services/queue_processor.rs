@@ -392,7 +392,7 @@ where
     fn update_queue_item_from_client_status(
         &self,
         queue_item: &mut crate::models::QueueItem,
-        client_status: &crate::services::DownloadStatus,
+        client_status: &crate::services::ClientDownloadStatus,
     ) -> Result<()> {
         use crate::models::QueueStatus;
         
@@ -453,7 +453,7 @@ where
 mod tests {
     use super::*;
     use crate::models::{QueueItem, QueueStatus, QueuePriority};
-    use crate::services::{QueueRepository, DownloadClientService, DownloadStatus};
+    use crate::services::{QueueRepository, DownloadClientService, ClientDownloadStatus};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::RwLock;
@@ -549,8 +549,8 @@ mod tests {
             Ok("mock_client_id_123".to_string())
         }
         
-        async fn get_download_status(&self, _client_id: &str) -> Result<Option<DownloadStatus>> {
-            Ok(Some(DownloadStatus {
+        async fn get_download_status(&self, _client_id: &str) -> Result<Option<ClientDownloadStatus>> {
+            Ok(Some(ClientDownloadStatus {
                 client_id: "mock_client_id_123".to_string(),
                 name: "Test Movie".to_string(),
                 status: "downloading".to_string(),
@@ -578,7 +578,7 @@ mod tests {
             Ok(())
         }
         
-        async fn get_all_downloads(&self) -> Result<Vec<DownloadStatus>> {
+        async fn get_all_downloads(&self) -> Result<Vec<ClientDownloadStatus>> {
             Ok(vec![])
         }
     }

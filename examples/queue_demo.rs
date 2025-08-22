@@ -13,7 +13,7 @@ use uuid::Uuid;
 // For this example, we'll create simplified versions without the full database setup
 use radarr_core::{
     Movie, Release, ReleaseProtocol, QueueItem, QueueStatus, QueuePriority, QueueStats,
-    QueueService, QueueRepository, DownloadClientService, DownloadStatus
+    QueueService, QueueRepository, DownloadClientService, ClientDownloadStatus
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -111,7 +111,7 @@ impl QueueRepository for MockQueueRepository {
 /// Mock download client that simulates qBittorrent behavior
 #[derive(Default)]
 struct MockDownloadClient {
-    downloads: Arc<RwLock<HashMap<String, DownloadStatus>>>,
+    downloads: Arc<RwLock<HashMap<String, ClientDownloadStatus>>>,
 }
 
 #[async_trait]
@@ -129,7 +129,7 @@ impl DownloadClientService for MockDownloadClient {
                 .as_secs(),
             md5::compute(download_url));
         
-        let status = DownloadStatus {
+        let status = ClientDownloadStatus {
             client_id: client_id.clone(),
             name: "Mock Download".to_string(),
             status: "downloading".to_string(),
@@ -151,7 +151,7 @@ impl DownloadClientService for MockDownloadClient {
         Ok(client_id)
     }
     
-    async fn get_download_status(&self, client_id: &str) -> radarr_core::Result<Option<DownloadStatus>> {
+    async fn get_download_status(&self, client_id: &str) -> radarr_core::Result<Option<ClientDownloadStatus>> {
         let downloads = self.downloads.read().await;
         Ok(downloads.get(client_id).cloned())
     }
@@ -182,7 +182,7 @@ impl DownloadClientService for MockDownloadClient {
         Ok(())
     }
     
-    async fn get_all_downloads(&self) -> radarr_core::Result<Vec<DownloadStatus>> {
+    async fn get_all_downloads(&self) -> radarr_core::Result<Vec<ClientDownloadStatus>> {
         let downloads = self.downloads.read().await;
         Ok(downloads.values().cloned().collect())
     }

@@ -52,7 +52,7 @@ pub trait DownloadClientService: Send + Sync {
     ) -> Result<String>; // Returns client-specific ID
     
     /// Get download status from client
-    async fn get_download_status(&self, client_id: &str) -> Result<Option<DownloadStatus>>;
+    async fn get_download_status(&self, client_id: &str) -> Result<Option<ClientDownloadStatus>>;
     
     /// Remove download from client
     async fn remove_download(&self, client_id: &str, delete_files: bool) -> Result<()>;
@@ -64,12 +64,12 @@ pub trait DownloadClientService: Send + Sync {
     async fn resume_download(&self, client_id: &str) -> Result<()>;
     
     /// Get all downloads from client
-    async fn get_all_downloads(&self) -> Result<Vec<DownloadStatus>>;
+    async fn get_all_downloads(&self) -> Result<Vec<ClientDownloadStatus>>;
 }
 
 /// Download status information from client
 #[derive(Debug, Clone)]
-pub struct DownloadStatus {
+pub struct ClientDownloadStatus {
     pub client_id: String,
     pub name: String,
     pub status: String,
@@ -259,7 +259,7 @@ impl<Q: QueueRepository, D: DownloadClientService> QueueService<Q, D> {
     fn update_queue_item_from_client_status(
         &self,
         queue_item: &mut QueueItem,
-        client_status: &DownloadStatus,
+        client_status: &ClientDownloadStatus,
     ) -> Result<()> {
         // Map client status to queue status
         let new_status = match client_status.status.to_lowercase().as_str() {
@@ -550,8 +550,8 @@ mod tests {
             Ok("mock_client_id_123".to_string())
         }
         
-        async fn get_download_status(&self, _client_id: &str) -> Result<Option<DownloadStatus>> {
-            Ok(Some(DownloadStatus {
+        async fn get_download_status(&self, _client_id: &str) -> Result<Option<ClientDownloadStatus>> {
+            Ok(Some(ClientDownloadStatus {
                 client_id: "mock_client_id_123".to_string(),
                 name: "Test Movie".to_string(),
                 status: "downloading".to_string(),
@@ -579,7 +579,7 @@ mod tests {
             Ok(())
         }
         
-        async fn get_all_downloads(&self) -> Result<Vec<DownloadStatus>> {
+        async fn get_all_downloads(&self) -> Result<Vec<ClientDownloadStatus>> {
             Ok(vec![])
         }
     }

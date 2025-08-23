@@ -1,0 +1,33 @@
+name: Update Badges
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline", "Security Scanning", "Code Quality"]
+    types:
+      - completed
+  push:
+    branches: [ main ]
+
+jobs:
+  update-badges:
+    name: Update README Badges
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Update badges in README
+        run: |
+          # This is a placeholder for badge update logic
+          # You would typically update README.md with current status badges
+          echo "Badges would be updated here"
+      
+      # Example badges for README.md:
+      # ![CI](https://github.com/zimmermanc/radarr-mvp/workflows/CI%20Pipeline/badge.svg)
+      # ![Security](https://github.com/zimmermanc/radarr-mvp/workflows/Security%20Scanning/badge.svg)
+      # ![Codecov](https://codecov.io/gh/zimmermanc/radarr-mvp/branch/main/graph/badge.svg)
+      # ![Codacy](https://app.codacy.com/project/badge/Grade/YOUR_PROJECT_ID)
+      # ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+      # ![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)
+      # ![Dependencies](https://deps.rs/repo/github/zimmermanc/radarr-mvp/status.svg)

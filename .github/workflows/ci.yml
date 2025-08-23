@@ -1,0 +1,247 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings"
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  # Quick checks that should fail fast
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        
+      - name: Check Cargo.toml formatting
+        run: |
+          if ! command -v taplo &> /dev/null; then
+            cargo install taplo-cli
+          fi
+          taplo fmt --check
+
+  # Main build and test job
+  build-and-test:
+    name: Build and Test
+    needs: quick-checks
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, beta]
+        include:
+          - os: ubuntu-latest
+            rust: nightly
+            coverage: true
+    runs-on: ${{ matrix.os }}
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: radarr_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: radarr_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.rust }}-
+            ${{ runner.os }}-cargo-
+      
+      - name: Install cargo-tarpaulin (Linux only)
+        if: matrix.coverage && matrix.os == 'ubuntu-latest'
+        run: |
+          cargo install cargo-tarpaulin --locked
+      
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+      
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install openssl pkg-config
+      
+      - name: Run migrations
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          DATABASE_URL: postgresql://radarr_test:test_password@localhost:5432/radarr_test
+        run: |
+          cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
+          cd unified-radarr
+          sqlx migrate run
+      
+      - name: Build workspace
+        run: |
+          cd unified-radarr
+          cargo build --workspace --all-features --verbose
+      
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://radarr_test:test_password@localhost:5432/radarr_test
+          TEST_DATABASE_URL: postgresql://radarr_test:test_password@localhost:5432/radarr_test
+        run: |
+          cd unified-radarr
+          cargo test --workspace --all-features --verbose
+      
+      - name: Run tests with coverage (Linux only)
+        if: matrix.coverage && matrix.os == 'ubuntu-latest'
+        env:
+          DATABASE_URL: postgresql://radarr_test:test_password@localhost:5432/radarr_test
+          TEST_DATABASE_URL: postgresql://radarr_test:test_password@localhost:5432/radarr_test
+        run: |
+          cd unified-radarr
+          cargo tarpaulin --workspace --all-features --out xml --output-dir coverage
+      
+      - name: Upload coverage to Codecov
+        if: matrix.coverage && matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./unified-radarr/coverage/cobertura.xml
+          flags: unittests
+          name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Upload coverage to Codacy
+        if: matrix.coverage && matrix.os == 'ubuntu-latest'
+        uses: codacy/codacy-coverage-reporter-action@v1
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: ./unified-radarr/coverage/cobertura.xml
+
+  # Clippy linting
+  clippy:
+    name: Clippy Analysis
+    needs: quick-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run Clippy
+        run: |
+          cd unified-radarr
+          cargo clippy --workspace --all-features --all-targets -- \
+            -D warnings \
+            -W clippy::pedantic \
+            -W clippy::nursery \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -A clippy::module_name_repetitions \
+            -A clippy::must_use_candidate
+
+  # Documentation build
+  docs:
+    name: Documentation
+    needs: quick-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-docs-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: |
+          cd unified-radarr
+          cargo doc --workspace --all-features --no-deps
+      
+      - name: Test documentation examples
+        run: |
+          cd unified-radarr
+          cargo test --doc --workspace --all-features
+
+  # Benchmark regression check
+  benchmarks:
+    name: Benchmarks
+    needs: quick-checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run benchmarks
+        run: |
+          cd unified-radarr
+          cargo bench --workspace --no-run

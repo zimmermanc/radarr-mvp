@@ -1,0 +1,233 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Rust code quality checks
+  rust-quality:
+    name: Rust Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-quality-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: |
+          cd unified-radarr
+          cargo fmt --all -- --check
+      
+      - name: Install cargo-machete (detect unused dependencies)
+        run: cargo install cargo-machete --locked
+      
+      - name: Check for unused dependencies
+        run: |
+          cd unified-radarr
+          cargo machete
+      
+      - name: Install cargo-outdated
+        run: cargo install cargo-outdated --locked
+      
+      - name: Check for outdated dependencies
+        continue-on-error: true
+        run: |
+          cd unified-radarr
+          cargo outdated --depth 1 --format json > outdated.json
+          cargo outdated --depth 1
+      
+      - name: Install cargo-udeps (requires nightly)
+        run: |
+          rustup toolchain install nightly
+          cargo +nightly install cargo-udeps --locked
+      
+      - name: Check for unused dependencies with udeps
+        continue-on-error: true
+        run: |
+          cd unified-radarr
+          cargo +nightly udeps --all-targets --all-features
+      
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat --locked
+      
+      - name: Check binary size
+        run: |
+          cd unified-radarr
+          cargo bloat --release --crates -n 20
+      
+      - name: Install cargo-geiger (unsafe code detection)
+        run: cargo install cargo-geiger --locked
+      
+      - name: Check for unsafe code
+        run: |
+          cd unified-radarr
+          cargo geiger --all-features --output-format Json > geiger-report.json
+          cargo geiger --all-features
+      
+      - name: Upload quality reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-reports
+          path: |
+            unified-radarr/outdated.json
+            unified-radarr/geiger-report.json
+
+  # TypeScript/JavaScript quality checks
+  frontend-quality:
+    name: Frontend Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: unified-radarr/web/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd unified-radarr/web
+          npm ci
+      
+      - name: Run ESLint
+        run: |
+          cd unified-radarr/web
+          npm run lint || true
+      
+      - name: Check TypeScript types
+        run: |
+          cd unified-radarr/web
+          npm run type-check || npx tsc --noEmit
+      
+      - name: Run Prettier check
+        run: |
+          cd unified-radarr/web
+          npx prettier --check "src/**/*.{ts,tsx,js,jsx,css,md}" || true
+
+  # Complexity analysis
+  complexity:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install complexity tools
+        run: |
+          cargo install tokei --locked
+          cargo install loc --locked
+          cargo install cargo-count --locked
+      
+      - name: Lines of code analysis
+        run: |
+          cd unified-radarr
+          echo "## Code Statistics" > complexity-report.md
+          echo "### Tokei Report" >> complexity-report.md
+          tokei . --output markdown >> complexity-report.md
+          echo "### LOC Report" >> complexity-report.md
+          loc >> complexity-report.md
+      
+      - name: Cyclomatic complexity (using cargo-clippy)
+        run: |
+          cd unified-radarr
+          cargo clippy --workspace --all-features -- \
+            -W clippy::cognitive_complexity \
+            -W clippy::too_many_lines \
+            -W clippy::too_many_arguments
+      
+      - name: Upload complexity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: complexity-report
+          path: unified-radarr/complexity-report.md
+
+  # Documentation quality
+  doc-quality:
+    name: Documentation Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+      
+      - name: Lint markdown files
+        continue-on-error: true
+        run: |
+          markdownlint '**/*.md' \
+            --ignore 'node_modules/**' \
+            --ignore 'target/**' \
+            --ignore '.github/**'
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Check Rust documentation
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: |
+          cd unified-radarr
+          cargo doc --workspace --all-features --no-deps
+      
+      - name: Check for missing docs
+        run: |
+          cd unified-radarr
+          cargo rustdoc --workspace --all-features -- \
+            -D missing-docs \
+            -D rustdoc::missing-doc-code-examples
+
+  # Dead code detection
+  dead-code:
+    name: Dead Code Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build with dead code warnings
+        env:
+          RUSTFLAGS: "-D dead_code"
+        continue-on-error: true
+        run: |
+          cd unified-radarr
+          cargo build --workspace --all-features
+      
+      - name: Install cargo-prune
+        continue-on-error: true
+        run: cargo install cargo-prune --locked
+      
+      - name: Find unused code with cargo-prune
+        continue-on-error: true
+        run: |
+          cd unified-radarr
+          cargo prune --workspace

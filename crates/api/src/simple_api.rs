@@ -1053,15 +1053,15 @@ async fn search_hdbits_fallback(query: &str) -> Result<SearchResponse, RadarrErr
         error: "HDBITS_USERNAME not configured".to_string(),
     })?;
     
-    let session_cookie = env::var("HDBITS_SESSION_COOKIE").map_err(|_| RadarrError::ExternalServiceError {
+    let passkey = env::var("HDBITS_PASSKEY").map_err(|_| RadarrError::ExternalServiceError {
         service: "hdbits".to_string(),
-        error: "HDBITS_SESSION_COOKIE not configured".to_string(),
+        error: "HDBITS_PASSKEY not configured".to_string(),
     })?;
     
     // Create HDBits config
     let config = HDBitsConfig {
         username,
-        session_cookie,
+        passkey,
         timeout_seconds: 30,
         rate_limit_per_hour: 120,
     };

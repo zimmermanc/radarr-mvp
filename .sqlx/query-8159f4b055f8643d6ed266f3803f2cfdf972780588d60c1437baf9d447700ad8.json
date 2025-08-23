@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM trending_entries WHERE expires_at < CURRENT_TIMESTAMP",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "8159f4b055f8643d6ed266f3803f2cfdf972780588d60c1437baf9d447700ad8"
+}

@@ -177,10 +177,11 @@ impl Default for MovieSearchRequest {
 
 impl HDBitsTorrent {
     /// Get the download URL for this torrent
-    pub fn download_url(&self, session_cookie: &str) -> String {
-        // For session-based authentication, we'll need to handle this differently
-        // This is a placeholder - actual implementation would need session handling
-        format!("https://hdbits.org/download.php?id={}", self.id)
+    /// Note: HDBits download requires either passkey in URL or session cookie in headers
+    /// For production indexer, we use passkey authentication
+    pub fn download_url(&self, passkey: &str) -> String {
+        // Using passkey authentication for automated downloads
+        format!("https://hdbits.org/download.php/{}/{}", passkey, self.id)
     }
     
     /// Get the info URL for this torrent

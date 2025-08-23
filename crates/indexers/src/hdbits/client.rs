@@ -79,10 +79,10 @@ impl HDBitsClient {
         // Wrap the entire search operation in circuit breaker
         let html_result: Result<String> = self.circuit_breaker.call(async move {
             // Authenticate if needed (clone for inner closure)
-            if config_clone.session_cookie == "your_session_cookie_here" {
+            if config_clone.passkey.is_empty() || config_clone.passkey == "your_passkey_here" {
                 return Err(RadarrError::ConfigurationError {
-                    field: "session_cookie".to_string(),
-                    message: "Please set a valid HDBits session cookie".to_string(),
+                    field: "passkey".to_string(),
+                    message: "Please set a valid HDBits passkey".to_string(),
                 });
             }
             
@@ -152,7 +152,7 @@ impl HDBitsClient {
         let mut release = Release::new(
             1, // HDBits indexer ID - should be configurable
             torrent.name.clone(),
-            torrent.download_url(&self.config.session_cookie),
+            torrent.download_url(&self.config.passkey),
             format!("hdbits-{}", torrent.id),
             ReleaseProtocol::Torrent,
         );
@@ -256,10 +256,10 @@ impl HDBitsClient {
         
         // The session cookie should be set by the HTTP client cookie jar
         // For now, we'll assume it's valid if provided
-        if self.config.session_cookie == "your_session_cookie_here" {
+        if self.config.passkey.is_empty() || self.config.passkey == "your_passkey_here" {
             return Err(RadarrError::ConfigurationError {
-                field: "session_cookie".to_string(),
-                message: "Please set a valid HDBits session cookie".to_string(),
+                field: "passkey".to_string(),
+                message: "Please set a valid HDBits passkey".to_string(),
             });
         }
         

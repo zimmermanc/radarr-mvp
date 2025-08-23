@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM streaming_cache WHERE cache_key = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6b1c0327afd02aedbb3982c924e893272d9814ed102d9e0d8bf6bcd0230bad9b"
+}

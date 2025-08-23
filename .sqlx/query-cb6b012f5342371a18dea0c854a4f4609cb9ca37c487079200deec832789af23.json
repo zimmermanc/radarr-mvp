@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO streaming_id_mappings (tmdb_id, watchmode_id, media_type)\n                VALUES ($1, $2, $3)\n                ON CONFLICT (tmdb_id)\n                DO UPDATE SET \n                    watchmode_id = EXCLUDED.watchmode_id,\n                    media_type = EXCLUDED.media_type,\n                    last_verified = CURRENT_TIMESTAMP,\n                    updated_at = CURRENT_TIMESTAMP\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cb6b012f5342371a18dea0c854a4f4609cb9ca37c487079200deec832789af23"
+}

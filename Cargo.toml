@@ -18,6 +18,10 @@ path = "test_hdbits_integration.rs"
 name = "test_integration_workflow"
 path = "test_integration_workflow.rs"
 
+[[bin]]
+name = "trakt-auth"
+path = "src/bin/trakt_auth.rs"
+
 
 [dependencies]
 # Internal crates
@@ -105,7 +109,7 @@ nom = "7.1"
 # Logging and CLI
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.0", features = ["derive", "env"] }
 
 # OpenTelemetry and Observability Stack
 opentelemetry = { version = "0.21", features = ["trace", "metrics", "logs"] }

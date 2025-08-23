@@ -90,18 +90,23 @@ impl HDBitsComprehensiveAnalyzer {
             .build()?;
         
         let mut all_torrents = Vec::new();
-        let categories = vec![1, 3]; // Movies and Documentaries
         
-        for category in categories {
-            info!("Collecting data for category {}", category);
-            let mut page = 0;
-            
-            while page < self.config.max_pages_per_category {
-                // Build browse URL with parameters
-                let url = format!(
-                    "{}/browse.php?c{}=1&page={}",
-                    self.config.base_url, category, page
-                );
+        // Use advanced filters for high-quality content
+        // Categories: c1=1 (Movies), c3=1 (Documentaries)
+        // Codecs: co1=1 (H.264), co5=1 (x264), co2=1 (Xvid), co3=1 (MPEG2)
+        // Media: m1=1 (Blu-ray), m4=1 (HDTV), m3=1 (WEB-DL), m5=1 (Encode), m6=1 (Capture)
+        // Language: English only
+        let base_filters = "c1=1&co1=1&co5=1&co2=1&co3=1&m1=1&m4=1&m3=1&m5=1&m6=1&descriptions=0&season_packs=0&selected_languages%5B%5D=English&languagesearchtype=showonly";
+        
+        info!("Collecting data with advanced quality filters");
+        let mut page = 0;
+        
+        while page < self.config.max_pages_per_category {
+            // Build browse URL with advanced filters
+            let url = format!(
+                "{}/browse.php?{}&page={}",
+                self.config.base_url, base_filters, page
+            );
                 
                 // Add delay between requests to respect rate limits
                 if page > 0 {
@@ -115,7 +120,7 @@ impl HDBitsComprehensiveAnalyzer {
                     .await?;
                 
                 if !response.status().is_success() {
-                    warn!("Failed to fetch page {} for category {}", page, category);
+                    warn!("Failed to fetch page {}", page);
                     break;
                 }
                 
@@ -125,7 +130,7 @@ impl HDBitsComprehensiveAnalyzer {
                 let torrents = self.parse_torrents_from_html(&html)?;
                 
                 if torrents.is_empty() {
-                    info!("No more torrents found for category {} at page {}", category, page);
+                    info!("No more torrents found at page {}", page);
                     break;
                 }
                 
@@ -134,7 +139,6 @@ impl HDBitsComprehensiveAnalyzer {
                 
                 info!("Collected {} torrents so far", all_torrents.len());
             }
-        }
         
         info!("Comprehensive data collection complete: {} torrents", all_torrents.len());
         Ok(all_torrents)
@@ -144,12 +148,30 @@ impl HDBitsComprehensiveAnalyzer {
         // Simplified HTML parsing - in production would use scraper crate
         let mut torrents = Vec::new();
         
-        // Basic pattern matching for torrent data
-        // This is a simplified implementation - real parsing would be more robust
+        // Parse complete table rows for torrent data
+        let mut in_row = false;
+        let mut current_row = String::new();
+        
         for line in html.lines() {
-            if line.contains("details.php?id=") {
-                // Extract basic torrent info from the HTML
-                // In production, use proper HTML parsing with scraper crate
+            // Check for start of torrent row
+            if line.contains("<tr class=\"t_row\">") {
+                in_row = true;
+                current_row = line.to_string();
+            } else if in_row {
+                current_row.push_str(line);
+                
+                // Check for end of row
+                if line.contains("</tr>") {
+                    in_row = false;
+                    
+                    // Parse the complete row
+                    if let Some(torrent) = self.parse_torrent_row(&current_row) {
+                        torrents.push(torrent);
+                    }
+                    current_row.clear();
+                }
+            } else if line.contains("details.php?id=") && line.contains("href=\"/details.php") {
+                // Fallback: single-line parsing for simple format
                 if let Some(torrent) = self.extract_torrent_from_line(line) {
                     torrents.push(torrent);
                 }
@@ -159,9 +181,184 @@ impl HDBitsComprehensiveAnalyzer {
         Ok(torrents)
     }
     
+    fn parse_torrent_row(&self, row: &str) -> Option<HDBitsTorrent> {
+        // Parse complete table row data
+        if !row.contains("class=\"t_row\"") {
+            return self.extract_torrent_from_line(row); // Fallback for old format
+        }
+        
+        // Extract all cells from the row
+        let cells: Vec<&str> = row.split("<td").collect();
+        if cells.len() < 9 {
+            return None;
+        }
+        
+        // Parse title cell (index 2)
+        let title_cell = cells.get(2)?;
+        let (id, name, is_exclusive) = self.parse_title_cell(title_cell)?;
+        
+        // Parse size cell (index 4)
+        let size_bytes = if let Some(size_cell) = cells.get(4) {
+            self.parse_size(size_cell)
+        } else {
+            0
+        };
+        
+        // Parse snatched cell (index 5)
+        let snatched = if let Some(snatched_cell) = cells.get(5) {
+            self.parse_number(snatched_cell)
+        } else {
+            0
+        };
+        
+        // Parse seeders cell (index 6)
+        let seeders = if let Some(seeders_cell) = cells.get(6) {
+            self.parse_number(seeders_cell)
+        } else {
+            0
+        };
+        
+        // Parse leechers cell (index 7)
+        let leechers = if let Some(leechers_cell) = cells.get(7) {
+            self.parse_number(leechers_cell)
+        } else {
+            0
+        };
+        
+        // Parse time alive cell (index 8)
+        let added = if let Some(time_cell) = cells.get(8) {
+            self.parse_time_alive(time_cell)
+        } else {
+            Utc::now().to_rfc3339()
+        };
+        
+        Some(HDBitsTorrent {
+            id: id.clone(),
+            name,
+            times_completed: snatched as i32,
+            seeders: seeders as i32,
+            leechers: leechers as i32,
+            size: size_bytes as i64,
+            added,
+            imdb: None,
+            tvdb: None,
+            category: HDBitsCategory { id: 1, name: "Movie".to_string() },
+            type_category: "Movie".to_string(),
+            type_codec: self.detect_codec(&id),
+            type_medium: self.detect_medium(&id),
+            type_origin: if is_exclusive { "Internal".to_string() } else { "Scene".to_string() },
+            freeleech: None,
+            internal: is_exclusive,
+        })
+    }
+    
+    fn parse_title_cell(&self, cell: &str) -> Option<(String, String, bool)> {
+        // Extract ID from details.php?id=XXXXX
+        let id = cell.split("details.php?id=")
+            .nth(1)?
+            .split('&')
+            .next()?
+            .to_string();
+        
+        // Extract name from link text (between > and </a>)
+        let name = if let Some(start) = cell.find(">") {
+            let text_start = &cell[start + 1..];
+            if let Some(end) = text_start.find("</a>") {
+                text_start[..end].to_string()
+            } else {
+                format!("Torrent_{}", id)
+            }
+        } else {
+            format!("Torrent_{}", id)
+        };
+        
+        // Check for exclusive/internal tag
+        let is_exclusive = cell.contains("class=\"tag exclusive\"") || 
+                          cell.contains(">Exclusive<");
+        
+        Some((id, name, is_exclusive))
+    }
+    
+    fn parse_size(&self, cell: &str) -> u64 {
+        // Extract size like "4.42 GB" and convert to bytes
+        if let Some(start) = cell.find(">") {
+            let content = &cell[start + 1..];
+            if let Some(end) = content.find("<") {
+                let size_str = &content[..end];
+                return self.parse_size_string(size_str);
+            }
+        }
+        0
+    }
+    
+    fn parse_size_string(&self, size_str: &str) -> u64 {
+        let parts: Vec<&str> = size_str.trim().split_whitespace().collect();
+        if parts.len() != 2 {
+            return 0;
+        }
+        
+        let value: f64 = parts[0].parse().unwrap_or(0.0);
+        let multiplier = match parts[1].to_uppercase().as_str() {
+            "TB" => 1_099_511_627_776.0,
+            "GB" => 1_073_741_824.0,
+            "MB" => 1_048_576.0,
+            "KB" => 1_024.0,
+            _ => 1.0,
+        };
+        
+        (value * multiplier) as u64
+    }
+    
+    fn parse_number(&self, cell: &str) -> u32 {
+        // Extract number from cell content
+        if let Some(start) = cell.find(">") {
+            let content = &cell[start + 1..];
+            if let Some(end) = content.find("<") {
+                let num_str = &content[..end];
+                return num_str.trim().parse().unwrap_or(0);
+            }
+        }
+        0
+    }
+    
+    fn parse_time_alive(&self, cell: &str) -> String {
+        // Parse time like "3 years<br />1 month" and convert to timestamp
+        // For now, just return current time minus approximation
+        // In production, parse properly
+        Utc::now().to_rfc3339()
+    }
+    
+    fn detect_codec(&self, name: &str) -> String {
+        if name.contains("x265") || name.contains("HEVC") {
+            "x265".to_string()
+        } else if name.contains("x264") || name.contains("H.264") {
+            "x264".to_string()
+        } else if name.contains("XviD") {
+            "XviD".to_string()
+        } else {
+            "x264".to_string() // Default
+        }
+    }
+    
+    fn detect_medium(&self, name: &str) -> String {
+        if name.contains("BluRay") || name.contains("Blu-ray") || name.contains("BD") {
+            "Blu-ray".to_string()
+        } else if name.contains("WEB-DL") || name.contains("WEBDL") {
+            "WEB-DL".to_string()
+        } else if name.contains("WEBRip") || name.contains("WEB-Rip") {
+            "WEBRip".to_string()
+        } else if name.contains("HDTV") {
+            "HDTV".to_string()
+        } else if name.contains("DVDRip") || name.contains("DVD") {
+            "DVD".to_string()
+        } else {
+            "Unknown".to_string()
+        }
+    }
+    
     fn extract_torrent_from_line(&self, line: &str) -> Option<HDBitsTorrent> {
         // Simplified extraction - would need proper HTML parsing in production
-        use crate::{HDBitsTorrent, HDBitsCategory, HDBitsImdb};
+        use crate::{HDBitsTorrent, HDBitsCategory};
         
         // Extract ID from details.php?id=XXXXX pattern
         let id = line.split("details.php?id=")
@@ -170,10 +367,34 @@ impl HDBitsComprehensiveAnalyzer {
             .next()?
             .to_string();
         
+        // Extract torrent name from link text (NOT from title attribute which is the FL tooltip)
+        // The actual torrent name is between > and </a>
+        let name = if let Some(link_start) = line.find("details.php?id=") {
+            // Find the end of the opening <a> tag
+            let remaining = &line[link_start..];
+            if let Some(text_start) = remaining.find('>') {
+                let text_content = &remaining[text_start + 1..];
+                if let Some(text_end) = text_content.find("</a>") {
+                    text_content[..text_end].to_string()
+                } else {
+                    format!("Torrent_{}", id)
+                }
+            } else {
+                format!("Torrent_{}", id)
+            }
+        } else {
+            format!("Torrent_{}", id)
+        };
+        
+        // Check if this is an exclusive/internal release
+        let is_exclusive = line.contains("class=\"tag exclusive\"") || 
+                          line.contains("class=\" exclusive") ||
+                          line.contains(">Exclusive<");
+        
         // Create a basic torrent entry
         Some(HDBitsTorrent {
-            id,
-            name: "Parsed torrent".to_string(), // Would extract actual name
+            id: id.clone(),
+            name,
             times_completed: 0,
             seeders: 0,
             leechers: 0,
@@ -187,16 +408,34 @@ impl HDBitsComprehensiveAnalyzer {
             type_medium: "Blu-ray".to_string(),
             type_origin: "Scene".to_string(),
             freeleech: None,
-            internal: false,
+            internal: is_exclusive,
         })
     }
     
     pub fn analyze_scene_groups(&mut self, releases: Vec<HDBitsTorrent>) -> Result<()> {
         info!("Analyzing {} releases for scene groups", releases.len());
         
+        // Log a sample of release names for debugging
+        if !releases.is_empty() {
+            info!("Sample release names:");
+            for (i, torrent) in releases.iter().take(5).enumerate() {
+                info!("  {}: {}", i + 1, torrent.name);
+            }
+        }
+        
         // Extract scene groups from release names
         for torrent in releases {
-            if let Some(group_name) = Self::extract_scene_group(&torrent.name) {
+            // Try to extract scene group from name, or check if it's exclusive
+            let group_name = if let Some(group) = Self::extract_scene_group(&torrent.name) {
+                Some(group)
+            } else if torrent.internal {
+                // If no group found and it's marked as internal/exclusive, use "EXCLUSIVE"
+                Some("EXCLUSIVE".to_string())
+            } else {
+                None
+            };
+            
+            if let Some(group_name) = group_name {
                 let release_metric = ReleaseMetric {
                     torrent_id: torrent.id.clone(),
                     name: torrent.name.clone(),
@@ -293,7 +532,7 @@ impl HDBitsComprehensiveAnalyzer {
                     if let Some(group) = captures.get(1) {
                         let group_name = group.as_str().to_uppercase();
                         // Filter out common false positives
-                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
+                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV", "MA", "1", "0", "5"].contains(&group_name.as_str()) {
                             return Some(group_name);
                         }
                     }

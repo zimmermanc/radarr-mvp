@@ -48,3 +48,7 @@ path = "src/bin/hdbits_session_analyzer.rs"
 [[bin]]
 name = "hdbits-comprehensive-analyzer"
 path = "src/bin/hdbits_comprehensive_analyzer.rs"
+
+[[bin]]
+name = "hdbits-api-analyzer"
+path = "src/bin/hdbits_api_analyzer.rs"

@@ -1,0 +1,16 @@
+# HDBits Scene Group Analysis Cron Job
+# Runs weekly analysis to update scene group reputation scores
+
+# Run HDBits analysis every Sunday at 2:00 AM
+# This time is chosen to minimize server load and API impact
+0 2 * * 0 /opt/radarr/scripts/run_hdbits_analysis.sh
+
+# Alternative schedules (uncomment one if preferred):
+# Daily at 3:00 AM (for more frequent updates during initial setup)
+# 0 3 * * * /opt/radarr/scripts/run_hdbits_analysis.sh
+
+# Every 3 days at 2:00 AM
+# 0 2 */3 * * /opt/radarr/scripts/run_hdbits_analysis.sh
+
+# Monthly on the 1st at 2:00 AM (for stable production)
+# 0 2 1 * * /opt/radarr/scripts/run_hdbits_analysis.sh

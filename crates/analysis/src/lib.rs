@@ -7,6 +7,7 @@ pub mod hdbits;
 pub mod hdbits_browse_analyzer;
 pub mod hdbits_comprehensive_analyzer;
 pub mod hdbits_session_analyzer;
+pub mod hdbits_api_analyzer;
 
 pub use hdbits::*;
 
@@ -14,6 +15,7 @@ pub use hdbits::*;
 pub use hdbits_comprehensive_analyzer::{HDBitsComprehensiveAnalyzer, HDBitsComprehensiveConfig};
 pub use hdbits_session_analyzer::{HDBitsSessionAnalyzer, HDBitsSessionConfig};
 pub use hdbits_browse_analyzer::{HDBitsBrowseAnalyzer, HDBitsBrowseConfig};
+pub use hdbits_api_analyzer::{HDBitsApiAnalyzer, ApiAnalyzerConfig};
 
 #[cfg(test)]
 mod tests {

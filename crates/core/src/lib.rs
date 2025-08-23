@@ -16,6 +16,7 @@ pub mod circuit_breaker;
 pub mod correlation;
 pub mod tracing;
 pub mod streaming;
+pub mod jobs;
 
 // Re-export core types
 pub use models::*;

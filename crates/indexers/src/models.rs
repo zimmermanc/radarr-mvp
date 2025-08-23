@@ -54,6 +54,9 @@ pub struct ProwlarrSearchResult {
     
     /// Whether this is a freeleech release
     pub freeleech: Option<bool>,
+    
+    /// InfoHash for torrent deduplication
+    pub info_hash: Option<String>,
 }
 
 /// Category information for search results

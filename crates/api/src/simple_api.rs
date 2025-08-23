@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use tower_http::services::ServeDir;
-use crate::security::{SecurityConfig, apply_security};
+use crate::{security::{SecurityConfig, apply_security}, metrics::MetricsCollector};
 use radarr_core::{Movie, MovieStatus, RadarrError, repositories::MovieRepository};
 use radarr_infrastructure::{DatabasePool, PostgresMovieRepository, TmdbClient, CachedTmdbClient};
 use radarr_indexers::{IndexerClient, SearchRequest, SearchResponse, ProwlarrSearchResult};
@@ -32,6 +32,8 @@ pub struct SimpleApiState {
     pub indexer_client: Option<Arc<dyn IndexerClient + Send + Sync>>,
     pub movie_repo: Arc<PostgresMovieRepository>,
     pub tmdb_client: Option<Arc<CachedTmdbClient>>,
+    pub metrics_collector: Option<Arc<MetricsCollector>>,
+    pub quality_state: crate::handlers::quality::QualityState,
     // Circuit breakers for testing
     pub tmdb_circuit_breaker: Arc<CircuitBreaker>,
     pub hdbits_circuit_breaker: Arc<CircuitBreaker>,
@@ -72,11 +74,15 @@ impl SimpleApiState {
                 .with_request_timeout(Duration::from_secs(5))
         ));
         
+        let quality_state = crate::handlers::quality::QualityState::new(database_pool.clone());
+        
         Self { 
             database_pool,
             indexer_client: None,
             movie_repo,
             tmdb_client: None,
+            metrics_collector: None,
+            quality_state,
             tmdb_circuit_breaker: tmdb_cb,
             hdbits_circuit_breaker: hdbits_cb,
             qbittorrent_circuit_breaker: qbittorrent_cb,
@@ -93,6 +99,12 @@ impl SimpleApiState {
     /// Create new state with TMDB client
     pub fn with_tmdb_client(mut self, client: Arc<CachedTmdbClient>) -> Self {
         self.tmdb_client = Some(client);
+        self
+    }
+    
+    /// Create new state with metrics collector
+    pub fn with_metrics_collector(mut self, metrics: Arc<MetricsCollector>) -> Self {
+        self.metrics_collector = Some(metrics);
         self
     }
 }
@@ -231,6 +243,9 @@ pub fn create_simple_api_router(state: SimpleApiState) -> Router {
         .route("/v3/test/circuit-breaker/status", get(circuit_breaker_status))
         .route("/v3/test/circuit-breaker/simulate-failure/:service", post(simulate_service_failure))
         .route("/v3/test/circuit-breaker/reset/:service", post(reset_circuit_breaker))
+        
+        // Quality management endpoints - these will need a separate state
+        // TODO: Implement quality routes with proper state management
         
         .with_state(state.clone());
     
@@ -509,6 +524,11 @@ async fn search_movies(
         Ok(response) => {
             info!("Search completed successfully in {}ms, found {} results", execution_time, response.total);
             
+            // Record metrics for successful search
+            if let Some(metrics) = &state.metrics_collector {
+                metrics.record_search("prowlarr", start_time.elapsed(), true);
+            }
+            
             // Convert to API response format
             let api_response = serde_json::json!({
                 "total": response.total,
@@ -542,6 +562,11 @@ async fn search_movies(
         }
         Err(e) => {
             error!("Search failed after retries: {}", e);
+            
+            // Record metrics for failed search
+            if let Some(metrics) = &state.metrics_collector {
+                metrics.record_search("prowlarr", start_time.elapsed(), false);
+            }
             
             // Return error response
             let error_response = serde_json::json!({
@@ -1082,6 +1107,7 @@ async fn search_hdbits_fallback(query: &str) -> Result<SearchResponse, RadarrErr
             publish_date: release.published_date,
             categories: vec![], // TODO: Map HDBits categories
             attributes: HashMap::new(),
+            info_hash: None, // TODO: Extract from torrent data
         }).collect(),
         indexers_searched: 1,
         indexers_with_errors: 0,

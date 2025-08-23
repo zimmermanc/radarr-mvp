@@ -44,7 +44,8 @@ impl IndexerClient for MockIndexerClient {
                 total: 0,
                 results: vec![],
                 indexers_searched: 0,
-                indexers_failed: vec![],
+                indexers_with_errors: 0,
+                errors: vec![],
             })
         }
     }
@@ -275,8 +276,8 @@ impl WorkflowCoordinator {
         println!("🔍 Searching for releases...");
         let search_request = if let Some(ref imdb_id) = movie.imdb_id {
             SearchRequest::for_movie_imdb(imdb_id)
-        } else if let Some(tmdb_id) = movie.tmdb_id {
-            SearchRequest::for_movie_tmdb(tmdb_id)
+        } else if movie.tmdb_id != 0 {
+            SearchRequest::for_movie_tmdb(movie.tmdb_id)
         } else {
             SearchRequest::for_title(&movie.title)
         };
@@ -286,9 +287,9 @@ impl WorkflowCoordinator {
                 search_response.total, search_response.indexers_searched);
         
         if search_response.results.is_empty() {
-            return Err(radarr_core::RadarrError::NotFound(
-                format!("No releases found for movie: {}", movie.title)
-            ));
+            return Err(radarr_core::RadarrError::NotFound {
+                resource: format!("No releases found for movie: {}", movie.title)
+            });
         }
         
         // Step 2: Select best release (prefer 1080p, high seeders, freeleech)
@@ -337,7 +338,7 @@ impl WorkflowCoordinator {
     }
     
     /// Quality-based release selection algorithm
-    fn select_best_release(&self, releases: &[ProwlarrSearchResult]) -> radarr_core::Result<&ProwlarrSearchResult> {
+    fn select_best_release<'a>(&self, releases: &'a [ProwlarrSearchResult]) -> radarr_core::Result<&'a ProwlarrSearchResult> {
         let mut scored_releases: Vec<(f64, &ProwlarrSearchResult)> = releases
             .iter()
             .map(|release| {
@@ -384,7 +385,9 @@ impl WorkflowCoordinator {
         scored_releases
             .first()
             .map(|(_, release)| *release)
-            .ok_or_else(|| radarr_core::RadarrError::NotFound("No suitable release found".to_string()))
+            .ok_or_else(|| radarr_core::RadarrError::NotFound { 
+                resource: "No suitable release found".to_string() 
+            })
     }
     
     /// Test error handling scenarios

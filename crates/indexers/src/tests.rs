@@ -135,6 +135,7 @@ mod tests {
             imdb_id: Some("tt1234567".to_string()),
             tmdb_id: Some(12345),
             freeleech: Some(false),
+            info_hash: None,
         }
     }
     

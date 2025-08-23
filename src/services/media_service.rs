@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::path::Path;
 use radarr_core::{
     RadarrError, Result, Movie, Download, DownloadStatus, QualityProfile,
-    repositories::{MovieRepository, DownloadRepository, QualityProfileRepository}
+    repositories::{MovieRepository, DownloadRepository, QualityProfileRepository},
+    correlation::{CorrelationContext, set_current_context},
+    tracing::{info_with_correlation, debug_with_correlation, warn_with_correlation, error_with_correlation}
 };
 use radarr_indexers::{IndexerClient, SearchRequest, SearchResponse};
 use radarr_downloaders::{QBittorrentClient, AddTorrentParams, TorrentData, TorrentInfo};
@@ -160,7 +162,11 @@ impl MediaService {
     /// Search for movies using the configured indexer
     #[instrument(skip(self), fields(title = %params.title))]
     pub async fn search_movie(&self, params: MovieSearchParams) -> Result<MovieSearchResult> {
-        debug!("Searching for movie: {}", params.title);
+        // Create correlation context for this search operation
+        let context = CorrelationContext::new("media_service.search_movie");
+        set_current_context(context);
+        
+        debug_with_correlation(format!("Searching for movie: {}", params.title));
         
         // Get quality profile for filtering
         let quality_profile = self.quality_profile_repo.get_by_id(params.quality_profile_id).await?
@@ -197,7 +203,7 @@ impl MediaService {
         let search_response = self.indexer_client.search(&search_request).await?;
         let result_count = search_response.results.len();
         
-        info!("Found {} results for movie search: {}", result_count, params.title);
+        info_with_correlation(format!("Found {} results for movie search: {}", result_count, params.title));
         
         Ok(MovieSearchResult {
             search_response,
@@ -209,7 +215,11 @@ impl MediaService {
     /// Download a release
     #[instrument(skip(self), fields(movie_id = %params.movie_id, release = %params.release_title))]
     pub async fn download_release(&self, params: DownloadParams) -> Result<Uuid> {
-        info!("Starting download for release: {}", params.release_title);
+        // Create correlation context for this download operation
+        let context = CorrelationContext::new("media_service.download_release");
+        set_current_context(context);
+        
+        info_with_correlation(format!("Starting download for release: {}", params.release_title));
         
         // Verify movie exists
         let movie = self.movie_repo.get_by_id(params.movie_id).await?

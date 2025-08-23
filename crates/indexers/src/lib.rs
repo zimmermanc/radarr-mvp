@@ -9,6 +9,7 @@ pub mod hdbits;
 pub mod models;
 pub mod prowlarr;
 pub mod service_health;
+// pub mod multi_indexer; // TODO: Fix compilation issues
 
 #[cfg(test)]
 pub mod tests;
@@ -18,6 +19,7 @@ pub use models::*;
 pub use prowlarr::{IndexerClient, ProwlarrClient, ProwlarrConfig, ProwlarrConfigBuilder};
 pub use hdbits::{HDBitsClient, HDBitsConfig, MovieSearchRequest};
 pub use service_health::{ServiceHealth, HealthStatus, ServiceMetrics};
+// pub use multi_indexer::{MultiIndexerService, MultiIndexerConfig, IndexerSearchResult};
 
 #[cfg(test)]
 pub use tests::MockIndexerClient;

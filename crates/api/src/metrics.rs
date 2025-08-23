@@ -24,6 +24,14 @@ pub struct MetricsCollector {
     prom_db_queries: CounterVec,
     prom_business_events: CounterVec,
     prom_system_gauges: GaugeVec,
+    
+    // Radarr-specific business metrics
+    search_total: CounterVec,
+    grab_total: CounterVec,
+    import_success_total: CounterVec,
+    import_failure_total: CounterVec,
+    queue_length: GaugeVec,
+    search_duration_seconds: HistogramVec,
 }
 
 impl MetricsCollector {
@@ -60,12 +68,56 @@ impl MetricsCollector {
             &["metric_type"]
         )?;
 
+        // Radarr-specific business metrics
+        let search_total = register_counter_vec!(
+            "radarr_search_total",
+            "Total number of searches performed",
+            &["indexer", "status"]
+        )?;
+
+        let grab_total = register_counter_vec!(
+            "radarr_grab_total", 
+            "Total number of releases grabbed",
+            &["indexer", "quality", "status"]
+        )?;
+
+        let import_success_total = register_counter_vec!(
+            "radarr_import_success_total",
+            "Total number of successful imports",
+            &["quality", "source"]
+        )?;
+
+        let import_failure_total = register_counter_vec!(
+            "radarr_import_failure_total", 
+            "Total number of failed imports",
+            &["reason", "source"]
+        )?;
+
+        let queue_length = register_gauge_vec!(
+            "radarr_queue_length",
+            "Current length of download queue",
+            &["status"]
+        )?;
+
+        let search_duration_seconds = register_histogram_vec!(
+            "radarr_search_duration_seconds",
+            "Duration of search operations in seconds",
+            &["indexer"],
+            vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
+        )?;
+
         Ok(Self {
             prom_http_requests,
             prom_http_duration,
             prom_db_queries,
             prom_business_events,
             prom_system_gauges,
+            search_total,
+            grab_total,
+            import_success_total,
+            import_failure_total,
+            queue_length,
+            search_duration_seconds,
         })
     }
     
@@ -139,6 +191,60 @@ impl MetricsCollector {
         self.prom_system_gauges
             .with_label_values(&["active_tasks"])
             .set(active_tasks as f64);
+    }
+
+    // Radarr-specific metric recording methods
+
+    /// Record a search operation
+    pub fn record_search(&self, indexer: &str, duration: Duration, success: bool) {
+        let status = if success { "success" } else { "error" };
+        
+        self.search_total
+            .with_label_values(&[indexer, status])
+            .inc();
+            
+        self.search_duration_seconds
+            .with_label_values(&[indexer])
+            .observe(duration.as_secs_f64());
+    }
+
+    /// Record a release grab
+    pub fn record_grab(&self, indexer: &str, quality: &str, success: bool) {
+        let status = if success { "success" } else { "error" };
+        
+        self.grab_total
+            .with_label_values(&[indexer, quality, status])
+            .inc();
+    }
+
+    /// Record a successful import
+    pub fn record_import_success(&self, quality: &str, source: &str) {
+        self.import_success_total
+            .with_label_values(&[quality, source])
+            .inc();
+    }
+
+    /// Record a failed import
+    pub fn record_import_failure(&self, reason: &str, source: &str) {
+        self.import_failure_total
+            .with_label_values(&[reason, source])
+            .inc();
+    }
+
+    /// Update queue length
+    pub fn update_queue_length(&self, queued: i64, downloading: i64, paused: i64) {
+        self.queue_length
+            .with_label_values(&["queued"])
+            .set(queued as f64);
+        self.queue_length
+            .with_label_values(&["downloading"])
+            .set(downloading as f64);
+        self.queue_length
+            .with_label_values(&["paused"])
+            .set(paused as f64);
+        self.queue_length
+            .with_label_values(&["total"])
+            .set((queued + downloading + paused) as f64);
     }
     
     /// Export Prometheus metrics

@@ -169,9 +169,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
             // Handle events from event bus
             event = event_receiver.recv() => {
                 match event {
-                    Ok(event) => {
+                    Ok(envelope) => {
                         // Convert event to WsResponse
-                        let response = match &event {
+                        let response = match &envelope.event {
                             SystemEvent::ProgressUpdate { 
                                 operation_id, 
                                 operation_type, 
@@ -212,7 +212,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                             }
                             _ => {
                                 // Forward all other events
-                                Some(WsResponse::Event { event: event.clone() })
+                                Some(WsResponse::Event { event: envelope.event.clone() })
                             }
                         };
                         

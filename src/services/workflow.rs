@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
-use radarr_core::{RadarrError, Result, EventHandler, SystemEvent};
+use radarr_core::{RadarrError, Result, EventHandler, SystemEvent, EventEnvelope};
 use radarr_import::ImportPipeline;
 use radarr_infrastructure::DatabasePool;
 use uuid::Uuid;
@@ -460,8 +460,8 @@ impl DownloadImportHandler {
 
 #[async_trait]
 impl EventHandler for DownloadImportHandler {
-    async fn handle_event(&self, event: &SystemEvent) -> Result<()> {
-        match event {
+    async fn handle_event(&self, envelope: &EventEnvelope) -> Result<()> {
+        match &envelope.event {
             SystemEvent::DownloadComplete { movie_id, file_path, .. } => {
                 info!("Download completed for movie {}, triggering import from {}", movie_id, file_path);
                 
@@ -496,8 +496,8 @@ impl EventHandler for DownloadImportHandler {
         Ok(())
     }
 
-    fn should_handle(&self, event: &SystemEvent) -> bool {
-        matches!(event, SystemEvent::DownloadComplete { .. })
+    fn should_handle(&self, envelope: &EventEnvelope) -> bool {
+        matches!(envelope.event, SystemEvent::DownloadComplete { .. })
     }
 }
 
@@ -512,11 +512,11 @@ impl LoggingEventHandler {
 
 #[async_trait]
 impl EventHandler for LoggingEventHandler {
-    async fn handle_event(&self, event: &SystemEvent) -> Result<()> {
-        debug!("Event processed: {}", event.description());
+    async fn handle_event(&self, envelope: &EventEnvelope) -> Result<()> {
+        debug!("Event processed: {} [correlation_id={}]", envelope.event.description(), envelope.correlation_id);
         
         // Log additional details for certain events
-        match event {
+        match &envelope.event {
             SystemEvent::DownloadProgress { progress, speed, eta_seconds, .. } => {
                 if let (Some(speed), Some(eta)) = (speed, eta_seconds) {
                     debug!("Download speed: {} bytes/s, ETA: {} seconds", speed, eta);
@@ -539,7 +539,7 @@ impl EventHandler for LoggingEventHandler {
         Ok(())
     }
 
-    fn should_handle(&self, _event: &SystemEvent) -> bool {
+    fn should_handle(&self, _envelope: &EventEnvelope) -> bool {
         true // Log all events
     }
 }

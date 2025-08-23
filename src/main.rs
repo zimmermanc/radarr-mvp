@@ -307,7 +307,8 @@ fn build_router(app_state: AppState) -> Router {
 
     // Create simple API state with database pool and indexer client
     let mut simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
-        .with_indexer_client(app_state.services.indexer_client.clone());
+        .with_indexer_client(app_state.services.indexer_client.clone())
+        .with_metrics_collector(metrics.clone());
         
     // Add TMDB client if available
     if let Some(tmdb) = tmdb_client {

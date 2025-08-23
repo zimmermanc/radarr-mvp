@@ -21,7 +21,7 @@ check_server() {
     else
         echo "❌ Server is not running."
         echo "ℹ️  To start the server:"
-        echo "   1. Ensure PostgreSQL is running: docker-compose up -d postgres"
+        echo "   1. Ensure PostgreSQL is running: systemctl status postgresql"
         echo "   2. Run: cargo run"
         echo "   3. Or for testing: RUST_LOG=info cargo run"
         return 1

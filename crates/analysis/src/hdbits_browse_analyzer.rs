@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use tracing::{info, warn};
-use crate::{SceneGroupMetrics, ReleaseMetric, HDBitsTorrent};
+use crate::{SceneGroupMetrics, ReleaseMetric};
+use radarr_indexers::hdbits::HDBitsTorrent;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HDBitsBrowseConfig {
@@ -147,23 +148,21 @@ impl HDBitsBrowseAnalyzer {
         for torrent in releases {
             if let Some(group_name) = Self::extract_scene_group(&torrent.name) {
                 let release_metric = ReleaseMetric {
-                    torrent_id: torrent.id.clone(),
+                    torrent_id: torrent.id.to_string(),
                     name: torrent.name.clone(),
-                    seeders: torrent.seeders,
-                    leechers: torrent.leechers,
+                    seeders: torrent.seeders as i32,
+                    leechers: torrent.leechers as i32,
                     size_gb: torrent.size as f64 / (1024.0 * 1024.0 * 1024.0),
                     completion_rate: if torrent.seeders + torrent.leechers > 0 {
                         torrent.times_completed as f64 / (torrent.seeders + torrent.leechers) as f64
                     } else {
                         0.0
                     },
-                    is_internal: torrent.internal,
-                    added_date: chrono::DateTime::parse_from_rfc3339(&torrent.added)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now()),
-                    category: torrent.category.name.clone(),
-                    codec: torrent.type_codec.clone(),
-                    medium: torrent.type_medium.clone(),
+                    is_internal: torrent.is_internal(),
+                    added_date: torrent.parsed_date().unwrap_or_else(|| Utc::now()),
+                    category: crate::get_category_name(torrent.type_category),
+                    codec: crate::get_codec_name(torrent.type_codec),
+                    medium: crate::get_medium_name(torrent.type_medium),
                 };
                 
                 self.releases.push(release_metric.clone());
@@ -205,8 +204,9 @@ impl HDBitsBrowseAnalyzer {
                     group_metrics.last_seen = release_metric.added_date;
                 }
                 
-                if !group_metrics.categories_covered.contains(&torrent.category.name) {
-                    group_metrics.categories_covered.push(torrent.category.name.clone());
+                let category_name = crate::get_category_name(torrent.type_category);
+                if !group_metrics.categories_covered.contains(&category_name) {
+                    group_metrics.categories_covered.push(category_name);
                 }
                 
                 group_metrics.release_history.push(release_metric);

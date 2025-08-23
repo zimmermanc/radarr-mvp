@@ -29,6 +29,9 @@ md5 = { workspace = true }
 html-escape = { workspace = true }
 urlencoding = { workspace = true }
 
+# Internal crates
+radarr-indexers = { path = "../indexers" }
+
 [dev-dependencies]
 tokio-test = { workspace = true }
 proptest = { workspace = true }

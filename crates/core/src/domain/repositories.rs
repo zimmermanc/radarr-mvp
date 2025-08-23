@@ -5,6 +5,7 @@
 
 use crate::models::*;
 use crate::error::Result;
+use crate::blocklist::{BlocklistRepository};
 use async_trait::async_trait;
 use uuid::Uuid;
 

@@ -17,6 +17,7 @@ pub mod correlation;
 pub mod tracing;
 pub mod streaming;
 pub mod jobs;
+pub mod blocklist;
 
 // Re-export core types
 pub use models::*;
@@ -27,3 +28,4 @@ pub use services::*;
 pub use events::*;
 pub use retry::*;
 pub use circuit_breaker::*;
+pub use blocklist::*;

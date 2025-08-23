@@ -10,6 +10,8 @@ pub mod download;
 pub mod queue;
 pub mod custom_formats;
 pub mod streaming_cache;
+pub mod list_sync;
+pub mod blocklist;
 
 // Re-export all repository implementations
 pub use movie::PostgresMovieRepository;
@@ -19,6 +21,8 @@ pub use download::PostgresDownloadRepository;
 pub use queue::PostgresQueueRepository;
 pub use custom_formats::{CustomFormatsRepository, PostgresCustomFormatsRepository};
 pub use streaming_cache::PostgresStreamingCache;
+pub use list_sync::PostgresListSyncRepository;
+pub use blocklist::PostgresBlocklistRepository;
 
 #[cfg(test)]
 mod tests {

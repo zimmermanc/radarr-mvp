@@ -5,7 +5,36 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use tracing::{info, warn};
-use crate::{SceneGroupMetrics, ReleaseMetric, HDBitsTorrent};
+use crate::{SceneGroupMetrics, ReleaseMetric};
+
+// Internal torrent representation for analysis
+#[derive(Debug, Clone)]
+pub struct AnalysisTorrent {
+    pub id: String,
+    pub name: String,
+    pub times_completed: u32,
+    pub seeders: i32,
+    pub leechers: i32,
+    pub size: i64,
+    pub added: String,
+    pub type_category: u32,
+    pub type_codec: u32,
+    pub type_medium: u32,
+    pub type_origin: u32,
+    pub internal: bool,
+}
+
+impl AnalysisTorrent {
+    pub fn is_internal(&self) -> bool {
+        self.internal || self.type_origin == 1
+    }
+    
+    pub fn parsed_date(&self) -> Option<DateTime<Utc>> {
+        chrono::DateTime::parse_from_rfc3339(&self.added)
+            .map(|dt| dt.with_timezone(&Utc))
+            .ok()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HDBitsComprehensiveConfig {
@@ -81,7 +110,7 @@ impl HDBitsComprehensiveAnalyzer {
         Ok(())
     }
     
-    pub async fn collect_comprehensive_data(&self) -> Result<Vec<HDBitsTorrent>> {
+    pub async fn collect_comprehensive_data(&self) -> Result<Vec<AnalysisTorrent>> {
         info!("Starting comprehensive data collection");
         
         let client = reqwest::Client::builder()
@@ -144,7 +173,7 @@ impl HDBitsComprehensiveAnalyzer {
         Ok(all_torrents)
     }
     
-    fn parse_torrents_from_html(&self, html: &str) -> Result<Vec<HDBitsTorrent>> {
+    fn parse_torrents_from_html(&self, html: &str) -> Result<Vec<AnalysisTorrent>> {
         // Simplified HTML parsing - in production would use scraper crate
         let mut torrents = Vec::new();
         
@@ -181,7 +210,7 @@ impl HDBitsComprehensiveAnalyzer {
         Ok(torrents)
     }
     
-    fn parse_torrent_row(&self, row: &str) -> Option<HDBitsTorrent> {
+    fn parse_torrent_row(&self, row: &str) -> Option<AnalysisTorrent> {
         // Parse complete table row data
         if !row.contains("class=\"t_row\"") {
             return self.extract_torrent_from_line(row); // Fallback for old format
@@ -232,22 +261,22 @@ impl HDBitsComprehensiveAnalyzer {
             Utc::now().to_rfc3339()
         };
         
-        Some(HDBitsTorrent {
+        // Create a simple torrent representation for analysis
+        let codec_id = Self::detect_codec_id(&name);
+        let medium_id = Self::detect_medium_id(&name);
+        
+        Some(AnalysisTorrent {
             id: id.clone(),
             name,
-            times_completed: snatched as i32,
+            times_completed: snatched,
             seeders: seeders as i32,
             leechers: leechers as i32,
             size: size_bytes as i64,
             added,
-            imdb: None,
-            tvdb: None,
-            category: HDBitsCategory { id: 1, name: "Movie".to_string() },
-            type_category: "Movie".to_string(),
-            type_codec: self.detect_codec(&id),
-            type_medium: self.detect_medium(&id),
-            type_origin: if is_exclusive { "Internal".to_string() } else { "Scene".to_string() },
-            freeleech: None,
+            type_category: 1, // Movie
+            type_codec: codec_id,
+            type_medium: medium_id,
+            type_origin: if is_exclusive { 1 } else { 0 },
             internal: is_exclusive,
         })
     }
@@ -321,44 +350,16 @@ impl HDBitsComprehensiveAnalyzer {
         0
     }
     
-    fn parse_time_alive(&self, cell: &str) -> String {
+    fn parse_time_alive(&self, _cell: &str) -> String {
         // Parse time like "3 years<br />1 month" and convert to timestamp
         // For now, just return current time minus approximation
         // In production, parse properly
         Utc::now().to_rfc3339()
     }
     
-    fn detect_codec(&self, name: &str) -> String {
-        if name.contains("x265") || name.contains("HEVC") {
-            "x265".to_string()
-        } else if name.contains("x264") || name.contains("H.264") {
-            "x264".to_string()
-        } else if name.contains("XviD") {
-            "XviD".to_string()
-        } else {
-            "x264".to_string() // Default
-        }
-    }
     
-    fn detect_medium(&self, name: &str) -> String {
-        if name.contains("BluRay") || name.contains("Blu-ray") || name.contains("BD") {
-            "Blu-ray".to_string()
-        } else if name.contains("WEB-DL") || name.contains("WEBDL") {
-            "WEB-DL".to_string()
-        } else if name.contains("WEBRip") || name.contains("WEB-Rip") {
-            "WEBRip".to_string()
-        } else if name.contains("HDTV") {
-            "HDTV".to_string()
-        } else if name.contains("DVDRip") || name.contains("DVD") {
-            "DVD".to_string()
-        } else {
-            "Unknown".to_string()
-        }
-    }
-    
-    fn extract_torrent_from_line(&self, line: &str) -> Option<HDBitsTorrent> {
+    fn extract_torrent_from_line(&self, line: &str) -> Option<AnalysisTorrent> {
         // Simplified extraction - would need proper HTML parsing in production
-        use crate::{HDBitsTorrent, HDBitsCategory};
         
         // Extract ID from details.php?id=XXXXX pattern
         let id = line.split("details.php?id=")
@@ -392,7 +393,7 @@ impl HDBitsComprehensiveAnalyzer {
                           line.contains(">Exclusive<");
         
         // Create a basic torrent entry
-        Some(HDBitsTorrent {
+        Some(AnalysisTorrent {
             id: id.clone(),
             name,
             times_completed: 0,
@@ -400,19 +401,15 @@ impl HDBitsComprehensiveAnalyzer {
             leechers: 0,
             size: 0,
             added: Utc::now().to_rfc3339(),
-            imdb: None,
-            tvdb: None,
-            category: HDBitsCategory { id: 1, name: "Movie".to_string() },
-            type_category: "Movie".to_string(),
-            type_codec: "x264".to_string(),
-            type_medium: "Blu-ray".to_string(),
-            type_origin: "Scene".to_string(),
-            freeleech: None,
+            type_category: 1, // Movie
+            type_codec: 1,    // H.264
+            type_medium: 1,   // Blu-ray
+            type_origin: if is_exclusive { 1 } else { 0 },
             internal: is_exclusive,
         })
     }
     
-    pub fn analyze_scene_groups(&mut self, releases: Vec<HDBitsTorrent>) -> Result<()> {
+    pub fn analyze_scene_groups(&mut self, releases: Vec<AnalysisTorrent>) -> Result<()> {
         info!("Analyzing {} releases for scene groups", releases.len());
         
         // Log a sample of release names for debugging
@@ -437,23 +434,21 @@ impl HDBitsComprehensiveAnalyzer {
             
             if let Some(group_name) = group_name {
                 let release_metric = ReleaseMetric {
-                    torrent_id: torrent.id.clone(),
+                    torrent_id: torrent.id.to_string(),
                     name: torrent.name.clone(),
-                    seeders: torrent.seeders,
-                    leechers: torrent.leechers,
+                    seeders: torrent.seeders as i32,
+                    leechers: torrent.leechers as i32,
                     size_gb: torrent.size as f64 / (1024.0 * 1024.0 * 1024.0),
                     completion_rate: if torrent.seeders + torrent.leechers > 0 {
                         torrent.times_completed as f64 / (torrent.seeders + torrent.leechers) as f64
                     } else {
                         0.0
                     },
-                    is_internal: torrent.internal,
-                    added_date: chrono::DateTime::parse_from_rfc3339(&torrent.added)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now()),
-                    category: torrent.category.name.clone(),
-                    codec: torrent.type_codec.clone(),
-                    medium: torrent.type_medium.clone(),
+                    is_internal: torrent.is_internal(),
+                    added_date: torrent.parsed_date().unwrap_or_else(|| Utc::now()),
+                    category: Self::get_category_name(torrent.type_category),
+                    codec: Self::get_codec_name(torrent.type_codec),
+                    medium: Self::get_medium_name(torrent.type_medium),
                 };
                 
                 // Add to releases list
@@ -500,8 +495,9 @@ impl HDBitsComprehensiveAnalyzer {
                 }
                 
                 // Add category if not already present
-                if !group_metrics.categories_covered.contains(&torrent.category.name) {
-                    group_metrics.categories_covered.push(torrent.category.name.clone());
+                let category_name = Self::get_category_name(torrent.type_category);
+                if !group_metrics.categories_covered.contains(&category_name) {
+                    group_metrics.categories_covered.push(category_name);
                 }
                 
                 group_metrics.release_history.push(release_metric);
@@ -621,6 +617,70 @@ impl HDBitsComprehensiveAnalyzer {
             size if size < 2.0 => 0.2,                     // Very low quality
             size if size > 50.0 => 0.7,                    // Possibly uncompressed/remux
             _ => 0.5,                                       // Default
+        }
+    }
+    
+    fn get_category_name(id: u32) -> String {
+        match id {
+            1 => "Movie".to_string(),
+            2 => "TV".to_string(),
+            3 => "Documentary".to_string(),
+            4 => "Music".to_string(),
+            5 => "Sport".to_string(),
+            6 => "Audio".to_string(),
+            7 => "XXX".to_string(),
+            8 => "Misc/Demo".to_string(),
+            _ => "Unknown".to_string(),
+        }
+    }
+    
+    fn get_codec_name(id: u32) -> String {
+        match id {
+            1 => "H.264".to_string(),
+            2 => "MPEG-2".to_string(),
+            3 => "VC-1".to_string(),
+            4 => "XviD".to_string(),
+            5 => "HEVC".to_string(),
+            _ => "Unknown".to_string(),
+        }
+    }
+    
+    fn get_medium_name(id: u32) -> String {
+        match id {
+            1 => "Blu-ray".to_string(),
+            3 => "Encode".to_string(),
+            4 => "Capture".to_string(),
+            5 => "Remux".to_string(),
+            6 => "WEB-DL".to_string(),
+            _ => "Unknown".to_string(),
+        }
+    }
+    
+    fn detect_codec_id(name: &str) -> u32 {
+        if name.contains("x265") || name.contains("HEVC") {
+            5 // HEVC
+        } else if name.contains("x264") || name.contains("H.264") {
+            1 // H.264
+        } else if name.contains("XviD") {
+            4 // XviD
+        } else {
+            1 // Default to H.264
+        }
+    }
+    
+    fn detect_medium_id(name: &str) -> u32 {
+        if name.contains("BluRay") || name.contains("Blu-ray") || name.contains("BD") {
+            1 // Blu-ray
+        } else if name.contains("WEB-DL") || name.contains("WEBDL") {
+            6 // WEB-DL
+        } else if name.contains("WEBRip") || name.contains("WEB-Rip") {
+            3 // Encode
+        } else if name.contains("HDTV") {
+            4 // Capture
+        } else if name.contains("DVDRip") || name.contains("DVD") {
+            3 // Encode
+        } else {
+            1 // Default to Blu-ray
         }
     }
     

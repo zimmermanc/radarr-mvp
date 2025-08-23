@@ -56,33 +56,13 @@ pub struct HDBitsResponse {
     pub data: Option<Vec<HDBitsTorrent>>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct HDBitsTorrent {
-    pub id: String,
-    pub name: String,
-    pub times_completed: u32,
-    pub seeders: u32,
-    pub leechers: u32,
-    pub size: u64,
-    pub added: String, // ISO date string
-    pub imdb: Option<HDBitsImdb>,
-    pub tvdb: Option<u32>,
-    pub category: HDBitsCategory,
-    pub type_category: String,
-    pub type_codec: String,
-    pub type_medium: String,
-    pub type_origin: String,
-    pub freeleech: Option<String>,
-    pub internal: bool,
-}
+// Re-export HDBitsTorrent from indexers crate
+pub use radarr_indexers::hdbits::HDBitsTorrent;
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct HDBitsImdb {
-    pub id: u32,
-    pub rating: Option<f32>,
-    pub votes: Option<u32>,
-}
+// Re-export HDBits types from indexers crate
+pub use radarr_indexers::hdbits::{HDBitsImdbInfo as HDBitsImdb};
 
+// Category is not available in indexers crate, define locally
 #[derive(Debug, Deserialize, Clone)]
 pub struct HDBitsCategory {
     pub id: u32,
@@ -117,8 +97,8 @@ pub struct SceneGroupMetrics {
 pub struct ReleaseMetric {
     pub torrent_id: String,
     pub name: String,
-    pub seeders: u32,
-    pub leechers: u32,
+    pub seeders: i32,
+    pub leechers: i32,
     pub size_gb: f64,
     pub completion_rate: f64,
     pub is_internal: bool,
@@ -387,23 +367,21 @@ impl SceneGroupAnalyzer {
         for torrent in torrents {
             if let Some(group_name) = Self::extract_scene_group(&torrent.name) {
                 let release_metric = ReleaseMetric {
-                    torrent_id: torrent.id.clone(),
+                    torrent_id: torrent.id.to_string(),
                     name: torrent.name.clone(),
-                    seeders: torrent.seeders,
-                    leechers: torrent.leechers,
+                    seeders: torrent.seeders as i32,
+                    leechers: torrent.leechers as i32,
                     size_gb: torrent.size as f64 / (1024.0 * 1024.0 * 1024.0),
                     completion_rate: if torrent.seeders + torrent.leechers > 0 {
                         torrent.times_completed as f64 / (torrent.seeders + torrent.leechers) as f64
                     } else {
                         0.0
                     },
-                    is_internal: torrent.internal,
-                    added_date: chrono::DateTime::parse_from_rfc3339(&torrent.added)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now()),
-                    category: torrent.category.name,
-                    codec: torrent.type_codec,
-                    medium: torrent.type_medium,
+                    is_internal: torrent.is_internal(),
+                    added_date: torrent.parsed_date().unwrap_or_else(|| Utc::now()),
+                    category: get_category_name(torrent.type_category),
+                    codec: get_codec_name(torrent.type_codec),
+                    medium: get_medium_name(torrent.type_medium),
                 };
 
                 let group_metrics = self.group_metrics.entry(group_name.clone()).or_insert_with(|| {
@@ -805,5 +783,42 @@ mod tests {
         
         assert!(metrics.reputation_score > 50.0); // Should be a good score
         assert!(metrics.reputation_score <= 100.0); // Should not exceed max
+    }
+}
+
+// Helper functions to convert HDBits API IDs to human-readable names
+pub fn get_category_name(id: u32) -> String {
+    match id {
+        1 => "Movie".to_string(),
+        2 => "TV".to_string(),
+        3 => "Documentary".to_string(),
+        4 => "Music".to_string(),
+        5 => "Sport".to_string(),
+        6 => "Audio".to_string(),
+        7 => "XXX".to_string(),
+        8 => "Misc/Demo".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+pub fn get_codec_name(id: u32) -> String {
+    match id {
+        1 => "H.264".to_string(),
+        2 => "MPEG-2".to_string(),
+        3 => "VC-1".to_string(),
+        4 => "XviD".to_string(),
+        5 => "HEVC".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+pub fn get_medium_name(id: u32) -> String {
+    match id {
+        1 => "Blu-ray".to_string(),
+        3 => "Encode".to_string(),
+        4 => "Capture".to_string(),
+        5 => "Remux".to_string(),
+        6 => "WEB-DL".to_string(),
+        _ => "Unknown".to_string(),
     }
 }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+// Chrono types currently unused but may be needed for future date processing
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -266,6 +266,10 @@ impl HDBitsApiAnalyzer {
             // Extract scene group from release name
             let group_name = self.extract_scene_group(&torrent.name, torrent.type_exclusive == 1);
             
+            // Pre-calculate values to avoid borrow checker issues
+            let codec_name = Self::codec_id_to_name_static(torrent.type_codec);
+            let medium_name = Self::medium_id_to_name_static(torrent.type_medium);
+            
             let stats = self.scene_groups.entry(group_name.clone()).or_insert_with(|| {
                 SceneGroupStats {
                     name: group_name,
@@ -296,17 +300,18 @@ impl HDBitsApiAnalyzer {
             }
             
             // Track codec distribution
-            let codec_name = self.codec_id_to_name(torrent.type_codec);
             *stats.codecs.entry(codec_name).or_insert(0) += 1;
             
             // Track medium distribution
-            let medium_name = self.medium_id_to_name(torrent.type_medium);
             *stats.mediums.entry(medium_name).or_insert(0) += 1;
         }
         
         // Calculate quality scores
-        for stats in self.scene_groups.values_mut() {
-            stats.quality_score = self.calculate_quality_score(stats);
+        let group_names: Vec<String> = self.scene_groups.keys().cloned().collect();
+        for group_name in group_names {
+            if let Some(stats) = self.scene_groups.get_mut(&group_name) {
+                stats.quality_score = Self::calculate_quality_score_static(stats);
+            }
         }
         
         info!("Identified {} unique scene groups", self.scene_groups.len());
@@ -347,7 +352,7 @@ impl HDBitsApiAnalyzer {
     }
     
     /// Calculate quality score for a scene group
-    fn calculate_quality_score(&self, stats: &SceneGroupStats) -> f64 {
+    fn calculate_quality_score_static(stats: &SceneGroupStats) -> f64 {
         let mut score = 0.0;
         
         // Base score from release count (logarithmic)
@@ -377,7 +382,7 @@ impl HDBitsApiAnalyzer {
     }
     
     /// Convert codec ID to name
-    fn codec_id_to_name(&self, id: u32) -> String {
+    fn codec_id_to_name_static(id: u32) -> String {
         match id {
             1 => "H.264",
             2 => "MPEG-2",
@@ -389,7 +394,7 @@ impl HDBitsApiAnalyzer {
     }
     
     /// Convert medium ID to name
-    fn medium_id_to_name(&self, id: u32) -> String {
+    fn medium_id_to_name_static(id: u32) -> String {
         match id {
             1 => "Blu-ray",
             3 => "Encode",

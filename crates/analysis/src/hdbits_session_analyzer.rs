@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::info;
 use crate::{SceneGroupMetrics, ReleaseMetric, HDBitsTorrent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +71,7 @@ impl HDBitsSessionAnalyzer {
         &self.scene_groups
     }
     
-    pub fn generate_comprehensive_report(&self, start_time: DateTime<Utc>) -> SessionAnalysisReport {
+    pub fn generate_comprehensive_report(&self, _start_time: DateTime<Utc>) -> SessionAnalysisReport {
         SessionAnalysisReport::default()
     }
     

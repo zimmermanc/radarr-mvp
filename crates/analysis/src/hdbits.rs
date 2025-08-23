@@ -21,8 +21,8 @@ pub struct HDBitsConfig {
 impl Default for HDBitsConfig {
     fn default() -> Self {
         Self {
-            username: "blargdiesel".to_string(),
-            passkey: "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863".to_string(),
+            username: String::new(),
+            passkey: String::new(),
             api_url: "https://hdbits.org/api/torrents".to_string(),
             rate_limit_per_hour: 150,
         }
@@ -326,8 +326,33 @@ impl SceneGroupAnalyzer {
     
     pub async fn collect_and_analyze(&mut self) -> Result<AnalysisReport> {
         info!("Starting data collection and analysis");
-        // TODO: Implement actual collection and analysis
-        Ok(AnalysisReport::default())
+        
+        // Ensure we have a configuration
+        let config = self.config.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("HDBits configuration not set"))?
+            .clone();
+        
+        // Create API client
+        let api_client = HDBitsClient::new(config);
+        
+        // Collect comprehensive data from HDBits
+        let torrents = api_client.collect_comprehensive_data().await
+            .context("Failed to collect data from HDBits")?;
+        
+        info!("Collected {} torrents from HDBits", torrents.len());
+        
+        // Analyze the collected torrents
+        self.analyze_torrents(torrents)?;
+        
+        // Generate the analysis report
+        let report = self.generate_analysis_report();
+        
+        // Save report if output directory is specified
+        if let Some(output_dir) = &self.output_dir {
+            self.save_analysis_report(&report, output_dir).await?;
+        }
+        
+        Ok(report)
     }
 
     pub fn extract_scene_group(torrent_name: &str) -> Option<String> {
@@ -535,6 +560,120 @@ impl SceneGroupAnalyzer {
     pub fn export_analysis(&self) -> Result<String> {
         serde_json::to_string_pretty(&self.group_metrics)
             .context("Failed to serialize scene group analysis")
+    }
+    
+    pub fn generate_analysis_report(&self) -> AnalysisReport {
+        let mut report = AnalysisReport::default();
+        
+        report.total_torrents_analyzed = self.group_metrics.values()
+            .map(|g| g.total_releases)
+            .sum();
+        report.unique_scene_groups = self.group_metrics.len() as u32;
+        report.internal_releases = self.group_metrics.values()
+            .map(|g| g.internal_releases)
+            .sum();
+        report.external_releases = report.total_torrents_analyzed - report.internal_releases;
+        
+        // Quality distribution
+        for group in self.group_metrics.values() {
+            match group.reputation_score {
+                score if score >= 80.0 => report.quality_distribution.premium_groups += 1,
+                score if score >= 70.0 => report.quality_distribution.high_quality_groups += 1,
+                score if score >= 60.0 => report.quality_distribution.standard_groups += 1,
+                score if score >= 40.0 => report.quality_distribution.low_quality_groups += 1,
+                _ => report.quality_distribution.poor_groups += 1,
+            }
+        }
+        
+        // Top groups
+        let mut top_groups: Vec<_> = self.group_metrics.values().collect();
+        top_groups.sort_by(|a, b| b.reputation_score.partial_cmp(&a.reputation_score).unwrap());
+        report.top_groups_by_reputation = top_groups.iter()
+            .take(10)
+            .map(|g| SceneGroupSummary {
+                group_name: g.group_name.clone(),
+                reputation_score: g.reputation_score,
+                quality_tier: g.quality_tier.clone(),
+                total_releases: g.total_releases,
+            })
+            .collect();
+        
+        // Statistical summary
+        if !self.group_metrics.is_empty() {
+            let reputation_scores: Vec<f64> = self.group_metrics.values()
+                .map(|g| g.reputation_score)
+                .collect();
+            let seeder_counts: Vec<f64> = self.group_metrics.values()
+                .map(|g| g.avg_seeders)
+                .collect();
+            let file_sizes: Vec<f64> = self.group_metrics.values()
+                .map(|g| g.avg_size_gb)
+                .collect();
+            
+            report.statistical_summary.reputation_scores = Self::calculate_statistics(&reputation_scores);
+            report.statistical_summary.seeder_counts = Self::calculate_statistics(&seeder_counts);
+            report.statistical_summary.file_sizes_gb = Self::calculate_statistics(&file_sizes);
+        }
+        
+        // Temporal analysis
+        let now = Utc::now();
+        for group in self.group_metrics.values() {
+            let days_since_last = now.signed_duration_since(group.last_seen).num_days();
+            if days_since_last <= 30 {
+                report.temporal_analysis.active_groups_last_30_days += 1;
+            }
+            if days_since_last <= 90 {
+                report.temporal_analysis.active_groups_last_90_days += 1;
+            }
+            let days_since_first = now.signed_duration_since(group.first_seen).num_days();
+            if days_since_first >= 730 { // 2 years
+                report.temporal_analysis.established_groups_over_2_years += 1;
+            }
+            if days_since_last > 180 { // 6 months
+                report.temporal_analysis.dormant_groups += 1;
+            }
+        }
+        
+        report
+    }
+    
+    fn calculate_statistics(values: &[f64]) -> StatisticalMetrics {
+        if values.is_empty() {
+            return StatisticalMetrics::default();
+        }
+        
+        let mut sorted_values: Vec<f64> = values.to_vec();
+        sorted_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        
+        let min = sorted_values[0];
+        let max = sorted_values[sorted_values.len() - 1];
+        let mean = sorted_values.iter().sum::<f64>() / sorted_values.len() as f64;
+        let p95_index = ((sorted_values.len() as f64 * 0.95) as usize).min(sorted_values.len() - 1);
+        let p95 = sorted_values[p95_index];
+        
+        StatisticalMetrics { min, max, mean, p95 }
+    }
+    
+    pub async fn save_analysis_report(&self, report: &AnalysisReport, output_dir: &str) -> Result<()> {
+        use std::fs;
+        use std::path::Path;
+        
+        // Create output directory if it doesn't exist
+        fs::create_dir_all(output_dir)?;
+        
+        // Save JSON report
+        let json_path = Path::new(output_dir).join("analysis_report.json");
+        let json_content = serde_json::to_string_pretty(report)?;
+        fs::write(&json_path, json_content)?;
+        info!("Saved analysis report to: {:?}", json_path);
+        
+        // Save scene groups data
+        let groups_path = Path::new(output_dir).join("scene_groups.json");
+        let groups_content = self.export_analysis()?;
+        fs::write(&groups_path, groups_content)?;
+        info!("Saved scene groups data to: {:?}", groups_path);
+        
+        Ok(())
     }
 }
 

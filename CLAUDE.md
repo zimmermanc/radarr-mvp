@@ -2,7 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Recent Completions (Week 6-7 - Infrastructure & Discovery)
+## Recent Completions (Week 6-8 - Infrastructure & Discovery)
+
+### 🔧 HDBits Architecture Clarification (2025-08-23)
+- **Separated Concerns**: Distinguished production indexer from analysis tools
+- **Authentication Methods**: 
+  - Indexer uses API passkey for automated searching
+  - Analyzer uses session cookies for browse.php scraping
+- **Security Improvements**: Removed all hardcoded credentials
+- **Code Quality**: Fixed compilation errors in analysis crate
+- **Documentation**: Clarified dual implementation architecture
 
 ### 🚧 Streaming Service Integration (2025-08-23 - In Progress)
 - **TMDB Extensions**: Trending movies/TV (day/week), upcoming releases, watch providers
@@ -61,11 +70,28 @@ cargo watch -x "run"
 
 ### Analysis and Quality Tools
 ```bash
-# HDBits analysis tools (from analysis crate)
+# HDBits Scene Group Analysis Tools (Research/Offline Use)
+# Note: These tools require session cookies for browse.php access
+# They analyze release patterns to build quality scoring databases
+
+# Basic analyzer with API access
 cargo run --bin hdbits-analyzer -- --help
-cargo run --bin hdbits-comprehensive-analyzer -- --output results.json
-cargo run --bin hdbits-session-analyzer -- --session-cookie "COOKIE_STRING"
-cargo run --bin hdbits-browse-analyzer -- --max-pages 5
+
+# Comprehensive analysis with session authentication
+cargo run --bin hdbits-comprehensive-analyzer -- \
+  --session-cookie "YOUR_SESSION_COOKIE" \
+  --output results.json \
+  --max-pages 100
+
+# Session-based analyzer for detailed scraping
+cargo run --bin hdbits-session-analyzer -- \
+  --session-cookie "YOUR_SESSION_COOKIE" \
+  --output ./analysis_results
+
+# Browse analyzer for internal releases
+cargo run --bin hdbits-browse-analyzer -- \
+  --session-cookie "YOUR_SESSION_COOKIE" \
+  --max-pages 5
 
 # Code quality
 cargo clippy --workspace --all-targets --all-features
@@ -227,9 +253,22 @@ unified-radarr/
 
 ### Critical Integration Points
 
-**HDBits Analysis**: Sophisticated scene group reputation analysis with multiple strategies (browse, session, comprehensive). Rate-limited and production-ready.
+**HDBits Dual Implementation Architecture**:
 
-**Quality Profiles**: Decision engine evaluates releases against configurable profiles with custom format support.
+1. **Production Indexer** (`crates/indexers/src/hdbits/`)
+   - Purpose: Real-time torrent searching for automated downloads
+   - Authentication: API-based using username + passkey
+   - Integration: Part of main application workflow with circuit breaker
+   - Use Case: Finding and downloading releases automatically
+
+2. **Analysis System** (`crates/analysis/src/`)
+   - Purpose: Scene group reputation analysis and quality scoring
+   - Authentication: Session cookie for browse.php access
+   - Integration: Standalone research tools for building scoring database
+   - Use Case: Analyzing release patterns to inform quality decisions
+   - Output: JSON/CSV reports for quality profile configuration
+
+**Quality Profiles**: Decision engine evaluates releases against configurable profiles with custom format support, informed by HDBits analysis data.
 
 **Streaming Service Integration**: TMDB + Trakt + Watchmode aggregation for trending content discovery with streaming availability and deep links. PostgreSQL-cached for aggressive rate limit management.
 
@@ -256,7 +295,10 @@ cargo run                    # Start server
 
 ### Current State (~82% Complete)
 **Working Components**:
-- ✅ **HDBits Integration**: Scene group analysis, torrent search, rate limiting operational
+- ✅ **HDBits Dual Architecture**: 
+  - Production indexer with API passkey authentication for searching
+  - Analysis tools with session authentication for scene group scoring
+  - Both implementations fully operational with rate limiting
 - ✅ **qBittorrent Client**: Download management, progress tracking, torrent operations
 - ✅ **Import Pipeline**: File analysis, hardlinking, renaming, library integration
 - ✅ **Queue Processing**: Background job system with retry logic and event-driven workflows
@@ -310,7 +352,14 @@ cargo run                    # Start server
 - `TRAKT_CLIENT_ID` & `TRAKT_CLIENT_SECRET`: Trakt OAuth credentials
 - `WATCHMODE_API_KEY`: Watchmode API key (free tier: 1000 req/month)
 
-**HDBits Integration**: Production-ready scraper with scene group analysis, session authentication, and intelligent rate limiting. Operational with comprehensive error handling.
+**HDBits Authentication**:
+- **Indexer (Production)**: 
+  - `HDBITS_USERNAME`: Your HDBits username
+  - `HDBITS_PASSKEY`: Your HDBits API passkey for automated searching
+- **Analyzer (Research Tools)**:
+  - Session cookie required for browse.php access
+  - Used for scene group analysis and quality scoring
+  - Run analysis tools periodically to update scoring database
 
 **Streaming Service Quotas**:
 - **Watchmode**: 1000 requests/month (~33/day) - aggressively cached

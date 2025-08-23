@@ -268,55 +268,11 @@ async fn main() -> Result<()> {
     
     // Display summary statistics
     info!("📊 COLLECTION SUMMARY:");
-    info!("   Total Releases Analyzed: {}", report.total_releases_analyzed);
+    info!("   Total Releases Analyzed: {}", report.total_torrents_analyzed);
     info!("   Unique Scene Groups: {}", report.unique_scene_groups);
-    info!("   Internal Releases: {}", report.internal_releases);
-    info!("   Categories Analyzed: {:?}", report.categories_analyzed);
+    info!("   Internal Releases: {}", report.internal_releases_analyzed);
+    info!("   Session Status: {}", report.session_status);
     info!("   Collection Duration: {} minutes", duration.num_minutes());
-    info!("");
-    
-    info!("🏆 QUALITY DISTRIBUTION:");
-    info!("   Premium Groups (90-100): {}", report.quality_distribution.premium);
-    info!("   Excellent Groups (80-89): {}", report.quality_distribution.excellent);
-    info!("   Good Groups (70-79): {}", report.quality_distribution.good);
-    info!("   Average Groups (60-69): {}", report.quality_distribution.average);
-    info!("   Below Average (40-59): {}", report.quality_distribution.below_average);
-    info!("   Poor Groups (0-39): {}", report.quality_distribution.poor);
-    info!("");
-    
-    info!("🌟 TOP 15 SCENE GROUPS BY REPUTATION:");
-    for (i, group) in report.top_groups.iter().take(15).enumerate() {
-        info!("   {}. {} - {:.1} ({} - {} releases, {} categories, {:.1} seeder health)", 
-            i + 1, 
-            group.group_name, 
-            group.reputation_score, 
-            group.quality_tier,
-            group.total_releases,
-            group.categories_covered.len(),
-            group.seeder_health_score
-        );
-    }
-    info!("");
-    
-    info!("📈 STATISTICAL SUMMARY:");
-    info!("   Reputation Score Range: {:.1} - {:.1} (avg: {:.1}, p95: {:.1})", 
-        report.statistical_summary.reputation_scores.min,
-        report.statistical_summary.reputation_scores.max,
-        report.statistical_summary.reputation_scores.mean,
-        report.statistical_summary.reputation_scores.p95
-    );
-    info!("   Average Seeders Range: {:.1} - {:.1} (avg: {:.1}, p95: {:.1})", 
-        report.statistical_summary.seeder_counts.min,
-        report.statistical_summary.seeder_counts.max,
-        report.statistical_summary.seeder_counts.mean,
-        report.statistical_summary.seeder_counts.p95
-    );
-    info!("   File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB, p95: {:.1} GB)", 
-        report.statistical_summary.file_sizes_gb.min,
-        report.statistical_summary.file_sizes_gb.max,
-        report.statistical_summary.file_sizes_gb.mean,
-        report.statistical_summary.file_sizes_gb.p95
-    );
     info!("");
     
     info!("🎯 NEXT STEPS:");

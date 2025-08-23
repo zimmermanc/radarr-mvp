@@ -22,8 +22,8 @@ pub struct HDBitsSessionConfig {
 impl Default for HDBitsSessionConfig {
     fn default() -> Self {
         Self {
-            username: "blargdiesel".to_string(),
-            passkey: "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863".to_string(),
+            username: String::new(),
+            passkey: String::new(),
             base_url: "https://hdbits.org".to_string(),
             session_cookie: String::new(),
             max_pages: 100,
@@ -105,21 +105,8 @@ impl HDBitsSessionAnalyzer {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SessionAnalysisReport {
-    pub total_releases_analyzed: usize,
-    pub unique_scene_groups: usize,
-    pub internal_releases: usize,
-    pub quality_distribution: QualityDistribution,
-    pub statistical_summary: crate::StatisticalSummary,
-    pub top_groups: Vec<crate::SceneGroupMetrics>,
-    pub categories_analyzed: Vec<String>,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct QualityDistribution {
-    pub premium: u32,
-    pub excellent: u32,
-    pub good: u32,
-    pub average: u32,
-    pub below_average: u32,
-    pub poor: u32,
+    pub total_torrents_analyzed: u32,
+    pub unique_scene_groups: u32,
+    pub internal_releases_analyzed: u32,
+    pub session_status: String,
 }

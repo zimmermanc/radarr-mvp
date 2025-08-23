@@ -20,11 +20,12 @@ mod tests;
 pub use client::HDBitsClient;
 pub use models::*;
 
-/// HDBits indexer configuration
+/// HDBits indexer configuration for API access
+/// Uses username and passkey for reliable automated searching
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HDBitsConfig {
     pub username: String,
-    pub session_cookie: String,  // Changed from passkey to session_cookie
+    pub passkey: String,  // API key for automated indexer access
     pub rate_limit_per_hour: u32,
     pub timeout_seconds: u64,
 }
@@ -32,8 +33,8 @@ pub struct HDBitsConfig {
 impl Default for HDBitsConfig {
     fn default() -> Self {
         Self {
-            username: "blargdiesel".to_string(),
-            session_cookie: "your_session_cookie_here".to_string(),
+            username: String::new(),
+            passkey: String::new(),
             rate_limit_per_hour: 150,
             timeout_seconds: 30,
         }
@@ -44,10 +45,16 @@ impl HDBitsConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Result<Self> {
         let username = std::env::var("HDBITS_USERNAME")
-            .unwrap_or_else(|_| "blargdiesel".to_string());
+            .map_err(|_| RadarrError::ConfigurationError {
+                field: "HDBITS_USERNAME".to_string(),
+                message: "HDBITS_USERNAME environment variable not set".to_string(),
+            })?;
         
-        let session_cookie = std::env::var("HDBITS_SESSION_COOKIE")
-            .unwrap_or_else(|_| "your_session_cookie_here".to_string());
+        let passkey = std::env::var("HDBITS_PASSKEY")
+            .map_err(|_| RadarrError::ConfigurationError {
+                field: "HDBITS_PASSKEY".to_string(),
+                message: "HDBITS_PASSKEY environment variable not set".to_string(),
+            })?;
             
         let rate_limit_per_hour: u32 = std::env::var("HDBITS_RATE_LIMIT")
             .unwrap_or_else(|_| "150".to_string())
@@ -67,7 +74,7 @@ impl HDBitsConfig {
 
         Ok(Self {
             username,
-            session_cookie,
+            passkey,
             rate_limit_per_hour,
             timeout_seconds,
         })
@@ -82,10 +89,10 @@ impl HDBitsConfig {
             });
         }
         
-        if self.session_cookie.is_empty() {
+        if self.passkey.is_empty() {
             return Err(RadarrError::ConfigurationError {
-                field: "session_cookie".to_string(),
-                message: "Session cookie cannot be empty".to_string(),
+                field: "passkey".to_string(),
+                message: "Passkey cannot be empty".to_string(),
             });
         }
         

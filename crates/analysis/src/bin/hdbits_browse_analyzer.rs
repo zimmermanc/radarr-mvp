@@ -240,49 +240,21 @@ async fn main() -> Result<()> {
     
     // Display summary statistics
     info!("📊 COLLECTION SUMMARY:");
-    info!("   Total Releases Analyzed: {}", report.total_releases_analyzed);
+    info!("   Total Releases Analyzed: {}", report.total_torrents_analyzed);
     info!("   Unique Scene Groups: {}", report.unique_scene_groups);
-    info!("   Internal Releases: {}", report.internal_releases);
+    info!("   Internal Releases: {}", report.internal_releases_analyzed);
     info!("   Collection Duration: {} minutes", duration.num_minutes());
     info!("");
     
-    info!("🏆 QUALITY DISTRIBUTION:");
-    info!("   Premium Groups (85-100): {}", report.quality_distribution.premium);
-    info!("   Excellent Groups (75-84): {}", report.quality_distribution.excellent);
-    info!("   Good Groups (65-74): {}", report.quality_distribution.good);
-    info!("   Average Groups (50-64): {}", report.quality_distribution.average);
-    info!("   Below Average (35-49): {}", report.quality_distribution.below_average);
-    info!("   Poor Groups (0-34): {}", report.quality_distribution.poor);
-    info!("");
-    
-    info!("🌟 TOP 10 SCENE GROUPS BY REPUTATION:");
-    for (i, group) in report.top_groups.iter().take(10).enumerate() {
-        info!("   {}. {} - {:.1} ({} - {} releases)", 
+    info!("🌟 TOP INTERNAL GROUPS:");
+    for (i, group) in report.top_internal_groups.iter().take(10).enumerate() {
+        info!("   {}. {} - Score: {:.1} ({} releases)", 
             i + 1, 
-            group.group_name, 
-            group.reputation_score, 
-            group.quality_tier,
-            group.total_releases
+            group.name, 
+            group.score, 
+            group.releases
         );
     }
-    info!("");
-    
-    info!("📈 STATISTICAL SUMMARY:");
-    info!("   Reputation Score Range: {:.1} - {:.1} (avg: {:.1})", 
-        report.statistical_summary.reputation_scores.min,
-        report.statistical_summary.reputation_scores.max,
-        report.statistical_summary.reputation_scores.mean
-    );
-    info!("   Average Seeders Range: {:.1} - {:.1} (avg: {:.1})", 
-        report.statistical_summary.seeder_counts.min,
-        report.statistical_summary.seeder_counts.max,
-        report.statistical_summary.seeder_counts.mean
-    );
-    info!("   File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB)", 
-        report.statistical_summary.file_sizes_gb.min,
-        report.statistical_summary.file_sizes_gb.max,
-        report.statistical_summary.file_sizes_gb.mean
-    );
     info!("");
     
     info!("🎯 NEXT STEPS:");

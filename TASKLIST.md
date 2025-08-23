@@ -1,9 +1,9 @@
 # Radarr MVP Task List
 
 **Last Updated**: 2025-08-23  
-**Sprint**: Streaming Service Integration (Week 6-7)  
-**Priority**: TMDB + Trakt + Watchmode trending & availability implementation
-**Status**: CI/CD complete, starting streaming service integration
+**Sprint**: List Management & Import System (Week 8)  
+**Priority**: IMDb, TMDb, Plex list import and sync implementation
+**Status**: Streaming integration complete (85-87% overall), starting list management
 
 ## ✅ COMPLETED MILESTONES
 
@@ -77,38 +77,113 @@
 
 **Achievement**: Automated quality gates ensuring code standards
 
-## 🎯 CURRENT PRIORITY: Streaming Service Integration (Week 6-7)
+## 🎯 CURRENT PRIORITY: List Management & Import System (Week 8)
 
-### Session 1: Database & Core Infrastructure 🗄️
+### Priority 1: Fix Analysis Crate TODOs (Day 1)
+**Location**: `crates/analysis/src/`
+
+**HDBits Analyzer Fixes**:
+- [ ] Implement actual data collection in `hdbits.rs:TODO`
+- [ ] Implement session verification in `hdbits_comprehensive_analyzer.rs:TODO`
+- [ ] Implement comprehensive data collection in `hdbits_comprehensive_analyzer.rs:TODO`
+- [ ] Implement scene group analysis in `hdbits_comprehensive_analyzer.rs:TODO`
+- [ ] Add real browse page parsing logic
+- [ ] Implement session-based authentication flow
+- [ ] Add rate limiting with exponential backoff
+- [ ] Create production-ready error handling
+
+**Verification**: All analyzers return real data, no placeholder implementations
+
+### Priority 2: List Management Database Schema (Day 1-2)
+**Location**: `migrations/005_list_management.sql`
+
+**Database Tables**:
+- [ ] Create `import_lists` table (id, name, source_type, list_url, enabled, sync_interval)
+- [ ] Create `list_items` table (movie metadata from lists)
+- [ ] Create `list_sync_history` table (sync status, items added/updated, timestamps)
+- [ ] Create `list_sync_jobs` table (job scheduling and status)
+- [ ] Add foreign key relationships and indexes
+- [ ] Create trigger for updated_at timestamps
+
+**Verification**: `sqlx migrate run` succeeds, tables queryable
+
+### Priority 3: IMDb List Parser (Day 2-3)
+**Location**: `crates/infrastructure/src/lists/imdb.rs`
+
+**Implementation Tasks**:
+- [ ] Create `ImdbListParser` struct with HTML parsing
+- [ ] Implement public list URL parsing (e.g., watchlists, charts)
+- [ ] Add CSV export support for IMDb lists
+- [ ] Implement rate limiting (2 req/sec max)
+- [ ] Add retry logic with exponential backoff
+- [ ] Create movie metadata extraction
+- [ ] Handle pagination for large lists
+- [ ] Add error handling for private/invalid lists
+
+**Verification**: Can parse IMDb Top 250 and user watchlists
+
+### Priority 4: TMDb List Integration (Day 3-4)
+**Location**: `crates/infrastructure/src/lists/tmdb.rs`
+
+**Implementation Tasks**:
+- [ ] Create `TmdbListClient` using existing TMDB infrastructure
+- [ ] Implement public list fetching via API
+- [ ] Add collection support (e.g., Marvel Cinematic Universe)
+- [ ] Implement person filmography import
+- [ ] Add keyword-based lists
+- [ ] Use existing cache infrastructure (24hr TTL)
+- [ ] Handle API rate limits gracefully
+- [ ] Map TMDb IDs to internal movie records
+
+**Verification**: Can import TMDb collections and lists
+
+### Priority 5: Sync Scheduler System (Day 4-5)
+**Location**: `crates/core/src/jobs/list_sync.rs`
+
+**Scheduler Implementation**:
+- [ ] Create `ListSyncScheduler` with tokio intervals
+- [ ] Implement job queue with priority handling
+- [ ] Add conflict resolution for duplicate movies
+- [ ] Create sync status tracking and reporting
+- [ ] Implement failure handling and retries
+- [ ] Add manual sync trigger endpoints
+- [ ] Create sync notification system
+- [ ] Build provenance tracking (which list added which movie)
+
+**Verification**: Lists sync automatically at configured intervals
+
+## ✅ COMPLETED: Streaming Service Integration (Week 6-7)
+
+### Session 1: Database & Core Infrastructure 🗄️ - COMPLETED
 **Location**: `migrations/004_streaming_integration.sql` & `crates/core/src/streaming/`
 
 **Database Schema Tasks**:
-- [ ] Create `streaming_cache` table with JSONB storage and TTL
-- [ ] Create `streaming_id_mappings` table for TMDB↔Watchmode mapping
-- [ ] Create `trending_entries` table for tracking trending data
-- [ ] Create `streaming_availability` table for service availability
-- [ ] Create `oauth_tokens` table for Trakt token storage
-- [ ] Add indexes for performance optimization
+- [x] Create `streaming_cache` table with JSONB storage and TTL
+- [x] Create `streaming_id_mappings` table for TMDB↔Watchmode mapping
+- [x] Create `trending_entries` table for tracking trending data
+- [x] Create `streaming_availability` table for service availability
+- [x] Create `oauth_tokens` table for Trakt token storage
+- [x] Add indexes for performance optimization
 
 **Core Models Tasks**:
-- [ ] Define `Title`, `MediaType`, `TrendingEntry` models
-- [ ] Define `TrendingSource`, `TimeWindow` enums
-- [ ] Define `Availability`, `AvailabilityItem` models
-- [ ] Define `ComingSoon`, `ServiceType` models
-- [ ] Create trait definitions for adapters
+- [x] Define `Title`, `MediaType`, `TrendingEntry` models
+- [x] Define `TrendingSource`, `TimeWindow` enums
+- [x] Define `Availability`, `AvailabilityItem` models
+- [x] Define `ComingSoon`, `ServiceType` models
+- [x] Create trait definitions for adapters
 
 **Verification**: `sqlx migrate run` succeeds, models compile
 
-### Session 2: TMDB & Cache Extensions 🎬
+### Session 2: TMDB & Cache Extensions 🎬 - COMPLETED
 **Location**: `crates/infrastructure/src/tmdb/` & `crates/infrastructure/src/repositories/`
 
 **TMDB Client Extensions**:
-- [ ] Add `trending_movies(window: TimeWindow)` endpoint
-- [ ] Add `trending_tv(window: TimeWindow)` endpoint
-- [ ] Add `upcoming_movies()` endpoint
-- [ ] Add `on_the_air()` endpoint
-- [ ] Add `watch_providers(tmdb_id, media_type, region)` endpoint
-- [ ] Integrate with PostgreSQL cache (3-24hr TTL)
+- [x] Add `trending_movies(window: TimeWindow)` endpoint
+- [x] Add `trending_tv(window: TimeWindow)` endpoint
+- [x] Add `upcoming_movies()` endpoint
+- [x] Add `on_the_air()` endpoint
+- [x] Add `watch_providers(tmdb_id, media_type, region)` endpoint
+- [x] Integrate with PostgreSQL cache (3-24hr TTL)
 
 **Cache Repository Tasks**:
 - [ ] Create `StreamingCacheRepository` with get/set methods

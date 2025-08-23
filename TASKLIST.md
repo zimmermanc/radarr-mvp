@@ -79,22 +79,45 @@
 
 ## 🎯 CURRENT PRIORITY: List Management & Import System (Week 8)
 
-### Priority 1: Fix Analysis Crate TODOs (Day 1)
-**Location**: `crates/analysis/src/`
+### ✅ Priority 1: HDBits Architecture Clarification (COMPLETED)
+**Location**: `crates/analysis/src/` and `crates/indexers/src/hdbits/`
 
-**HDBits Analyzer Fixes**:
-- [ ] Implement actual data collection in `hdbits.rs:TODO`
-- [ ] Implement session verification in `hdbits_comprehensive_analyzer.rs:TODO`
-- [ ] Implement comprehensive data collection in `hdbits_comprehensive_analyzer.rs:TODO`
-- [ ] Implement scene group analysis in `hdbits_comprehensive_analyzer.rs:TODO`
-- [ ] Add real browse page parsing logic
-- [ ] Implement session-based authentication flow
-- [ ] Add rate limiting with exponential backoff
-- [ ] Create production-ready error handling
+**Completed Tasks**:
+- [x] Separated production indexer from analysis tools
+- [x] Indexer uses API passkey for automated searching
+- [x] Analyzer uses session cookies for browse.php access
+- [x] Removed all hardcoded credentials
+- [x] Fixed compilation errors in analysis crate
+- [x] Implemented scene group extraction and scoring
+- [x] Updated documentation to clarify dual architecture
 
-**Verification**: All analyzers return real data, no placeholder implementations
+### Priority 2: Verify HDBits Analyzer & Setup Automation (Day 1)
+**Location**: `crates/analysis/` and system cron
 
-### Priority 2: List Management Database Schema (Day 1-2)
+**Verification Tasks**:
+- [ ] Test hdbits-comprehensive-analyzer with real session cookie
+- [ ] Verify scene group extraction accuracy
+- [ ] Validate reputation scoring algorithm
+- [ ] Test CSV and JSON export functionality
+- [ ] Confirm rate limiting works correctly
+
+**Automation Setup**:
+- [ ] Create shell script for automated analysis runs
+- [ ] Setup cron job for weekly scene group analysis
+- [ ] Configure output directory for analysis results
+- [ ] Implement result archiving and rotation
+- [ ] Create notification system for analysis completion
+- [ ] Setup integration with quality scoring database
+
+**Cron Job Example**:
+```bash
+# Run HDBits analysis every Sunday at 2 AM
+0 2 * * 0 /opt/radarr/scripts/run_hdbits_analysis.sh
+```
+
+**Verification**: Analyzer produces valid JSON/CSV reports with real scene group data
+
+### Priority 3: List Management Database Schema (Day 2-3)
 **Location**: `migrations/005_list_management.sql`
 
 **Database Tables**:
@@ -107,7 +130,7 @@
 
 **Verification**: `sqlx migrate run` succeeds, tables queryable
 
-### Priority 3: IMDb List Parser (Day 2-3)
+### Priority 4: IMDb List Parser (Day 3-4)
 **Location**: `crates/infrastructure/src/lists/imdb.rs`
 
 **Implementation Tasks**:
@@ -122,7 +145,7 @@
 
 **Verification**: Can parse IMDb Top 250 and user watchlists
 
-### Priority 4: TMDb List Integration (Day 3-4)
+### Priority 5: TMDb List Integration (Day 4-5)
 **Location**: `crates/infrastructure/src/lists/tmdb.rs`
 
 **Implementation Tasks**:
@@ -137,7 +160,7 @@
 
 **Verification**: Can import TMDb collections and lists
 
-### Priority 5: Sync Scheduler System (Day 4-5)
+### Priority 6: Sync Scheduler System (Day 5-6)
 **Location**: `crates/core/src/jobs/list_sync.rs`
 
 **Scheduler Implementation**:

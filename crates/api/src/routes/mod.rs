@@ -1,6 +1,7 @@
 //! Basic route configuration
 
 pub mod streaming;
+pub mod monitoring;
 
 use axum::{routing::get, Router};
 use crate::handlers::health::health_check;
@@ -11,3 +12,6 @@ pub fn create_routes() -> Router {
         .route("/health", get(health_check))
         .route("/ready", get(health_check))
 }
+
+// Re-export route creation functions
+pub use monitoring::create_monitoring_routes;

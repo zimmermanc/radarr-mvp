@@ -12,6 +12,7 @@ pub mod trakt;
 pub mod watchmode;
 pub mod streaming;
 pub mod lists;
+pub mod monitoring;
 
 // Re-export for easy access
 pub use database::*;
@@ -20,3 +21,4 @@ pub use repositories::*;
 pub use download_clients::*;
 pub use tmdb::*;
 pub use lists::*;
+pub use monitoring::*;

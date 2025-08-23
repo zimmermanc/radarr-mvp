@@ -339,8 +339,8 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/rss/feeds/:id", delete(api::remove_feed))
         .route("/api/rss/test", get(api::test_feed))
         .route("/api/rss/calendar", get(api::get_calendar).post(api::add_calendar_entry))
-        // Add Prometheus metrics endpoint
-        .route("/metrics", get(metrics_endpoint))
+        // Add Prometheus metrics endpoint (this will be replaced by monitoring routes)
+        .route("/legacy-metrics", get(metrics_endpoint))
         
         // Add metrics collector and services to extensions
         .layer(axum::Extension(metrics))
@@ -359,6 +359,11 @@ fn build_router(app_state: AppState) -> Router {
         router = router.nest("/api/streaming", streaming_routes(aggregator));
         info!("Streaming routes added to API");
     }
+    
+    // Add monitoring routes
+    use radarr_api::routes::create_monitoring_routes;
+    router = router.merge(create_monitoring_routes());
+    info!("Monitoring routes added to API");
     
     router
         

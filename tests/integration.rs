@@ -11,6 +11,7 @@
 
 mod common;
 mod mocks;
+mod monitoring;
 
 use axum::http::StatusCode;
 use axum_test::TestServer;

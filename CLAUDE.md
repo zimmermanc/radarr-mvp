@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Recent Completions (Week 6 - Infrastructure & Quality)
+
+### ✅ CI/CD Pipeline Implementation (2025-08-23)
+- **GitHub Actions**: 6 comprehensive workflows deployed
+- **Security Scanning**: SAST (Semgrep, CodeQL), SCA (cargo-audit, Snyk), secrets detection
+- **Code Quality**: Codacy integration, coverage reporting, complexity analysis
+- **Automation**: Dependabot updates, PR validation, multi-platform testing
+- **Documentation**: Complete CI/CD guide with security best practices
+
+### ✅ Test Suite Restoration (2025-08-23)
+- Fixed compilation errors across all integration tests
+- 162+ tests now passing (up from 35)
+- Coverage reporting to Codecov and Codacy
+- Test matrix across Linux, macOS, Windows
+
+### ✅ Quality Engine (Week 4-5)
+- Advanced release scoring with custom formats
+- Quality profiles with upgrade logic
+- 19 comprehensive quality tests
+- Sub-5ms database query performance
+
 ## Development Commands
 
 ### Core Build and Test Commands
@@ -49,6 +70,33 @@ cargo doc --no-deps --open
 
 # Build validation script
 ./scripts/build_and_test.sh
+```
+
+### CI/CD and Security Commands
+```bash
+# Setup GitHub secrets (interactive)
+./scripts/setup-github-secrets.sh
+
+# Trigger CI/CD workflows manually
+gh workflow run ci.yml
+gh workflow run security.yml
+gh workflow run codacy.yml
+
+# Security scanning locally
+cargo audit --json
+cargo deny check
+gitleaks detect --source .
+
+# Check for unused dependencies
+cargo machete
+cargo +nightly udeps
+
+# Generate test coverage
+cargo tarpaulin --workspace --all-features --out lcov
+
+# View GitHub Actions status
+gh run list
+gh run view
 ```
 
 ### Database Operations
@@ -100,6 +148,10 @@ This repository contains two main development paths:
 ### Unified-Radarr Workspace Structure
 ```
 unified-radarr/
+├── .github/
+│   ├── workflows/     # CI/CD pipelines (6 comprehensive workflows)
+│   ├── dependabot.yml # Automated dependency updates
+│   └── SECRETS_SETUP.md # Security configuration guide
 ├── crates/
 │   ├── core/           # Pure domain logic (no external dependencies)
 │   ├── analysis/       # HDBits scene group analysis system  
@@ -109,8 +161,10 @@ unified-radarr/
 │   ├── decision/      # Release selection and quality profiles
 │   ├── downloaders/   # Download client integrations (qBittorrent, SABnzbd)
 │   └── import/        # Media import pipeline
+├── docs/              # Architecture, CI/CD guide, setup documentation
 ├── systemd/           # Service files for server deployment
-└── scripts/           # Build and deployment scripts
+├── scripts/           # Build, deployment, and CI/CD setup scripts
+└── web/              # React frontend application
 ```
 
 ### Clean Architecture Principles
@@ -176,7 +230,7 @@ cargo run                    # Start server
 
 ## Development Status and Known Issues
 
-### Current State (~75% Complete)
+### Current State (~82% Complete)
 **Working Components**:
 - ✅ **HDBits Integration**: Scene group analysis, torrent search, rate limiting operational
 - ✅ **qBittorrent Client**: Download management, progress tracking, torrent operations
@@ -186,12 +240,19 @@ cargo run                    # Start server
 - ✅ **RSS Monitoring**: Calendar tracking, release notifications, feed management
 - ✅ **Web Interface**: React UI with real-time updates and progress tracking
 - ✅ **API Layer**: 25+ endpoints with real data, authentication, rate limiting
+- ✅ **CI/CD Pipeline**: GitHub Actions with security scanning, quality checks, automated updates
+- ✅ **Test Suite**: 162+ tests passing across 8 crates with coverage reporting
+- ✅ **Quality Engine**: Advanced release scoring with custom formats and profiles
 
 **Production Ready Features**:
 - ✅ **Search → Download → Import Pipeline**: Complete automation workflow
 - ✅ **Event-Driven Architecture**: Component communication via tokio broadcast channels
 - ✅ **External Service Integration**: TMDB API, HDBits scraper, qBittorrent client
 - ✅ **Deployment Ready**: SSH-based deployment to root@192.168.0.138
+- ✅ **Security Scanning**: SAST (Semgrep, CodeQL), SCA (cargo-audit, Snyk), secrets detection
+- ✅ **Automated Dependencies**: Dependabot weekly updates with security patches
+- ✅ **Code Quality**: Codacy integration, Clippy pedantic, coverage tracking
+- ✅ **PR Validation**: Size checks, conventional commits, automated testing
 
 ### Performance Targets
 - API Response: <100ms p95
@@ -240,14 +301,26 @@ cargo test --lib proptest
 
 # Benchmarks
 cargo bench
+
+# Run with coverage (requires cargo-tarpaulin)
+cargo tarpaulin --workspace --all-features --out lcov
 ```
 
 ### Code Quality
 ```bash
-# Comprehensive quality check
+# Comprehensive quality check (same as CI)
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 cargo audit
+cargo deny check
+
+# Check for unused dependencies
+cargo machete
+cargo +nightly udeps
+
+# Security scanning
+cargo audit --json
+gitleaks detect --source .
 ```
 
 ## Key Files and Locations
@@ -255,5 +328,7 @@ cargo audit
 **Primary Development**: Work in `unified-radarr/` directory
 **Configuration**: `.env` for local development, `systemd/` for service deployment
 **Migrations**: `unified-radarr/migrations/` for database schema
-**Documentation**: `docs/` contains architecture decisions and setup guides
+**Documentation**: `docs/` contains architecture decisions, CI/CD guide, and setup guides
 **Analysis Tools**: `unified-radarr/crates/analysis/src/bin/` for HDBits analyzers
+**CI/CD**: `.github/workflows/` for GitHub Actions pipelines
+**Security**: `.github/SECRETS_SETUP.md` for secure token configuration

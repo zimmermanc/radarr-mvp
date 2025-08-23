@@ -47,6 +47,7 @@ impl Default for MockProwlarrClient {
                     imdb_id: Some("tt0137523".to_string()),
                     tmdb_id: Some(550),
                     freeleech: Some(false),
+                    info_hash: Some("fightclub1999_1080p_hash".to_string()),
                 },
                 ProwlarrSearchResult {
                     title: "Fight Club 1999 720p BluRay x264-SPARKS".to_string(),
@@ -65,6 +66,7 @@ impl Default for MockProwlarrClient {
                     imdb_id: Some("tt0137523".to_string()),
                     tmdb_id: Some(550),
                     freeleech: Some(false),
+                    info_hash: Some("fightclub1999_720p_hash".to_string()),
                 },
             ],
             indexers_searched: 1,
@@ -261,6 +263,7 @@ pub mod search_helpers {
                 imdb_id: None,
                 tmdb_id: None,
                 freeleech: Some(false),
+                info_hash: Some(format!("test_hash_{}", i)),
             });
         }
         

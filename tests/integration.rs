@@ -90,7 +90,7 @@ async fn test_complete_movie_workflow() {
 
     // Step 4: Track download progress
     let mut download_completed = false;
-    for attempt in 0..10 {
+    for _attempt in 0..10 {
         sleep(Duration::from_millis(100)).await;
         
         let status_response = server

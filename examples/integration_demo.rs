@@ -106,13 +106,13 @@ async fn main() -> radarr_core::Result<()> {
     println!("// Grab a release manually");
     println!("let queue_item_id = search_service.grab_release_manual(");
     println!("    &movie, &release, Some(QueuePriority::High)");
-    println!("").await?;");
+    println!(").await?;");
     println!();
     println!("// Auto-download best release");
     println!("if let Some(queue_id) = search_service.auto_download_for_movie(");
     println!("    &movie, releases, &quality_preferences");
-    println!("").await? {{");
-    println!("    println!(\"Started auto-download: {{queue_id}}\");");
+    println!(").await? {{");
+    println!("    println!(\"Started auto-download: {{}}.\", queue_id);");
     println!("}}");
     println!();
     

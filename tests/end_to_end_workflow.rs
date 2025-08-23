@@ -208,6 +208,7 @@ impl WorkflowCoordinator {
                     imdb_id: Some("tt0133093".to_string()),
                     tmdb_id: Some(603),
                     freeleech: Some(false),
+                    info_hash: Some("c12fe1c06bba254a9dc9f519b335aa7c1367a88a".to_string()),
                 },
                 ProwlarrSearchResult {
                     title: "The.Matrix.1999.2160p.UHD.BluRay.x265-TERMINAL".to_string(),
@@ -230,6 +231,7 @@ impl WorkflowCoordinator {
                     imdb_id: Some("tt0133093".to_string()),
                     tmdb_id: Some(603),
                     freeleech: Some(true),
+                    info_hash: Some("d23fe1c06bba254a9dc9f519b335aa7c1367a99b".to_string()),
                 },
                 ProwlarrSearchResult {
                     title: "The.Matrix.1999.720p.BluRay.x264-VINTAGE".to_string(),
@@ -252,6 +254,7 @@ impl WorkflowCoordinator {
                     imdb_id: Some("tt0133093".to_string()),
                     tmdb_id: Some(603),
                     freeleech: Some(false),
+                    info_hash: Some("vintage_720p_hash_125".to_string()),
                 },
             ],
             indexers_searched: 2,

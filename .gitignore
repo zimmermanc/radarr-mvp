@@ -10,6 +10,8 @@ Cargo.lock
 .env.*.local
 .env.production
 .env.server
+services.env
+config/services.env
 
 # IDE
 .vscode/

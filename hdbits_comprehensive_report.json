@@ -1,0 +1,20 @@
+{
+  "data_collection_period": "354 seconds",
+  "pages_processed": 1,
+  "data_quality_indicators": {
+    "scene_group_extraction_rate": 1.3157894736842104,
+    "internal_release_percentage": 100.0,
+    "six_month_data_coverage": 100.0
+  },
+  "statistical_insights": {
+    "reputation_distribution": {
+      "elite": 0,
+      "premium": 0,
+      "excellent": 0,
+      "good": 0,
+      "average": 1,
+      "below_average": 0,
+      "poor": 0
+    }
+  }
+}

@@ -298,7 +298,102 @@ impl HDBitsClient {
             }
         }
         
-        Ok(torrents)
+        // Filter to movies only, then deduplicate by InfoHash
+        let movie_torrents = self.filter_movies_only(torrents);
+        Ok(self.deduplicate_by_infohash(movie_torrents))
+    }
+    
+    /// Filter torrents to include only movies (exclude TV shows, documentaries, etc.)
+    pub fn filter_movies_only(&self, torrents: Vec<HDBitsTorrent>) -> Vec<HDBitsTorrent> {
+        torrents.into_iter().filter(|torrent| {
+            // Check if torrent is in a movie category
+            matches!(torrent.type_category, 
+                super::models::categories::MOVIE | 
+                super::models::categories::MOVIE_BD | 
+                super::models::categories::MOVIE_UHD
+            )
+        }).collect()
+    }
+    
+    /// Deduplicate torrents by InfoHash, keeping the best quality/seeded version
+    pub fn deduplicate_by_infohash(&self, torrents: Vec<HDBitsTorrent>) -> Vec<HDBitsTorrent> {
+        use std::collections::HashMap;
+        
+        let mut hash_map: HashMap<String, Vec<HDBitsTorrent>> = HashMap::new();
+        
+        // Group torrents by InfoHash
+        for torrent in torrents {
+            hash_map.entry(torrent.hash.clone()).or_default().push(torrent);
+        }
+        
+        // For each InfoHash group, select the best torrent
+        let mut deduplicated = Vec::new();
+        for (hash, mut group) in hash_map {
+            if group.is_empty() {
+                continue;
+            }
+            
+            if group.len() == 1 {
+                deduplicated.push(group.into_iter().next().unwrap());
+                continue;
+            }
+            
+            // Sort by quality score (prefer freeleech, higher seeders, better quality)
+            group.sort_by(|a, b| {
+                let score_a = self.calculate_dedup_score(a);
+                let score_b = self.calculate_dedup_score(b);
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            
+            debug!("Deduplicated {} torrents with hash {} - selected: {}", 
+                   group.len(), hash, group[0].name);
+            
+            deduplicated.push(group.into_iter().next().unwrap());
+        }
+        
+        deduplicated
+    }
+    
+    /// Calculate score for deduplication (higher is better)
+    fn calculate_dedup_score(&self, torrent: &HDBitsTorrent) -> f64 {
+        let mut score = 0.0;
+        
+        // Strong preference for freeleech
+        if torrent.is_freeleech() {
+            score += 50.0;
+        }
+        
+        // Seeders count (capped to avoid skewing too much)
+        score += (torrent.seeders as f64).min(20.0);
+        
+        // Prefer internal releases
+        if torrent.is_internal() {
+            score += 10.0;
+        }
+        
+        // Quality indicators in title
+        let title_lower = torrent.name.to_lowercase();
+        if title_lower.contains("remux") {
+            score += 15.0;
+        } else if title_lower.contains("2160p") || title_lower.contains("4k") {
+            score += 12.0;
+        } else if title_lower.contains("1080p") {
+            score += 8.0;
+        } else if title_lower.contains("720p") {
+            score += 5.0;
+        }
+        
+        // Codec preferences
+        if title_lower.contains("x265") || title_lower.contains("hevc") {
+            score += 3.0;
+        }
+        
+        // HDR bonus
+        if title_lower.contains("hdr") || title_lower.contains("dolby") {
+            score += 5.0;
+        }
+        
+        score
     }
     
     /// Parse individual torrent row from HTML
@@ -446,11 +541,28 @@ impl HDBitsClient {
 #[async_trait]
 impl IndexerClient for HDBitsClient {
     async fn search(&self, request: &SearchRequest) -> Result<SearchResponse> {
+        // Check if we should skip due to recent failures
+        if self.rate_limiter.should_skip_due_to_failures().await {
+            return Err(RadarrError::ExternalServiceError {
+                service: "HDBits".to_string(),
+                error: "Skipping request due to recent failures".to_string(),
+            });
+        }
+        
         // Convert generic SearchRequest to HDBits-specific MovieSearchRequest
         let movie_request = self.convert_search_request(request)?;
         
         // Search using HDBits API
-        let releases = self.search_movies(&movie_request).await?;
+        let releases = match self.search_movies(&movie_request).await {
+            Ok(releases) => {
+                self.rate_limiter.record_success().await;
+                releases
+            }
+            Err(e) => {
+                self.rate_limiter.record_failure().await?;
+                return Err(e);
+            }
+        };
         
         // Convert to Prowlarr-style search results for compatibility
         let results: Vec<ProwlarrSearchResult> = releases
@@ -558,6 +670,7 @@ impl HDBitsClient {
             imdb_id: release.quality.get("imdb_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
             tmdb_id: None, // HDBits doesn't provide TMDB IDs
             freeleech: release.quality.get("freeleech").and_then(|v| v.as_bool()),
+            info_hash: None, // TODO: Extract from torrent data if available
         }
     }
 }

@@ -105,6 +105,8 @@ impl HDBitsConfig {
 pub struct RateLimiter {
     requests: Mutex<Vec<Instant>>,
     max_requests_per_hour: u32,
+    failure_count: Mutex<u32>,
+    last_failure: Mutex<Option<Instant>>,
 }
 
 impl RateLimiter {
@@ -112,6 +114,8 @@ impl RateLimiter {
         Self {
             requests: Mutex::new(Vec::new()),
             max_requests_per_hour,
+            failure_count: Mutex::new(0),
+            last_failure: Mutex::new(None),
         }
     }
     
@@ -150,6 +154,54 @@ impl RateLimiter {
         }
         
         Ok(())
+    }
+    
+    /// Record a successful request (resets failure count)
+    pub async fn record_success(&self) {
+        let mut failure_count = self.failure_count.lock().await;
+        *failure_count = 0;
+        debug!("Request succeeded, reset failure count");
+    }
+    
+    /// Record a failed request and apply exponential backoff
+    pub async fn record_failure(&self) -> Result<()> {
+        let mut failure_count = self.failure_count.lock().await;
+        let mut last_failure = self.last_failure.lock().await;
+        
+        *failure_count += 1;
+        *last_failure = Some(Instant::now());
+        
+        let failures = *failure_count;
+        drop(failure_count);
+        drop(last_failure);
+        
+        if failures > 0 {
+            // Exponential backoff: 2^failures seconds, max 300 seconds (5 minutes)
+            let backoff_seconds = (2_u64.pow(failures.min(8))).min(300);
+            
+            warn!("HDBits request failed (failure #{failures}), backing off for {backoff_seconds} seconds");
+            
+            tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
+        }
+        
+        Ok(())
+    }
+    
+    /// Check if we should skip requests due to recent failures
+    pub async fn should_skip_due_to_failures(&self) -> bool {
+        let failure_count = self.failure_count.lock().await;
+        let last_failure = self.last_failure.lock().await;
+        
+        // Skip if we have 5+ consecutive failures and last failure was within 10 minutes
+        if *failure_count >= 5 {
+            if let Some(last_fail_time) = *last_failure {
+                if last_fail_time.elapsed() < Duration::from_secs(600) {
+                    return true;
+                }
+            }
+        }
+        
+        false
     }
 }
 

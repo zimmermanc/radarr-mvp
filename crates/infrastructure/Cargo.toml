@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 radarr-core = { path = "../core", features = ["postgres"] }
 radarr-downloaders = { path = "../downloaders" }
+radarr-decision = { path = "../decision" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 sqlx = { workspace = true }

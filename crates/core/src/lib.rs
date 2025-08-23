@@ -13,6 +13,8 @@ pub mod retry;
 pub mod progress;
 pub mod rss;
 pub mod circuit_breaker;
+pub mod correlation;
+pub mod tracing;
 
 // Re-export core types
 pub use models::*;

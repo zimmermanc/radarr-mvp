@@ -8,6 +8,7 @@ pub mod indexer;
 pub mod quality_profile;
 pub mod download;
 pub mod queue;
+pub mod custom_formats;
 
 // Re-export all repository implementations
 pub use movie::PostgresMovieRepository;
@@ -15,6 +16,7 @@ pub use indexer::PostgresIndexerRepository;
 pub use quality_profile::PostgresQualityProfileRepository;
 pub use download::PostgresDownloadRepository;
 pub use queue::PostgresQueueRepository;
+pub use custom_formats::{CustomFormatsRepository, PostgresCustomFormatsRepository};
 
 #[cfg(test)]
 mod tests {

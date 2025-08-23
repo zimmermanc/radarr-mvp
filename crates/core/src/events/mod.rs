@@ -4,6 +4,7 @@
 //! to enable loose coupling between components like downloads, imports, and notifications.
 
 use crate::{Result, RadarrError};
+use crate::correlation::{CorrelationId, CorrelationContext, current_correlation_id};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -12,6 +13,65 @@ use uuid::Uuid;
 
 /// Maximum number of events to buffer in the channel
 const EVENT_BUFFER_SIZE: usize = 1000;
+
+/// Event envelope that includes correlation information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventEnvelope {
+    /// Unique ID for this event instance
+    pub event_id: Uuid,
+    
+    /// Correlation ID for tracking across services
+    pub correlation_id: CorrelationId,
+    
+    /// Timestamp when the event was created
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    
+    /// The actual event data
+    pub event: SystemEvent,
+    
+    /// Optional source component/service
+    pub source: Option<String>,
+}
+
+impl EventEnvelope {
+    /// Create a new event envelope with the current correlation context
+    pub fn new(event: SystemEvent) -> Self {
+        Self {
+            event_id: Uuid::new_v4(),
+            correlation_id: current_correlation_id(),
+            timestamp: chrono::Utc::now(),
+            event,
+            source: None,
+        }
+    }
+    
+    /// Create a new event envelope with a specific correlation ID
+    pub fn with_correlation(event: SystemEvent, correlation_id: CorrelationId) -> Self {
+        Self {
+            event_id: Uuid::new_v4(),
+            correlation_id,
+            timestamp: chrono::Utc::now(),
+            event,
+            source: None,
+        }
+    }
+    
+    /// Set the source component
+    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+    
+    /// Get a description including correlation info
+    pub fn description(&self) -> String {
+        format!(
+            "[{}] {} (event_id={})",
+            self.correlation_id,
+            self.event.description(),
+            self.event_id
+        )
+    }
+}
 
 /// System events that can be published and subscribed to
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,7 +202,7 @@ impl SystemEvent {
 /// Event bus for publishing and subscribing to system events
 #[derive(Clone)]
 pub struct EventBus {
-    sender: broadcast::Sender<SystemEvent>,
+    sender: broadcast::Sender<EventEnvelope>,
 }
 
 impl EventBus {
@@ -154,9 +214,21 @@ impl EventBus {
 
     /// Publish an event to all subscribers
     pub async fn publish(&self, event: SystemEvent) -> Result<()> {
-        debug!("Publishing event: {}", event.description());
+        let envelope = EventEnvelope::new(event);
+        self.publish_envelope(envelope).await
+    }
+    
+    /// Publish an event with a specific correlation ID
+    pub async fn publish_with_correlation(&self, event: SystemEvent, correlation_id: CorrelationId) -> Result<()> {
+        let envelope = EventEnvelope::with_correlation(event, correlation_id);
+        self.publish_envelope(envelope).await
+    }
+    
+    /// Publish an event envelope
+    pub async fn publish_envelope(&self, envelope: EventEnvelope) -> Result<()> {
+        debug!("Publishing event: {}", envelope.description());
         
-        match self.sender.send(event.clone()) {
+        match self.sender.send(envelope.clone()) {
             Ok(receiver_count) => {
                 if receiver_count > 0 {
                     debug!("Event published to {} receivers", receiver_count);
@@ -192,16 +264,30 @@ impl Default for EventBus {
 
 /// Event subscriber that can receive events
 pub struct EventSubscriber {
-    receiver: broadcast::Receiver<SystemEvent>,
+    receiver: broadcast::Receiver<EventEnvelope>,
 }
 
 impl EventSubscriber {
-    /// Receive the next event (blocking)
-    pub async fn recv(&mut self) -> Result<SystemEvent> {
+    /// Receive the next event envelope (blocking)
+    pub async fn recv(&mut self) -> Result<EventEnvelope> {
         match self.receiver.recv().await {
-            Ok(event) => {
-                debug!("Received event: {}", event.description());
-                Ok(event)
+            Ok(envelope) => {
+                debug!("Received event: {}", envelope.description());
+                // Set the correlation context for this thread
+                if let Some(ctx) = crate::correlation::current_context() {
+                    if ctx.correlation_id != envelope.correlation_id {
+                        // Update to use the event's correlation ID
+                        let new_ctx = CorrelationContext::new("event_handler")
+                            .with_session(ctx.session_id.unwrap_or_default())
+                            .with_user(ctx.user_id.unwrap_or_default());
+                        crate::correlation::set_current_context(new_ctx);
+                    }
+                } else {
+                    // Set a new context with the event's correlation ID
+                    let ctx = CorrelationContext::new("event_handler");
+                    crate::correlation::set_current_context(ctx);
+                }
+                Ok(envelope)
             }
             Err(broadcast::error::RecvError::Closed) => {
                 Err(RadarrError::ExternalServiceError {
@@ -216,13 +302,19 @@ impl EventSubscriber {
             }
         }
     }
+    
+    /// Receive just the event (for backward compatibility)
+    pub async fn recv_event(&mut self) -> Result<SystemEvent> {
+        let envelope = self.recv().await?;
+        Ok(envelope.event)
+    }
 
-    /// Try to receive an event without blocking
-    pub fn try_recv(&mut self) -> Result<Option<SystemEvent>> {
+    /// Try to receive an event envelope without blocking
+    pub fn try_recv(&mut self) -> Result<Option<EventEnvelope>> {
         match self.receiver.try_recv() {
-            Ok(event) => {
-                debug!("Received event (non-blocking): {}", event.description());
-                Ok(Some(event))
+            Ok(envelope) => {
+                debug!("Received event (non-blocking): {}", envelope.description());
+                Ok(Some(envelope))
             }
             Err(broadcast::error::TryRecvError::Empty) => Ok(None),
             Err(broadcast::error::TryRecvError::Closed) => {
@@ -237,18 +329,23 @@ impl EventSubscriber {
             }
         }
     }
+    
+    /// Try to receive just the event without blocking (for backward compatibility)
+    pub fn try_recv_event(&mut self) -> Result<Option<SystemEvent>> {
+        Ok(self.try_recv()?.map(|envelope| envelope.event))
+    }
 }
 
 /// Event handler trait for components that want to process events
 #[async_trait::async_trait]
 pub trait EventHandler: Send + Sync {
-    /// Handle an incoming event
-    async fn handle_event(&self, event: &SystemEvent) -> Result<()>;
+    /// Handle an incoming event envelope
+    async fn handle_event(&self, envelope: &EventEnvelope) -> Result<()>;
 
     /// Filter events - return true to process, false to ignore
-    fn should_handle(&self, event: &SystemEvent) -> bool {
+    fn should_handle(&self, envelope: &EventEnvelope) -> bool {
         // By default, handle all events
-        let _ = event;
+        let _ = envelope;
         true
     }
 }
@@ -280,14 +377,23 @@ impl EventProcessor {
 
         loop {
             match self.subscriber.recv().await {
-                Ok(event) => {
-                    debug!("Processing event: {}", event.description());
+                Ok(envelope) => {
+                    debug!("Processing event: {} with correlation_id={}", 
+                           envelope.description(), 
+                           envelope.correlation_id);
+                    
+                    // Set correlation context for this processing
+                    let ctx = CorrelationContext::new("event_processor");
+                    crate::correlation::set_current_context(ctx);
                     
                     // Process event with all interested handlers
                     for handler in &self.handlers {
-                        if handler.should_handle(&event) {
-                            if let Err(e) = handler.handle_event(&event).await {
-                                error!("Handler failed to process event {}: {}", event.description(), e);
+                        if handler.should_handle(&envelope) {
+                            if let Err(e) = handler.handle_event(&envelope).await {
+                                error!("Handler failed to process event {} with correlation_id={}: {}", 
+                                       envelope.description(), 
+                                       envelope.correlation_id, 
+                                       e);
                                 // Continue with other handlers
                             }
                         }
@@ -317,7 +423,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl EventHandler for TestHandler {
-        async fn handle_event(&self, _event: &SystemEvent) -> Result<()> {
+        async fn handle_event(&self, _envelope: &EventEnvelope) -> Result<()> {
             self.counter.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -339,13 +445,16 @@ mod tests {
         event_bus.publish(event.clone()).await.unwrap();
 
         // Receive event
-        let received = subscriber.recv().await.unwrap();
+        let envelope = subscriber.recv().await.unwrap();
         
-        if let SystemEvent::DownloadQueued { title, .. } = received {
+        if let SystemEvent::DownloadQueued { title, .. } = envelope.event {
             assert_eq!(title, "Test Movie");
         } else {
             panic!("Wrong event type received");
         }
+        
+        // Check that correlation ID was set
+        assert_ne!(envelope.correlation_id, CorrelationId::from_uuid(Uuid::nil()));
     }
 
     #[tokio::test]
@@ -368,8 +477,11 @@ mod tests {
         let recv1 = timeout(Duration::from_millis(100), sub1.recv()).await.unwrap().unwrap();
         let recv2 = timeout(Duration::from_millis(100), sub2.recv()).await.unwrap().unwrap();
 
-        assert!(matches!(recv1, SystemEvent::SystemHealth { .. }));
-        assert!(matches!(recv2, SystemEvent::SystemHealth { .. }));
+        assert!(matches!(recv1.event, SystemEvent::SystemHealth { .. }));
+        assert!(matches!(recv2.event, SystemEvent::SystemHealth { .. }));
+        
+        // Both should have the same correlation ID
+        assert_eq!(recv1.correlation_id, recv2.correlation_id);
     }
 
     #[tokio::test]
@@ -433,6 +545,46 @@ mod tests {
         };
 
         assert_eq!(health_event.movie_id(), None);
+    }
+
+    #[tokio::test]
+    async fn test_correlation_id_propagation() {
+        let event_bus = EventBus::new();
+        let mut subscriber = event_bus.subscribe();
+        
+        // Set a specific correlation ID
+        let correlation_id = CorrelationId::new();
+        let event = SystemEvent::ImportTriggered {
+            movie_id: Uuid::new_v4(),
+            source_path: "/downloads/movie.mkv".to_string(),
+        };
+        
+        // Publish with specific correlation ID
+        event_bus.publish_with_correlation(event, correlation_id).await.unwrap();
+        
+        // Receive and verify
+        let envelope = subscriber.recv().await.unwrap();
+        assert_eq!(envelope.correlation_id, correlation_id);
+        
+        // Publish another event without setting correlation ID
+        let event2 = SystemEvent::ImportComplete {
+            movie_id: Uuid::new_v4(),
+            destination_path: "/media/movies/movie.mkv".to_string(),
+            file_count: 1,
+        };
+        
+        // Set correlation context to simulate being in the same operation
+        crate::correlation::set_current_context(
+            CorrelationContext::new("test").with_session("test_session")
+        );
+        
+        event_bus.publish(event2).await.unwrap();
+        
+        let envelope2 = subscriber.recv().await.unwrap();
+        // Should have a different correlation ID since we didn't propagate it
+        assert_ne!(envelope2.correlation_id, correlation_id);
+        
+        crate::correlation::clear_context();
     }
 
     #[test]

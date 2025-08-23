@@ -9,6 +9,7 @@ radarr-infrastructure = { path = "../infrastructure" }
 radarr-indexers = { path = "../indexers" }
 radarr-downloaders = { path = "../downloaders" }
 radarr-import = { path = "../import" }
+radarr-decision = { path = "../decision" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }

@@ -10,6 +10,7 @@ pub mod health;
 pub mod commands;
 pub mod calendar;
 pub mod queue;
+pub mod quality;
 
 // Re-export handler functions
 pub use movies::*;
@@ -19,3 +20,4 @@ pub use health::*;
 pub use commands::*;
 pub use calendar::*;
 pub use queue::*;
+pub use quality::*;

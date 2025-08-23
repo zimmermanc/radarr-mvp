@@ -309,6 +309,13 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
         }
     }
     
+    // Freeleech bonus - check if quality metadata indicates freeleech
+    if let Some(freeleech) = quality.get("freeleech").and_then(|v| v.as_bool()) {
+        if freeleech {
+            score += 25; // Significant bonus for freeleech torrents
+        }
+    }
+    
     score
 }
 

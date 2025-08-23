@@ -5,7 +5,9 @@
 
 pub mod quality;
 pub mod engine;
+pub mod custom_formats;
 
 // Re-export main types
 pub use quality::{Quality, Source, QualityProfile, QualityItem};
 pub use engine::{DecisionEngine, Release, ReleaseScore};
+pub use custom_formats::{CustomFormat, CustomFormatEngine, FormatSpecification, ReleaseData};

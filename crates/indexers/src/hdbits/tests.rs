@@ -282,6 +282,197 @@ fn test_freeleech_parsing() {
 }
 
 #[test]
+fn test_infohash_deduplication() {
+    use super::models::*;
+    use super::client::HDBitsClient;
+    
+    // Create test torrents with duplicate InfoHashes
+    let torrents = vec![
+        HDBitsTorrent {
+            id: 1,
+            hash: "ABCD1234".to_string(),
+            name: "Movie.2024.1080p.BluRay.x264-GROUP1".to_string(),
+            times_completed: 50,
+            seeders: 10,
+            leechers: 2,
+            size: 10000000000,
+            added: "2024-01-01T00:00:00+0000".to_string(),
+            utadded: Some(1704067200),
+            descr: None,
+            comments: None,
+            numfiles: None,
+            filename: None,
+            type_category: categories::MOVIE,
+            type_codec: 1,
+            type_medium: 1,
+            type_origin: 0,
+            type_exclusive: None,
+            freeleech: "no".to_string(),
+            torrent_status: None,
+            bookmarked: None,
+            wishlisted: None,
+            tags: None,
+            username: None,
+            owner: None,
+            imdb: None,
+            tvdb: None,
+        },
+        HDBitsTorrent {
+            id: 2,
+            hash: "ABCD1234".to_string(), // Same InfoHash
+            name: "Movie.2024.1080p.BluRay.x264-GROUP2".to_string(),
+            times_completed: 30,
+            seeders: 15, // More seeders - should be preferred
+            leechers: 1,
+            size: 9000000000,
+            added: "2024-01-02T00:00:00+0000".to_string(),
+            utadded: Some(1704153600),
+            descr: None,
+            comments: None,
+            numfiles: None,
+            filename: None,
+            type_category: categories::MOVIE,
+            type_codec: 1,
+            type_medium: 1,
+            type_origin: 0,
+            type_exclusive: None,
+            freeleech: "yes".to_string(), // Freeleech - should be preferred
+            torrent_status: None,
+            bookmarked: None,
+            wishlisted: None,
+            tags: None,
+            username: None,
+            owner: None,
+            imdb: None,
+            tvdb: None,
+        },
+        HDBitsTorrent {
+            id: 3,
+            hash: "EFGH5678".to_string(), // Different InfoHash
+            name: "Another.Movie.2024.720p.WEB-DL.x264-GROUP3".to_string(),
+            times_completed: 20,
+            seeders: 5,
+            leechers: 3,
+            size: 5000000000,
+            added: "2024-01-03T00:00:00+0000".to_string(),
+            utadded: Some(1704240000),
+            descr: None,
+            comments: None,
+            numfiles: None,
+            filename: None,
+            type_category: categories::MOVIE,
+            type_codec: 1,
+            type_medium: 1,
+            type_origin: 0,
+            type_exclusive: None,
+            freeleech: "no".to_string(),
+            torrent_status: None,
+            bookmarked: None,
+            wishlisted: None,
+            tags: None,
+            username: None,
+            owner: None,
+            imdb: None,
+            tvdb: None,
+        },
+    ];
+    
+    let config = HDBitsConfig::default();
+    let client = HDBitsClient::new(config).unwrap();
+    
+    let deduplicated = client.deduplicate_by_infohash(torrents);
+    
+    // Should have 2 results (2 unique InfoHashes)
+    assert_eq!(deduplicated.len(), 2);
+    
+    // First result should be the freeleech one (higher score)
+    let first_result = deduplicated.iter().find(|t| t.hash == "ABCD1234").unwrap();
+    assert_eq!(first_result.id, 2); // Should select the freeleech version
+    assert!(first_result.is_freeleech());
+    
+    // Second result should be the unique InfoHash
+    let second_result = deduplicated.iter().find(|t| t.hash == "EFGH5678").unwrap();
+    assert_eq!(second_result.id, 3);
+}
+
+#[test]
+fn test_movie_category_filtering() {
+    use super::models::*;
+    use super::client::HDBitsClient;
+    
+    let torrents = vec![
+        HDBitsTorrent {
+            id: 1,
+            hash: "MOVIE1234".to_string(),
+            name: "Movie.2024.1080p.BluRay.x264-GROUP".to_string(),
+            times_completed: 50,
+            seeders: 10,
+            leechers: 2,
+            size: 10000000000,
+            added: "2024-01-01T00:00:00+0000".to_string(),
+            utadded: Some(1704067200),
+            descr: None,
+            comments: None,
+            numfiles: None,
+            filename: None,
+            type_category: categories::MOVIE, // Movie category
+            type_codec: 1,
+            type_medium: 1,
+            type_origin: 0,
+            type_exclusive: None,
+            freeleech: "no".to_string(),
+            torrent_status: None,
+            bookmarked: None,
+            wishlisted: None,
+            tags: None,
+            username: None,
+            owner: None,
+            imdb: None,
+            tvdb: None,
+        },
+        HDBitsTorrent {
+            id: 2,
+            hash: "TVSHOW5678".to_string(),
+            name: "TV.Show.S01E01.1080p.WEB-DL.x264-GROUP".to_string(),
+            times_completed: 30,
+            seeders: 15,
+            leechers: 1,
+            size: 2000000000,
+            added: "2024-01-02T00:00:00+0000".to_string(),
+            utadded: Some(1704153600),
+            descr: None,
+            comments: None,
+            numfiles: None,
+            filename: None,
+            type_category: 5, // TV Show category (not movie)
+            type_codec: 1,
+            type_medium: 1,
+            type_origin: 0,
+            type_exclusive: None,
+            freeleech: "yes".to_string(),
+            torrent_status: None,
+            bookmarked: None,
+            wishlisted: None,
+            tags: None,
+            username: None,
+            owner: None,
+            imdb: None,
+            tvdb: None,
+        },
+    ];
+    
+    let config = HDBitsConfig::default();
+    let client = HDBitsClient::new(config).unwrap();
+    
+    let filtered = client.filter_movies_only(torrents);
+    
+    // Should only have 1 result (movie only, TV show filtered out)
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, 1);
+    assert_eq!(filtered[0].type_category, categories::MOVIE);
+}
+
+#[test]
 fn test_hdbits_response_with_complex_imdb() {
     let json_response = r#"{
       "status": 0,

@@ -36,6 +36,8 @@ pub struct AppServices {
     pub queue_processor: Option<Arc<QueueProcessor<PostgresQueueRepository, QBittorrentDownloadClient>>>,
     /// RSS monitoring service
     pub rss_service: Option<Arc<RssService>>,
+    /// Streaming service aggregator
+    pub streaming_aggregator: Option<Arc<dyn radarr_core::streaming::traits::StreamingAggregator>>,
 }
 
 impl AppServices {
@@ -63,6 +65,7 @@ impl AppServices {
             event_bus,
             queue_processor: None, // Will be initialized separately
             rss_service: None, // Will be initialized separately
+            streaming_aggregator: None, // Will be initialized separately
         })
     }
     
@@ -101,6 +104,18 @@ impl AppServices {
         ).with_event_bus(self.event_bus.clone()));
         
         self.rss_service = Some(rss_service);
+        Ok(())
+    }
+    
+    /// Initialize streaming service aggregator
+    pub fn initialize_streaming_aggregator(&mut self) -> Result<()> {
+        use radarr_infrastructure::streaming::create_default_aggregator;
+        
+        // Create aggregator from environment variables
+        let aggregator = create_default_aggregator(self.database_pool.clone());
+        self.streaming_aggregator = Some(aggregator);
+        
+        info!("Streaming service aggregator initialized");
         Ok(())
     }
     

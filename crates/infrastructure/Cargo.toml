@@ -19,3 +19,4 @@ async-trait = { workspace = true }
 rust_decimal = { workspace = true }
 reqwest = { workspace = true }
 tracing = { workspace = true }
+csv = "1.3"

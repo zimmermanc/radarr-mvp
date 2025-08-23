@@ -8,6 +8,7 @@ import {
   ChartBarIcon,
   MagnifyingGlassIcon,
   ArchiveBoxIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { useUI } from '../../contexts/UIContext';
 
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'Movies', href: '/movies', icon: FilmIcon },
   { name: 'Add Movie', href: '/add-movie', icon: PlusIcon },
+  { name: 'Streaming', href: '/streaming', icon: SparklesIcon },
   { name: 'Activity', href: '/activity', icon: ChartBarIcon },
   { name: 'Search', href: '/search', icon: MagnifyingGlassIcon },
   { name: 'Queue', href: '/queue', icon: ArchiveBoxIcon },

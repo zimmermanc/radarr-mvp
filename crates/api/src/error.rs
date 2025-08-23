@@ -55,6 +55,11 @@ pub enum ApiError {
     InternalError {
         message: String,
     },
+    
+    #[error("Not implemented: {message}")]
+    NotImplemented {
+        message: String,
+    },
 }
 
 /// Type alias for API results
@@ -106,6 +111,9 @@ impl IntoResponse for ApiError {
             }
             ApiError::InternalError { message } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, format!("Internal server error: {}", message))
+            }
+            ApiError::NotImplemented { message } => {
+                (StatusCode::NOT_IMPLEMENTED, format!("Not implemented: {}", message))
             }
         };
         

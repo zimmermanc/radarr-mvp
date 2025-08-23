@@ -8,6 +8,9 @@ pub mod database;
 pub mod error;
 pub mod download_clients;
 pub mod tmdb;
+pub mod trakt;
+pub mod watchmode;
+pub mod streaming;
 
 // Re-export for easy access
 pub use database::*;

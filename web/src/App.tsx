@@ -14,6 +14,7 @@ import { Movies } from './pages/Movies';
 import { AddMovie } from './pages/AddMovie';
 import { Settings } from './pages/Settings';
 import { Queue } from './pages/Queue';
+import Streaming from './pages/Streaming';
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
                       <Route path="add-movie" element={<AddMovie />} />
                       <Route path="settings" element={<Settings />} />
                       <Route path="queue" element={<Queue />} />
+                      <Route path="streaming" element={<Streaming />} />
                       
                       {/* Placeholder routes for future implementation */}
                       <Route path="activity" element={<PlaceholderPage title="Activity" />} />

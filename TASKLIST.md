@@ -1,9 +1,9 @@
 # Radarr MVP Task List
 
 **Last Updated**: 2025-08-23  
-**Sprint**: Infrastructure & Quality (Week 6)  
-**Priority**: CI/CD Complete → Lists & Discovery implementation next
-**Status**: CI/CD pipeline deployed, 162+ tests passing, security scanning active
+**Sprint**: Streaming Service Integration (Week 6-7)  
+**Priority**: TMDB + Trakt + Watchmode trending & availability implementation
+**Status**: CI/CD complete, starting streaming service integration
 
 ## ✅ COMPLETED MILESTONES
 
@@ -77,109 +77,161 @@
 
 **Achievement**: Automated quality gates ensuring code standards
 
-## 🎯 CURRENT PRIORITY: Lists & Discovery (Week 6-7)
+## 🎯 CURRENT PRIORITY: Streaming Service Integration (Week 6-7)
 
-### Week 6 Day 1-2: Trakt Device OAuth Implementation 🔐
-**Location**: `crates/core/src/lists/trakt.rs`
+### Session 1: Database & Core Infrastructure 🗄️
+**Location**: `migrations/004_streaming_integration.sql` & `crates/core/src/streaming/`
 
-```rust
-pub struct TraktOAuth {
-    client_id: String,
-    client_secret: String,
-    device_code: Option<String>,
-    access_token: Option<String>,
-}
+**Database Schema Tasks**:
+- [ ] Create `streaming_cache` table with JSONB storage and TTL
+- [ ] Create `streaming_id_mappings` table for TMDB↔Watchmode mapping
+- [ ] Create `trending_entries` table for tracking trending data
+- [ ] Create `streaming_availability` table for service availability
+- [ ] Create `oauth_tokens` table for Trakt token storage
+- [ ] Add indexes for performance optimization
 
-impl TraktOAuth {
-    pub async fn initiate_device_flow(&mut self) -> Result<DeviceCode, TraktError> {
-        // Device code flow implementation
-    }
-}
-```
+**Core Models Tasks**:
+- [ ] Define `Title`, `MediaType`, `TrendingEntry` models
+- [ ] Define `TrendingSource`, `TimeWindow` enums
+- [ ] Define `Availability`, `AvailabilityItem` models
+- [ ] Define `ComingSoon`, `ServiceType` models
+- [ ] Create trait definitions for adapters
 
-**Tasks**:
-- [ ] Implement Trakt device code OAuth flow
-- [ ] Create device code request and polling logic
-- [ ] Add token storage and refresh mechanisms  
-- [ ] Build user authorization UI workflow
-- [ ] Add comprehensive error handling for OAuth failures
+**Verification**: `sqlx migrate run` succeeds, models compile
 
-**Verification**: Complete OAuth flow from device code to access token
+### Session 2: TMDB & Cache Extensions 🎬
+**Location**: `crates/infrastructure/src/tmdb/` & `crates/infrastructure/src/repositories/`
 
-### Week 6 Day 3-4: IMDb List Import System 🎬
-**Location**: `crates/core/src/lists/imdb.rs`
+**TMDB Client Extensions**:
+- [ ] Add `trending_movies(window: TimeWindow)` endpoint
+- [ ] Add `trending_tv(window: TimeWindow)` endpoint
+- [ ] Add `upcoming_movies()` endpoint
+- [ ] Add `on_the_air()` endpoint
+- [ ] Add `watch_providers(tmdb_id, media_type, region)` endpoint
+- [ ] Integrate with PostgreSQL cache (3-24hr TTL)
 
-```rust
-pub struct IMDbListImporter {
-    http_client: reqwest::Client,
-    rate_limiter: RateLimiter,
-}
+**Cache Repository Tasks**:
+- [ ] Create `StreamingCacheRepository` with get/set methods
+- [ ] Implement `store_id_mapping()` for CSV data
+- [ ] Add TTL-based expiration logic
+- [ ] Create cache key generation helpers
+- [ ] Add batch insert for CSV mappings
 
-impl IMDbListImporter {
-    pub async fn import_list(&self, list_url: String) -> Result<Vec<Movie>, IMDbError> {
-        // Parse IMDb list HTML and extract movie data
-    }
-}
-```
+**Verification**: TMDB trending returns cached data on second call
 
-**Tasks**:
-- [ ] Build IMDb list URL parser and validator
-- [ ] Implement HTML scraping for movie extraction
-- [ ] Add rate limiting to respect IMDb servers
-- [ ] Create movie data mapping to internal format
-- [ ] Add comprehensive error handling and retries
-- [ ] Build import progress tracking
+### Session 3: Trakt OAuth Implementation 🔐
+**Location**: `crates/infrastructure/src/trakt/`
 
-**Verification**: Successfully import movies from IMDb lists
+**OAuth Implementation**:
+- [ ] Create `TraktOAuth` struct with device flow support
+- [ ] Implement `initiate_device_flow()` returning device code
+- [ ] Implement `poll_for_token()` with interval polling
+- [ ] Add automatic token refresh (24hr expiry as of March 2025)
+- [ ] Store tokens in PostgreSQL `oauth_tokens` table
+- [ ] Create CLI tool for initial authentication
 
-### Week 6 Day 5: TMDb List Integration & Sync Jobs 📅
-**Location**: `crates/core/src/lists/tmdb.rs`
+**Trakt Client Tasks**:
+- [ ] Create `TraktClient` with circuit breaker
+- [ ] Add `trending_movies()` endpoint
+- [ ] Add `trending_shows()` endpoint
+- [ ] Integrate with cache (30-60min TTL)
+- [ ] Add proper Trakt attribution
 
-```rust
-pub struct TMDbListSync {
-    api_key: String,
-    sync_scheduler: ScheduledJobRunner,
-}
+**Verification**: `cargo run --bin trakt-auth` completes OAuth flow
 
-impl TMDbListSync {
-    pub async fn sync_popular_movies(&self) -> Result<SyncResult, TMDbError> {
-        // Sync TMDb popular/trending movies
-    }
-}
-```
+### Session 4: Watchmode Integration 📺
+**Location**: `crates/infrastructure/src/watchmode/`
 
-**Tasks**:
-- [ ] Implement TMDb list API integration
-- [ ] Create scheduled job system for list synchronization
-- [ ] Add provenance tracking (why movies were added)
-- [ ] Build sync conflict resolution (duplicates, updates)
-- [ ] Create sync status reporting and monitoring
-- [ ] Add configurable sync intervals and preferences
+**Watchmode Client Tasks**:
+- [ ] Create `WatchmodeClient` with strict rate limiting (33/day max)
+- [ ] Implement `sources_by_tmdb()` using CSV mapping lookup
+- [ ] Add `streaming_releases()` for coming soon content
+- [ ] Create aggressive caching (12-24hr TTL)
+- [ ] Add circuit breaker for resilience
 
-**Verification**: Scheduled sync jobs running with progress tracking
+**CSV Sync Tasks**:
+- [ ] Create `WatchmodeCsvSync` for daily updates
+- [ ] Implement `refresh_id_map()` to download CSV
+- [ ] Parse CSV and batch insert into PostgreSQL
+- [ ] Add `get_watchmode_id(tmdb_id)` lookup method
+- [ ] Create background job for weekly refresh
 
-## 📋 Week 7: Discovery & User Experience
+**Verification**: `cargo run --bin watchmode-sync` downloads and stores mappings
 
-### Discovery UI Implementation
-**Location**: `unified-radarr/web/src/components/discovery/`
+### Session 5: Trending Aggregator & API 🔄
+**Location**: `crates/core/src/streaming/aggregator.rs` & `crates/api/src/handlers/streaming.rs`
 
-#### Provenance Tracking
-- [ ] Create "Why Added" tracking for all movies
-- [ ] Build discovery reasons taxonomy (Trakt list, IMDb list, manual, etc.)
-- [ ] Add provenance display in movie details
-- [ ] Track recommendation source effectiveness
+**Aggregator Implementation**:
+- [ ] Create `TrendingAggregator` combining all sources
+- [ ] Implement parallel fetching from TMDB + Trakt
+- [ ] Add de-duplication by TMDB ID
+- [ ] Implement scoring algorithm (0.5 TMDB + 0.5 Trakt)
+- [ ] Add availability enrichment via watch providers
+- [ ] Cache aggregated results (1hr TTL)
 
-#### Discovery Dashboard
-- [ ] Create discovery recommendations UI
-- [ ] Build list management interface
-- [ ] Add sync status and progress displays
-- [ ] Implement discovery settings and preferences
+**API Endpoints**:
+- [ ] `GET /api/v3/streaming/trending/{media_type}/{window}`
+- [ ] `GET /api/v3/streaming/availability/{tmdb_id}`
+- [ ] `GET /api/v3/streaming/coming-soon`
+- [ ] `GET /api/v3/streaming/providers` (list available services)
+- [ ] Add proper attribution headers
 
-#### List Configuration
-- [ ] Build list source configuration UI
-- [ ] Add OAuth flow UI for Trakt authentication
-- [ ] Create IMDb list URL management
-- [ ] Build sync schedule configuration interface
+**Verification**: API returns merged trending with availability
+
+### Session 6: UI Components & Polish 🎨
+**Location**: `unified-radarr/web/src/components/streaming/`
+
+**React Components**:
+- [ ] Create `TrendingView` component with day/week toggle
+- [ ] Build `TitleCard` with poster, availability chips
+- [ ] Add `StreamingProviders` component with logos
+- [ ] Create `ComingSoon` component for upcoming releases
+- [ ] Add `TraktAuth` component for OAuth flow
+
+**UI Features**:
+- [ ] Display streaming service logos with deep links
+- [ ] Add region selector (default: US)
+- [ ] Show trending rank from both sources
+- [ ] Add "JustWatch" attribution for TMDB providers
+- [ ] Implement service filter checkboxes
+
+**Verification**: UI shows trending with availability, proper attribution
+
+## 📋 Testing & Documentation
+
+### Testing Tasks
+- [ ] Unit tests for each adapter (TMDB, Trakt, Watchmode)
+- [ ] Integration tests for aggregator logic
+- [ ] Cache expiration tests
+- [ ] Rate limit compliance tests
+- [ ] OAuth token refresh tests
+
+### Documentation Tasks
+- [ ] Document API endpoints in OpenAPI spec
+- [ ] Add environment variable setup guide
+- [ ] Create Trakt OAuth setup instructions
+- [ ] Document cache TTL strategy
+- [ ] Add attribution requirements
+
+## 📊 Streaming Integration Success Metrics
+
+### API Usage Targets
+- **Watchmode**: <33 calls/day (1000/month limit)
+- **TMDB**: <500 calls/day (cached aggressively)
+- **Trakt**: <200 calls/day (OAuth authenticated)
+- **Total**: <250 calls/week with caching
+
+### Performance Targets
+- **Cache Hit Rate**: >95% for trending data
+- **Response Time**: <5ms from PostgreSQL cache
+- **Cold Start**: <1s for initial trending fetch
+- **Availability Lookup**: <100ms with Watchmode mapping
+
+### Data Quality
+- **Coverage**: 95%+ titles with streaming availability
+- **Accuracy**: Deep links valid for subscribed services
+- **Freshness**: Trending updated every 1-3 hours
+- **Attribution**: JustWatch logo displayed for TMDB providers
 
 ### List Synchronization Jobs
 **Location**: `crates/core/src/jobs/list_sync.rs`
@@ -398,6 +450,16 @@ cargo build --release
 # Deploy to test server
 ./scripts/deploy.sh
 ssh root@192.168.0.138 'systemctl restart radarr'
+
+# Streaming service commands
+cargo run --bin trakt-auth           # Initialize Trakt OAuth
+cargo run --bin watchmode-sync       # Refresh Watchmode CSV mappings
+psql -d radarr -c "SELECT * FROM streaming_cache WHERE expires_at > NOW()"
+
+# API testing
+curl http://localhost:7878/api/v3/streaming/trending/movie/day
+curl http://localhost:7878/api/v3/streaming/availability/550  # Fight Club
+curl http://localhost:7878/api/v3/streaming/coming-soon
 
 # Setup GitHub secrets
 ./scripts/setup-github-secrets.sh

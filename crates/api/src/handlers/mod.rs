@@ -11,6 +11,7 @@ pub mod commands;
 pub mod calendar;
 pub mod queue;
 pub mod quality;
+pub mod streaming;
 
 // Re-export handler functions
 pub use movies::*;

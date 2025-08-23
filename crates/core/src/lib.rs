@@ -15,6 +15,7 @@ pub mod rss;
 pub mod circuit_breaker;
 pub mod correlation;
 pub mod tracing;
+pub mod streaming;
 
 // Re-export core types
 pub use models::*;

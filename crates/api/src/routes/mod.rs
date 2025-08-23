@@ -1,5 +1,7 @@
 //! Basic route configuration
 
+pub mod streaming;
+
 use axum::{routing::get, Router};
 use crate::handlers::health::health_check;
 

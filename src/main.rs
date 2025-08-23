@@ -273,6 +273,10 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
     services.initialize_rss_service(RssServiceConfig::default())?;
     services.start_rss_service().await?;
     info!("✅ RSS monitoring service started");
+    
+    // Initialize streaming aggregator
+    services.initialize_streaming_aggregator()?;
+    info!("✅ Streaming service aggregator initialized");
 
     Ok(services)
 }
@@ -293,6 +297,9 @@ fn build_router(app_state: AppState) -> Router {
     
     // Get RSS service if available
     let rss_service = app_state.services.rss_service.clone();
+    
+    // Get streaming aggregator if available
+    let streaming_aggregator = app_state.services.streaming_aggregator.clone();
     
     // Create TMDB client if configured
     let tmdb_client = if app_state.config.tmdb.enabled && !app_state.config.tmdb.api_key.is_empty() {
@@ -344,6 +351,13 @@ fn build_router(app_state: AppState) -> Router {
     // Add RSS service if available
     if let Some(rss) = rss_service {
         router = router.layer(axum::Extension(rss));
+    }
+    
+    // Add streaming routes if aggregator is available
+    if let Some(aggregator) = streaming_aggregator {
+        use radarr_api::routes::streaming::streaming_routes;
+        router = router.nest("/api/streaming", streaming_routes(aggregator));
+        info!("Streaming routes added to API");
     }
     
     router

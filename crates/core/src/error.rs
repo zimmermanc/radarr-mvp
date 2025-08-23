@@ -56,6 +56,12 @@ pub enum RadarrError {
     
     #[error("Circuit breaker open for service: {service}")]
     CircuitBreakerOpen { service: String },
+    
+    #[error("Authentication required for {service}: {message}")]
+    AuthenticationRequired { service: String, message: String },
+    
+    #[error("Rate limited by {service}")]
+    RateLimited { service: String, retry_after: Option<u64> },
 }
 
 pub type Result<T> = std::result::Result<T, RadarrError>;

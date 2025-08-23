@@ -2,7 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Recent Completions (Week 6 - Infrastructure & Quality)
+## Recent Completions (Week 6-7 - Infrastructure & Discovery)
+
+### 🚧 Streaming Service Integration (2025-08-23 - In Progress)
+- **TMDB Extensions**: Trending movies/TV (day/week), upcoming releases, watch providers
+- **Trakt OAuth**: Device flow authentication with 24hr token refresh (March 2025 compliance)
+- **Watchmode Integration**: CSV ID mapping (TMDB↔Watchmode), deep links, streaming availability
+- **PostgreSQL Caching**: Aggressive caching strategy (24hr TTL) for API quota management
+- **Trending Aggregation**: Multi-source scoring algorithm with de-duplication
 
 ### ✅ CI/CD Pipeline Implementation (2025-08-23)
 - **GitHub Actions**: 6 comprehensive workflows deployed
@@ -117,6 +124,21 @@ sqlx migrate info
 sqlx database drop && sqlx database create && sqlx migrate run
 ```
 
+### Streaming Service Commands
+```bash
+# Refresh Watchmode CSV mapping (manual trigger)
+cargo run --bin watchmode-sync
+
+# Test Trakt OAuth flow
+cargo run --bin trakt-auth
+
+# View cached trending data
+psql -d radarr -c "SELECT cache_key, expires_at FROM streaming_cache WHERE cache_key LIKE 'trending%'"
+
+# Clear streaming cache (force refresh)
+psql -d radarr -c "DELETE FROM streaming_cache WHERE cache_key LIKE 'tmdb:%' OR cache_key LIKE 'trakt:%'"
+```
+
 ### Server Deployment
 ```bash
 # Build for deployment (from unified-radarr directory)
@@ -209,6 +231,8 @@ unified-radarr/
 
 **Quality Profiles**: Decision engine evaluates releases against configurable profiles with custom format support.
 
+**Streaming Service Integration**: TMDB + Trakt + Watchmode aggregation for trending content discovery with streaming availability and deep links. PostgreSQL-cached for aggressive rate limit management.
+
 **Server Ready**: Complete systemd service files and deployment scripts for direct server deployment.
 
 ### Development Workflow Notes
@@ -281,7 +305,17 @@ cargo run                    # Start server
 
 **Environment Configuration**: Use `.env` files for development, systemd environment files for production.
 
+**API Keys Required**:
+- `TMDB_API_KEY`: Existing TMDB API key (already configured)
+- `TRAKT_CLIENT_ID` & `TRAKT_CLIENT_SECRET`: Trakt OAuth credentials
+- `WATCHMODE_API_KEY`: Watchmode API key (free tier: 1000 req/month)
+
 **HDBits Integration**: Production-ready scraper with scene group analysis, session authentication, and intelligent rate limiting. Operational with comprehensive error handling.
+
+**Streaming Service Quotas**:
+- **Watchmode**: 1000 requests/month (~33/day) - aggressively cached
+- **TMDB**: Standard rate limits - cached 3-24 hours
+- **Trakt**: OAuth with 24hr token expiry - auto-refresh required
 
 ## Testing and Quality Assurance
 

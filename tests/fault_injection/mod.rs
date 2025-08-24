@@ -80,7 +80,7 @@ impl FaultInjectionTestContext {
     /// Setup a mock endpoint that always returns 500 errors
     pub async fn setup_always_failing_endpoint(&self, path: &str) {
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
             .mount(&self.mock_server)
             .await;
@@ -89,7 +89,7 @@ impl FaultInjectionTestContext {
     /// Setup a mock endpoint that times out (never responds)
     pub async fn setup_timeout_endpoint(&self, path: &str) {
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(30)))
             .mount(&self.mock_server)
             .await;
@@ -98,7 +98,7 @@ impl FaultInjectionTestContext {
     /// Setup a mock endpoint that returns 429 rate limit with Retry-After header
     pub async fn setup_rate_limited_endpoint(&self, path: &str, retry_after_seconds: u64) {
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(
                 ResponseTemplate::new(429)
                     .set_body_string("Rate limit exceeded")
@@ -112,7 +112,7 @@ impl FaultInjectionTestContext {
     pub async fn setup_intermittent_failure_endpoint(&self, path: &str, failure_count: usize) {
         for i in 0..failure_count {
             Mock::given(method("GET"))
-                .and(path(path))
+                .and(path(endpoint_path))
                 .respond_with(ResponseTemplate::new(500).set_body_string("Temporary failure"))
                 .up_to_n_times(1)
                 .mount(&self.mock_server)
@@ -121,7 +121,7 @@ impl FaultInjectionTestContext {
 
         // After failures, return success
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "status": "success",
                 "data": "recovered"
@@ -133,7 +133,7 @@ impl FaultInjectionTestContext {
     /// Setup a mock endpoint that returns invalid JSON
     pub async fn setup_corrupt_data_endpoint(&self, path: &str) {
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("{ invalid json syntax }")
@@ -146,7 +146,7 @@ impl FaultInjectionTestContext {
     /// Setup a mock endpoint that returns partial responses (incomplete data)
     pub async fn setup_partial_response_endpoint(&self, path: &str) {
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("{ \"incomplete\": tru")
@@ -157,10 +157,10 @@ impl FaultInjectionTestContext {
     }
 
     /// Setup a mock endpoint that simulates network instability (random delays)
-    pub async fn setup_unstable_endpoint(&self, path: &str) {
+    pub async fn setup_unstable_endpoint(&self, endpoint_path: &str) {
         // Fast response
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"result": "fast"})))
             .up_to_n_times(1)
             .mount(&self.mock_server)
@@ -168,7 +168,7 @@ impl FaultInjectionTestContext {
 
         // Slow response
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_delay(Duration::from_millis(2000))
@@ -180,7 +180,7 @@ impl FaultInjectionTestContext {
 
         // Timeout
         Mock::given(method("GET"))
-            .and(path(path))
+            .and(path(endpoint_path))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_delay(Duration::from_secs(10))

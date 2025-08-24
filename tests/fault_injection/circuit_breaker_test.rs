@@ -35,7 +35,7 @@ async fn test_circuit_breaker_failure_threshold() {
         let config = CircuitBreakerConfig::new(service_name)
             .with_failure_threshold(threshold)
             .with_timeout(Duration::from_millis(50));
-        let circuit_breaker = CircuitBreaker::new(config);
+        let _circuit_breaker = CircuitBreaker::new(config);
 
         // Setup always failing endpoint
         let context = FaultInjectionTestContext::new(service_name).await;
@@ -44,7 +44,7 @@ async fn test_circuit_breaker_failure_threshold() {
 
         // Make requests until circuit opens
         let mut failures = 0;
-        for i in 0..threshold + 5 {
+        for _i in 0..threshold + 5 {
             let result = context.make_request(&test_url).await;
 
             match result {
@@ -100,7 +100,7 @@ async fn test_circuit_breaker_timeout_behavior() {
         let config = CircuitBreakerConfig::new("timeout_test")
             .with_failure_threshold(2)
             .with_timeout(timeout_duration);
-        let circuit_breaker = CircuitBreaker::new(config);
+        let _circuit_breaker = CircuitBreaker::new(config);
 
         let context = FaultInjectionTestContext::new("timeout_test").await;
         context.setup_always_failing_endpoint("/api/fail").await;
@@ -161,7 +161,7 @@ async fn test_circuit_breaker_success_threshold() {
             .with_failure_threshold(2)
             .with_timeout(Duration::from_millis(50))
             .with_success_threshold(success_threshold);
-        let circuit_breaker = CircuitBreaker::new(config);
+        let _circuit_breaker = CircuitBreaker::new(config);
 
         let context = FaultInjectionTestContext::new("success_test").await;
 
@@ -592,12 +592,12 @@ async fn test_circuit_breaker_stress_test() {
     println!("  Circuit breaker metrics: {:?}", cb_metrics);
 
     // Verify metrics consistency
-    assert_eq!(cb_metrics.total_requests as usize, request_count);
+    assert_eq!(cb_metrics.total_requests, request_count as u32);
     assert_eq!(
-        cb_metrics.successful_requests as usize
-            + cb_metrics.failed_requests as usize
-            + cb_metrics.rejected_requests as usize,
-        request_count
+        cb_metrics.successful_requests 
+            + cb_metrics.failed_requests 
+            + cb_metrics.rejected_requests,
+        request_count as u32
     );
 
     // System should be resilient (not completely broken)

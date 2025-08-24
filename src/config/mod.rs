@@ -6,7 +6,6 @@
 pub mod retry_config;
 
 use radarr_core::{RadarrError, Result};
-pub use retry_config::*;
 use serde::{Deserialize, Serialize};
 use std::env;
 

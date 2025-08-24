@@ -161,7 +161,7 @@ jobs:
       - name: Install analysis tools
         run: |
           cargo install tokei --locked
-          cargo install cargo-count --locked
+          # cargo-count removed due to yanked dependencies
       
       - name: Collect code metrics
         run: |
@@ -170,10 +170,8 @@ jobs:
           echo "### Lines of Code" >> metrics.md
           tokei . --output markdown >> metrics.md
           echo "### Rust Statistics" >> metrics.md
-          cargo count --all --separator , > stats.csv
-          echo '```csv' >> metrics.md
-          cat stats.csv >> metrics.md
-          echo '```' >> metrics.md
+          # cargo count --all --separator , > stats.csv  # Disabled due to yanked dependencies
+          echo "cargo-count metrics temporarily disabled due to dependency conflicts" >> metrics.md
       
       - name: Upload metrics to Codacy
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

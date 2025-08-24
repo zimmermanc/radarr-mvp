@@ -1,0 +1,42 @@
+name: 🔒 Secret Detection
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  gitleaks:
+    name: 🔍 Scan for Secrets
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive scanning
+          
+      - name: 🔒 Run Gitleaks Secret Detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_NOTIFY: true
+          GITLEAKS_CONFIG: .gitleaks.toml
+          
+      - name: 📊 Upload Gitleaks Report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          retention-days: 30
+          
+      - name: 🚨 Fail Build on Secrets
+        if: failure()
+        run: |
+          echo "🚨 SECURITY ALERT: Secrets detected in repository!"
+          echo "Please remove all secrets and rotate any exposed credentials."
+          echo "Check the uploaded gitleaks-report for details."
+          exit 1

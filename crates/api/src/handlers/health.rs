@@ -32,7 +32,7 @@ pub async fn detailed_health_check() -> ApiResult<Json<HealthResponse>> {
     let check_start = Instant::now();
 
     let mut services = Vec::new();
-    let mut overall_healthy = true;
+    let overall_healthy = true;
 
     // For now, create placeholder service health entries
     // These will be populated with actual circuit breaker data when the services are properly wired

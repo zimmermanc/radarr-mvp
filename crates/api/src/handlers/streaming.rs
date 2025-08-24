@@ -1,12 +1,10 @@
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::{Path, Query},
     response::Json,
     Extension,
 };
 use radarr_core::streaming::{
-    traits::StreamingAggregator, AvailabilityResponse, ComingSoonResponse, MediaType,
-    StreamingProvider, TimeWindow, TrendingResponse,
+    traits::StreamingAggregator, AvailabilityResponse, ComingSoonResponse, MediaType, TimeWindow, TrendingResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -112,7 +110,7 @@ pub async fn get_availability(
         .get_availability(tmdb_id, media_type, &params.region)
         .await
     {
-        Ok(mut response) => {
+        Ok(response) => {
             // Add attribution for JustWatch (TMDB providers)
             if !response.availability.is_empty() {
                 // This would be added to the response headers in production
@@ -267,8 +265,8 @@ pub async fn refresh_cache(
 pub async fn init_trakt_auth(
     Extension(aggregator): Extension<Arc<dyn StreamingAggregator>>,
 ) -> Result<Json<ApiResponse<TraktAuthInit>>, ApiError> {
-    use radarr_core::streaming::traits::TraktAdapter;
-    use radarr_infrastructure::trakt::TraktClient;
+    
+    
 
     // This is a simplified version - in production, you'd get the client from the aggregator
     Err(ApiError::NotImplemented {

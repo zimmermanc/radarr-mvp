@@ -242,7 +242,7 @@ pub async fn advanced_search(
     let recommendations = generate_search_recommendations(&params, &search_result);
 
     // Create enhanced response
-    let mut response = AdvancedSearchResponse {
+    let response = AdvancedSearchResponse {
         results: search_result.results,
         total_count,
         page: params.page.unwrap_or(1),

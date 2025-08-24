@@ -6,10 +6,10 @@ use crate::{
     models::{CreateMovieRequest, MovieResponse, PaginatedResponse, UpdateMovieRequest},
 };
 use axum::{extract::State, http::StatusCode, Json};
-use radarr_core::{repositories::MovieRepository, Movie, RadarrError};
+use radarr_core::{repositories::MovieRepository, Movie};
 use radarr_infrastructure::{DatabasePool, PostgresMovieRepository};
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 /// Application state containing database pool and repositories

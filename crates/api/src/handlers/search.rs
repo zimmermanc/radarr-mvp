@@ -8,10 +8,8 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use radarr_core::repositories::MovieRepository;
 use radarr_infrastructure::DatabasePool;
 use serde::Deserialize;
-use std::collections::HashMap;
 use tracing::{info, instrument};
 use uuid::Uuid;
 

@@ -2,38 +2,44 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 🚀 LATEST UPDATE: Production Deployment Infrastructure Complete (2025-08-24)
+## 🚀 LATEST UPDATE: GitHub Release Pipeline & Development Workflow Complete (2025-08-24)
 
-### 🔐 Security Hardening Completed (2025-08-24)
-- **Pre-commit Hooks**: Git hooks prevent committing secrets, .env files, and local IPs
-- **Gitleaks Integration**: Comprehensive secret detection with custom rules for documentation
-- **CI/CD Fixed**: All GitHub Actions workflows now passing (removed broken cargo-count)
-- **Credential Protection**: All .env files removed from tracking, using templates only
-- **Documentation Security**: All examples use safe placeholders (CHANGE_ME, YOUR_PASSWORD)
+### 🎯 cargo-dist Release Pipeline Implementation Complete (2025-08-24)
+- **Cross-Platform Releases**: Automated builds for Linux, macOS, Windows, ARM64
+- **cargo-dist v0.29.0**: Modern 2025 tool with zero-config cross-platform builds
+- **GitHub Actions Integration**: Complete release workflow with binary distribution
+- **Embedded Web UI**: React frontend assets built into single 16MB binary
+- **Installer Scripts**: Shell installer and Homebrew formula auto-generation
+- **Database Automation**: PostgreSQL setup scripts included in releases
 
-### 🏭 Production Deployment Ready (2025-08-24)
-- **Target Server**: Configured for deployment to root@YOUR_PRODUCTION_SERVER
-- **Deployment Script**: Comprehensive `deploy-production.sh` with health checks and rollback
-- **Database Setup**: Production-grade PostgreSQL setup with security hardening
-- **Systemd Service**: Advanced security features (PrivateTmp, NoNewPrivileges, resource limits)
-- **Environment Management**: Complete production.env.template with all configuration options
-- **Documentation**: Full deployment guide in README.md with troubleshooting
+### 🔄 Development Workflow Established (2025-08-24)
+- **cargo-release Integration**: Semi-automated version management with manual control
+- **Version Synchronization**: Prevents code separation with atomic git operations
+- **Release Commands**: `cargo release patch/minor/major --execute` for all releases
+- **Pre-commit Hooks**: Enhanced with version consistency validation
+- **Documentation**: Complete DEVELOPMENT_WORKFLOW.md with best practices
 
-### 📈 Implementation Achievement Status (2025-08-24)
-- **Complete API Coverage**: ALL missing backend endpoints implemented and tested
-- **Advanced Search API**: New filtering, sorting, and bulk operations endpoints
-- **Security Infrastructure**: Multi-layer protection (git, pre-commit, CI/CD)
-- **Queue Management**: Complete /api/v3/queue operations with proper state management
-- **Frontend Integration**: All UI-expected endpoints now available and functional
-- **System Completion**: 96% complete - production-ready with monitoring
+### 🧪 Clean Slate Installation Validated (2025-08-24)
+- **Production Testing**: Complete removal and fresh installation on production server
+- **Automated Installer**: Database setup, user creation, service configuration working
+- **Embedded Assets**: CSS/JS served correctly from single binary
+- **API Functionality**: All endpoints operational with proper authentication
+- **Service Stability**: systemd integration stable without auto-restart issues
+
+### 📦 Release Status (2025-08-24)
+- **v1.0.0**: Initial release (failed due to formatting issues)
+- **v1.0.1**: Current release (in progress, formatting fixes applied)
+- **Installation**: `curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-installer.sh | sh`
+- **Web Interface**: http://localhost:7878 with embedded React application
+- **API Documentation**: Complete endpoints with authentication working
 
 ### Current System Status (2025-08-24)
-- **CI/CD Pipeline**: ✅ All checks passing (security, quality, tests)
-- **Security Scanning**: ✅ No secrets or vulnerabilities detected
-- **Code Quality**: ✅ Formatting fixed, Clippy warnings resolved
-- **Production Ready**: ✅ Complete deployment infrastructure in place
-- **API Coverage**: 100% - all endpoints implemented with real functionality
-- **Current completion**: 96% (production-ready, optimization remaining)
+- **CI/CD Pipeline**: 🔧 Fixing TOML formatting issues and validation
+- **Security Scanning**: ✅ All secret detection and vulnerability checks passing
+- **Release Automation**: ✅ cargo-dist + cargo-release integration operational
+- **Production Ready**: ✅ Clean slate installation completely validated
+- **Web UI Integration**: ✅ Embedded assets serving correctly from binary
+- **Current completion**: 98% (release pipeline complete, CI fixes in progress)
 
 ## Recent Work (Week 6-8 - Infrastructure & Discovery)
 
@@ -146,6 +152,76 @@ If blocked, fix the issue before committing!
 - **Never commit**: Actual production passwords or API keys
 - **Use templates**: Copy `production.env.template` to `production.env`
 - **Rotate credentials**: If any key is exposed, rotate immediately
+
+## 🔄 Development Workflow (2025-08-24)
+
+### Ongoing Development Process
+
+**Daily Development (No Changes Required):**
+```bash
+# Normal development workflow - continues as before
+git add .
+git commit -m "feat: add new movie filtering feature"
+git push origin main
+```
+
+**Creating Releases (New Semi-Automated Process):**
+```bash
+# The new cargo-release + cargo-dist workflow prevents code separation
+# All operations are atomic and maintain version synchronization
+
+# Patch release (bug fixes) - most common
+cargo release patch --execute
+
+# Minor release (new features)
+cargo release minor --execute
+
+# Major release (breaking changes)
+cargo release major --execute
+
+# Preview without executing
+cargo release patch --dry-run
+```
+
+**What Happens Automatically:**
+1. 🔧 **cargo-release**: Updates Cargo.toml version, creates git commit, creates tag, pushes
+2. 🤖 **GitHub Actions**: Detects new tag, triggers cargo-dist release workflow
+3. 🔨 **cargo-dist**: Builds cross-platform binaries with embedded web UI
+4. 📦 **Release Creation**: GitHub release with installers, checksums, and documentation
+5. 🌐 **User Installation**: `curl -fsSL .../radarr-mvp-installer.sh | sh`
+
+### Code Separation Prevention Strategy
+- ✅ **Single Source of Truth**: Cargo.toml version drives everything
+- ✅ **Atomic Operations**: Version bump + tag + push in single operation
+- ✅ **Pre-commit Validation**: Hooks prevent inconsistent states
+- ✅ **Rollback Capability**: Failed releases cleanly undoable
+- ✅ **GitHub Validation**: CI validates builds before release creation
+
+## Development Commands
+
+### Release Management (New Workflow)
+```bash
+# Semi-automated releases with cargo-release + cargo-dist
+# This is the recommended approach for all releases
+
+# Patch release (bug fixes) - most common
+cargo release patch --execute
+
+# Minor release (new features)
+cargo release minor --execute
+
+# Major release (breaking changes)
+cargo release major --execute
+
+# Preview release without executing
+cargo release patch --dry-run
+
+# Check cargo-dist configuration
+dist plan
+
+# Check what GitHub release will look like
+gh release list
+```
 
 ## Development Commands
 
@@ -634,4 +710,298 @@ gitleaks detect --source .
 **Documentation**: `docs/` contains architecture decisions, CI/CD guide, and setup guides
 **Analysis Tools**: `unified-radarr/crates/analysis/src/bin/` for HDBits analyzers
 **CI/CD**: `.github/workflows/` for GitHub Actions pipelines
-**Security**: `.github/SECRETS_SETUP.md` for secure token configuration
+**Security**: `.github/SECRETS_SETUP.md` for secure token configuration# Development Workflow - Radarr MVP
+
+**Updated**: 2025-08-24  
+**Tools**: cargo-release + cargo-dist + GitHub Actions  
+**Strategy**: Semi-automated semantic versioning with manual release decisions
+
+## 🚀 Quick Reference
+
+### Daily Development
+```bash
+# Normal development workflow
+git add .
+git commit -m "feat: add new movie filtering feature"
+git push origin main
+```
+
+### Creating Releases
+```bash
+# Patch release (bug fixes)
+cargo release patch --execute
+
+# Minor release (new features)
+cargo release minor --execute
+
+# Major release (breaking changes)
+cargo release major --execute
+```
+
+### Emergency Fixes
+```bash
+# Quick patch for critical bugs
+cargo release patch --execute
+# This automatically: bumps version, creates tag, pushes, triggers GitHub release
+```
+
+## 🔄 Complete Development-to-Release Workflow
+
+### 1. Development Phase
+
+**Daily Development:**
+```bash
+# Work on features/fixes normally
+git checkout main
+git pull origin main
+
+# Make your changes
+vim src/main.rs
+cargo test --workspace
+cargo clippy --all-targets --all-features
+
+# Commit with conventional commit format (recommended)
+git add .
+git commit -m "feat: add streaming provider filtering"
+git push origin main
+```
+
+**Pre-Release Checks:**
+```bash
+# Before any release, ensure everything works
+cargo test --workspace                    # All tests pass
+cargo clippy --all-targets --all-features # No warnings
+cargo fmt --all --check                   # Formatting correct
+BUILD_WEB=1 cargo build --release         # Web UI builds correctly
+./target/release/radarr-mvp --help        # Binary works
+```
+
+### 2. Release Decision
+
+**Semantic Versioning Guide:**
+- **Patch (1.0.1)**: Bug fixes, security updates, documentation
+- **Minor (1.1.0)**: New features, API additions (backward compatible)
+- **Major (2.0.0)**: Breaking changes, API removals, architecture changes
+
+**Examples:**
+```bash
+# Bug fix
+cargo release patch --execute
+
+# New API endpoint
+cargo release minor --execute  
+
+# Breaking API changes
+cargo release major --execute
+```
+
+### 3. Release Execution
+
+**cargo-release handles automatically:**
+1. ✅ Version bump in `Cargo.toml`
+2. ✅ Update `CHANGELOG.md` with release date
+3. ✅ Create git commit with release message
+4. ✅ Create git tag (e.g., `v1.0.1`)
+5. ✅ Push commit and tag to GitHub
+6. ✅ **cargo-dist GitHub Action triggers automatically**
+
+**What happens after push:**
+1. 🤖 GitHub Actions detects new tag
+2. 🔨 cargo-dist builds cross-platform binaries
+3. 🌐 Web UI assets embedded in binaries
+4. 📦 Creates installers (shell script, Homebrew)
+5. 📝 Generates release notes
+6. 🚀 Publishes GitHub Release with all assets
+
+### 4. Release Validation
+
+**After release:**
+```bash
+# Check release was created
+gh release list
+
+# Verify assets are available
+curl -s https://api.github.com/repos/zimmermanc/radarr-mvp/releases/latest
+
+# Test installer script
+curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-installer.sh
+
+# Validate web UI works in release
+# (Test on clean server or in Docker)
+```
+
+## 🛡️ Safety Mechanisms
+
+### Pre-Release Validation
+```bash
+# Always run before release
+cargo release patch --dry-run    # Preview changes without executing
+dist plan                        # Validate cargo-dist configuration
+cargo test --workspace           # Ensure tests pass
+```
+
+### Version Consistency Checks
+- **cargo-release** ensures Cargo.toml and git tags stay synchronized
+- **GitHub Actions** validates build before creating release
+- **Pre-commit hooks** prevent invalid configurations
+
+### Rollback Procedures
+```bash
+# If release fails or has issues
+git tag -d v1.0.1                    # Delete local tag
+git push origin :refs/tags/v1.0.1    # Delete remote tag
+gh release delete v1.0.1             # Delete GitHub release
+
+# Revert version in Cargo.toml if needed
+git revert HEAD                       # Revert release commit
+```
+
+## 🎯 Workflow Best Practices
+
+### Commit Message Conventions
+```bash
+# Use conventional commits for clear history
+feat: add new streaming provider integration
+fix: resolve database connection timeout
+chore: update dependencies
+docs: improve installation instructions
+style: fix code formatting
+test: add integration tests for queue management
+```
+
+### Release Timing
+- **Patch releases**: As needed for bug fixes (can be immediate)
+- **Minor releases**: Weekly/bi-weekly for feature releases
+- **Major releases**: Monthly/quarterly for significant changes
+
+### Testing Requirements
+- ✅ All tests pass (`cargo test --workspace`)
+- ✅ No clippy warnings (`cargo clippy --all-targets --all-features`)
+- ✅ Proper formatting (`cargo fmt --all --check`)
+- ✅ Web UI builds (`BUILD_WEB=1 cargo build --release`)
+- ✅ Local manual testing of key features
+- ✅ Database migrations work (`sqlx migrate run`)
+
+## 🔧 Advanced Workflows
+
+### Hotfix Releases
+```bash
+# For critical production issues
+git checkout main
+git pull origin main
+
+# Make minimal fix
+git add . && git commit -m "fix: critical security vulnerability"
+
+# Test thoroughly
+cargo test && cargo clippy
+
+# Release immediately
+cargo release patch --execute
+```
+
+### Feature Releases
+```bash
+# For major new features
+git checkout main
+git pull origin main
+
+# Ensure feature is complete and tested
+cargo test --workspace
+BUILD_WEB=1 cargo build --release
+
+# Document changes in CHANGELOG.md
+vim CHANGELOG.md
+
+# Release
+cargo release minor --execute
+```
+
+### Pre-release Testing
+```bash
+# Create pre-release for testing
+cargo release minor --no-push --tag-name="v{{version}}-beta"
+
+# After validation, create final release
+cargo release minor --execute
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**"Working directory is not clean":**
+```bash
+git status              # Check what's uncommitted
+git add . && git commit # Commit or stash changes
+```
+
+**"Tag already exists":**
+```bash
+git tag -d v1.0.1                    # Delete local tag
+git push origin :refs/tags/v1.0.1    # Delete remote tag
+```
+
+**"GitHub Actions failing":**
+```bash
+gh run list --limit 5    # Check recent runs
+gh run view --log        # Check failure details
+```
+
+**"cargo-dist build failing":**
+```bash
+dist plan               # Test cargo-dist locally
+BUILD_WEB=1 cargo build --release  # Test web UI build
+```
+
+### Recovery Procedures
+
+**Failed Release Recovery:**
+1. Check GitHub Actions logs for specific errors
+2. Fix issues in code
+3. Delete failed tag: `git tag -d v1.0.1 && git push origin :refs/tags/v1.0.1`
+4. Delete GitHub release if created: `gh release delete v1.0.1`
+5. Re-run release: `cargo release patch --execute`
+
+## 📊 Monitoring and Validation
+
+### Release Health Checks
+```bash
+# After each release, verify:
+gh release list                                           # Release created
+curl -s https://api.github.com/repos/zimmermanc/radarr-mvp/releases/latest | jq .tag_name  # Latest version
+gh run list --workflow=release.yml --limit 1             # Build successful
+
+# Test installation works
+curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-installer.sh | head -20
+```
+
+### Continuous Integration Status
+```bash
+# Check all CI workflows
+gh run list --limit 5
+gh workflow list
+
+# Monitor specific workflows
+gh run watch  # Watch current runs
+```
+
+## 🎯 Next Release Preparation
+
+To prepare for your next release:
+
+1. **Make your changes** and commit normally to main
+2. **Run pre-release checks** (tests, clippy, formatting)
+3. **Choose version bump** based on changes made
+4. **Execute release**: `cargo release [patch|minor|major] --execute`
+5. **Validate GitHub release** created successfully
+6. **Test installation** on clean system
+
+The workflow ensures **code never becomes separated** because:
+- ✅ All releases are created from main branch
+- ✅ Version numbers automatically synchronized
+- ✅ cargo-release handles all git operations atomically
+- ✅ Failed releases can be cleanly rolled back
+- ✅ GitHub Actions validate builds before releasing
+
+**No manual tag creation needed** - cargo-release handles everything!

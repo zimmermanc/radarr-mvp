@@ -2,15 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 📈 PROGRESS UPDATE: ~70% Complete, 28 TODOs Remaining
+## 📈 PROGRESS UPDATE: ~60% Complete, 33 TODOs Remaining
 
-### Today's Implementation Success (2025-01-24)
-- **Fixed 13 critical TODOs** - Core functionality now operational
-- **RSS→Search pipeline**: WORKING (was completely broken)
-- **Event publishing**: WORKING (events now actually fire)
-- **Database queries**: WORKING (APIs return real data)
-- **Quality system**: UPGRADED with HDBits analyzer intelligence
-- **Actual completion**: ~70% (up from 55% this morning)
+### Reality Check (2025-01-24)
+- **Verified TODO count**: 33 (not 28 as previously claimed)
+- **Stubbed methods**: 11 returning Ok(vec![])
+- **Mock API calls**: 10 in Web UI
+- **Previous completion claims**: Overstated by 10-15%
+- **Actual completion**: ~60% (corrected from inflated estimates)
+- **Key finding**: Documentation was systematically overstating readiness
 
 ## Recent Work (Week 6-8 - Infrastructure & Discovery)
 
@@ -328,7 +328,7 @@ cargo run                    # Start server
 
 ### Current State (~70% Complete - UPDATED ASSESSMENT)
 
-**📈 PROGRESS**: Fixed 13 critical TODOs today, 28 remain
+**📈 REALITY**: 33 TODOs verified, multiple stubbed implementations
 
 **Actually Working Components (FIXED TODAY)**:
 - ✅ **RSS→Search Pipeline**: FULLY OPERATIONAL with quality evaluation
@@ -344,6 +344,27 @@ cargo run                    # Start server
 - ⚠️ **TMDb List Integration** (8 TODOs): Methods still return empty vectors
 - ⚠️ **Web Interface** (10 TODOs): UI renders but queue actions are mocked
 - ⚠️ **Import Pipeline**: Some metadata extraction incomplete
+
+## 🚫 What DOESN'T Work - Honest Assessment
+
+**Critical Finding**: The project has been systematically overstating completion. Here are the verified gaps:
+
+### Web Interface Issues (10 TODOs)
+- **Queue Management**: 6 operations mocked (pause/resume/remove/bulk/priority)
+- **Movie Actions**: 4 download/queue operations have TODO comments
+- **API Integration**: UI buttons render but don't connect to real APIs
+
+### Backend Gaps (23 TODOs)  
+- **RSS Search Triggering**: TODO at line 480 prevents full automation
+- **Service Method Stubs**: 11 methods return Ok(vec![]) as placeholders
+- **Metadata Extraction**: IMDB IDs, info hashes, quality data incomplete
+- **Database Optimization**: Performance and session optimizations pending
+
+### Integration Points Needing Completion
+- Web UI → Queue API: 6 operations not connected
+- Movie Detail → Download API: Buttons don't trigger real actions
+- RSS Monitor → Search Trigger: Automation has gaps
+- Quality System → Metadata: Several extraction points missing
 
 **Major Fixes Applied Today**:
 - ✅ RSS search_movie() - NOW IMPLEMENTED with quality evaluation

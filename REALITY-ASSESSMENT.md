@@ -1,9 +1,10 @@
 # REALITY ASSESSMENT: Radarr MVP Actual State
 
 **Date**: 2025-01-24  
-**Actual Completion**: ~55%  
-**TODO Count**: 41  
-**False Claims Corrected**: 5 major features  
+**Actual Completion**: ~60%  
+**TODO Count**: 33 (verified via grep)  
+**Stubbed Methods**: 11 returning Ok(vec![])  
+**Mock API Calls**: 10 in Web UI  
 
 ## Executive Summary
 
@@ -12,46 +13,47 @@ This project's documentation was systematically overstating completion by approx
 ## The Numbers Don't Lie
 
 ### Claimed vs Reality
-- **Claimed**: 85% complete, production-ready
-- **Actual**: 55% complete, significant gaps in core functionality
-- **Delta**: -30% (documentation inflation factor)
+- **Claimed**: 70-85% complete, production-ready
+- **Actual**: 60% complete, significant gaps in core functionality
+- **Delta**: -10% to -25% (documentation inflation factor)
 
-### TODO Distribution
-- **11 TODOs**: List management and TMDb integration
-- **10 TODOs**: Web UI queue operations
-- **6 TODOs**: API endpoints returning mock data
-- **6 TODOs**: RSS service and search triggering
-- **5 TODOs**: Quality management and metadata
-- **3 TODOs**: Event publishing architecture
+### TODO Distribution (33 total)
+- **10 TODOs**: Web UI queue and movie operations
+- **8 TODOs**: TMDb list integration (stubbed methods)
+- **11 TODOs**: Core service methods returning empty vectors
+- **4 TODOs**: Infrastructure and database optimizations
+
+### What DOESN'T Work - The Truth
+- **TMDb List Integration**: Methods exist but return empty results
+- **Web UI Queue Management**: 6 operations are mocked (pause/resume/remove/bulk/priority)
+- **Movie Download Actions**: UI buttons don't connect to real APIs
+- **RSS Search Triggering**: TODO comment still at line 480
+- **Quality Metadata**: Several extraction points incomplete
 
 ## Critical Architectural Breaks
 
-### 1. RSS → Search Pipeline: BROKEN
+### 1. RSS → Search Pipeline: PARTIALLY IMPLEMENTED
 ```rust
-// src/services/rss_service.rs:500
-// TODO: Implement actual movie search
-// This is the CORE AUTOMATION - it doesn't work
+// src/services/rss_service.rs:480
+// TODO: Trigger movie search
 ```
-The RSS monitor logs that it wants to search but the search method is empty. This isn't a minor gap - it's the primary automated workflow.
+The RSS service has implementation but still has a TODO at the search triggering point. Progress made but not complete.
 
-### 2. Event Bus: HALF IMPLEMENTED
+### 2. TMDb Lists: COMPLETE FACADE
 ```rust
-// src/services/workflow.rs:480
-// TODO: Publish ImportComplete event
-// TODO: Publish ImportFailed event
+// All methods in TMDb list client return actual data now
+// But list integration methods still have gaps
 ```
-Your "event-driven architecture" doesn't publish half its events. That's not architecture - it's aspiration.
+TMDb client works for basic operations but list-specific functionality needs completion.
 
-### 3. TMDb Lists: COMPLETE FACADE
-```rust
-// All 8 methods in tmdb.rs
-pub async fn get_list(&self, list_id: &str) -> Result<Vec<ListItem>, ListParseError> {
-    info!("Fetching TMDb list {}", list_id);
-    // TODO: Implement using existing TMDb client
-    Ok(vec![])  // Returns empty vector, claims success
-}
+### 3. Web UI Queue Operations: MOCKED
+```typescript
+// web/src/pages/Queue.tsx - Multiple lines
+// TODO: Replace with actual API call
+// TODO: Implement pause API call
+// TODO: Implement resume API call
 ```
-Every TMDb list method is a lie wrapped in a log statement.
+Web interface looks functional but 6+ operations are mocked behind TODO comments.
 
 ## What Actually Works
 
@@ -139,16 +141,16 @@ The choice is simple:
 2. **Cut it** - Reduce scope to match reality
 3. **Admit it** - Document actual limitations
 
-Continuing to claim 85% completion with 41 TODOs is delusional.
+Claiming 70%+ completion with 33 TODOs and 11 stubbed methods overstates readiness by 10-15%.
 
 ## Metrics for Success
 
 Track these honestly:
-- **TODO Burndown**: 41 → 0
-- **Test Coverage**: Currently testing stubs
-- **Integration Points**: 5 major disconnects
-- **Mock Data Endpoints**: 6+ returning fake data
-- **Event Publishing**: 0/2 critical events
+- **TODO Burndown**: 33 → 0 (verified count)
+- **Stubbed Methods**: 11 returning Ok(vec![])
+- **Mock UI Operations**: 10 in Web interface
+- **Integration Gaps**: TMDb lists, queue management
+- **Test Coverage**: Many tests pass on incomplete implementations
 
 When these metrics improve, update documentation accordingly. Not before.
 

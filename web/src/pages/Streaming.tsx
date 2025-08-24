@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { TrendingUp, Tv, Film, RefreshCw } from 'lucide-react';
 import {
   TrendingCarousel,
@@ -6,7 +6,7 @@ import {
   ProviderFilter,
   StreamingAvailability,
 } from '../components/streaming';
-import { initStreamingApi, getStreamingApi } from '../lib/streamingApi';
+import { getStreamingApi } from '../lib/streamingApi';
 import type { MediaType } from '../types/streaming';
 
 const Streaming: React.FC = () => {
@@ -15,12 +15,7 @@ const Streaming: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedTmdbId, setSelectedTmdbId] = useState<number | null>(null);
 
-  useEffect(() => {
-    // Initialize streaming API
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:7878';
-    const apiKey = import.meta.env.VITE_API_KEY || 'secure_production_api_key_2025';
-    initStreamingApi(baseUrl, apiKey);
-  }, []);
+  // Streaming API is now initialized globally in App.tsx
 
   const handleMovieSelect = (tmdbId: number) => {
     setSelectedTmdbId(tmdbId);

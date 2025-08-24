@@ -55,6 +55,7 @@ async fn serve_static(axum::extract::Path(path): axum::extract::Path<String>) ->
     let full_path = if path.starts_with("index-") {
         format!("assets/{}", path)
     } else {
+        // Handle direct file requests (like vite.svg)
         path
     };
     serve_embedded_file(&full_path).await
@@ -479,7 +480,7 @@ fn build_router(app_state: AppState) -> Router {
     // Add web UI routes (static files and SPA fallback)
     router = router
         .route("/assets/*path", get(serve_static))
-        .route("/vite.svg", get(serve_static))
+        .route("/vite.svg", get(|| async { serve_embedded_file("vite.svg").await }))
         .route("/", get(serve_spa))
         // SPA fallback routes for client-side routing
         .route("/movies", get(serve_spa))

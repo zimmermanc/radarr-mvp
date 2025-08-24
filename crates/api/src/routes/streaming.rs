@@ -10,8 +10,8 @@ use radarr_core::streaming::traits::StreamingAggregator;
 /// Create streaming service routes
 pub fn streaming_routes(aggregator: Arc<dyn StreamingAggregator>) -> Router {
     Router::new()
-        // Trending endpoints
-        .route("/trending/:media_type", get(streaming::get_trending))
+        // Trending endpoints with time window support
+        .route("/trending/:media_type/:time_window", get(streaming::get_trending))
         // Availability endpoint
         .route("/availability/:tmdb_id", get(streaming::get_availability))
         // Coming soon endpoint

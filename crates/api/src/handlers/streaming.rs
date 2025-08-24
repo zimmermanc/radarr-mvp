@@ -45,13 +45,12 @@ pub struct ComingSoonQuery {
 
 /// Get trending movies or TV shows
 pub async fn get_trending(
-    Path((media_type_str,)): Path<(String,)>,
-    Query(params): Query<TrendingQuery>,
+    Path((media_type_str, time_window_str)): Path<(String, String)>,
     Extension(aggregator): Extension<Arc<dyn StreamingAggregator>>,
 ) -> Result<Json<ApiResponse<TrendingResponse>>, ApiError> {
     info!(
         "Getting trending {} for window: {}",
-        media_type_str, params.window
+        media_type_str, time_window_str
     );
 
     // Parse media type
@@ -67,12 +66,12 @@ pub async fn get_trending(
     };
 
     // Parse time window
-    let window = match params.window.as_str() {
+    let window = match time_window_str.as_str() {
         "day" | "daily" => TimeWindow::Day,
         "week" | "weekly" => TimeWindow::Week,
         _ => {
             return Err(ApiError::ValidationError {
-                field: "window".to_string(),
+                field: "time_window".to_string(),
                 message: "Invalid time window. Use 'day' or 'week'".to_string(),
             });
         }

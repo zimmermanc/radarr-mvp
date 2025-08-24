@@ -66,7 +66,6 @@ jobs:
       # Dependency vulnerability scanning
       - name: Security audit
         run: |
-          cd unified-radarr
           cargo install cargo-audit --locked
           cargo audit --json --output audit-results.json
           cargo audit
@@ -86,7 +85,6 @@ jobs:
       # Supply chain security
       - name: Generate SBOM
         run: |
-          cd unified-radarr
           if ! command -v cargo-cyclonedx &> /dev/null; then
             cargo install cargo-cyclonedx --locked
           fi
@@ -98,5 +96,5 @@ jobs:
         with:
           name: security-reports
           path: |
-            unified-radarr/audit-results.json
-            unified-radarr/sbom.json
+            audit-results.json
+            sbom.json

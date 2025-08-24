@@ -36,7 +36,8 @@ class StreamingApiClient {
     mediaType: MediaType,
     params?: TrendingQuery
   ): Promise<TrendingResponse> {
-    const response = await this.client.get(`/trending/${mediaType}`, { params });
+    const timeWindow = params?.window || 'day';
+    const response = await this.client.get(`/trending/${mediaType}/${timeWindow}`);
     return response.data.data;
   }
 

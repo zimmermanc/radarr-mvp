@@ -69,6 +69,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ **Caching Strategy**: Proper TTL (1-3 hours) for rate limit management
 - ✅ **Rich Metadata**: Titles, posters, ratings, popularity scores, release dates
 
+### 🧪 Frontend Testing Strategy - Design-System-Driven Hybrid (2025-08-24)
+
+**Problem**: Recurring frontend JavaScript errors reaching production without detection
+- **Current Issues**: "d is not iterable" errors, WebSocket authentication failures  
+- **Root Cause**: No browser-based testing - only backend API testing exists
+- **Solution**: Comprehensive testing infrastructure with fast feedback loops
+
+**Selected Approach**: Design-System-Driven Hybrid Testing Stack
+- **Unit/Component**: Vitest + React Testing Library (fast feedback for most changes)
+- **Design System**: Storybook + @storybook/test-runner (living design system with visual guards)
+- **E2E Testing**: Playwright (Chromium/Firefox/WebKit for high confidence user flows)
+- **Data Safety**: MSW (HTTP mocks), mock-socket (WebSocket), Zod (runtime schemas)
+- **Visual Regression**: Chromatic or Playwright screenshots for design consistency
+- **CI Integration**: GitHub Actions with required testing gates
+
+**Implementation Timeline**:
+- **Day 1**: Bootstrap infrastructure (vitest.config, playwright.config, Storybook setup, MSW, ErrorBoundary)
+- **Day 2**: Seed coverage (3-5 component tests, stories with all states, 1 E2E smoke test)
+- **Week 1**: Hardening (play() interactions, a11y checks, visual regression, 3-5 user flows)
+
+**Quality Gates**:
+- **CI Workflow**: unit → story tests → e2e (all must pass to merge)
+- **Console Error Detection**: Fail CI on JavaScript console errors
+- **Coverage Requirements**: 85% lines, 75% branches minimum
+- **Development Rules**: Every component PR requires story + RTL test
+
 ## Recent Work (Week 6-8 - Infrastructure & Discovery)
 
 ### 📊 HDBits Quality Analysis System (2025-08-23)

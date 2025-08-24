@@ -48,3 +48,38 @@ temp/
 
 # Archived Kubernetes manifests (local-first development)
 k8s.archived/
+
+# Security and secrets
+.secrets.baseline
+secret_scan_report.json
+gitleaks-report.json
+talisman_reports/
+
+# Credential and configuration files
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.keystore
+auth.json
+credentials.json
+service-account.json
+.htpasswd
+
+# Pre-commit and security tools
+.talismanrc
+.pre-commit-cache/
+
+# Backup files that may contain secrets
+*.env.backup
+*.env.bak
+config/*.backup
+config/*.bak
+services.env.backup
+services.env.bak
+
+# Test credential files
+test_credentials.json
+test_config.json
+hdbits_test_credentials.json

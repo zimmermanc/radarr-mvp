@@ -3,8 +3,8 @@ use radarr_indexers::{HDBitsClient, HDBitsConfig, MovieSearchRequest};
 #[tokio::main]
 async fn main() {
     let config = HDBitsConfig {
-        username: "blargdiesel".to_string(),
-        passkey: "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863".to_string(),
+        username: std::env::var("HDBITS_USERNAME").expect("HDBITS_USERNAME must be set"),
+        passkey: std::env::var("HDBITS_PASSKEY").expect("HDBITS_PASSKEY must be set"),
         api_url: "https://hdbits.org/api/torrents".to_string(),
         timeout_seconds: 30,
         rate_limit_per_hour: 120,

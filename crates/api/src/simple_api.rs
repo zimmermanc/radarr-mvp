@@ -347,8 +347,14 @@ pub fn create_simple_api_router(state: SimpleApiState) -> Router {
             "/v3/test/circuit-breaker/reset/:service",
             post(reset_circuit_breaker),
         )
-        // Quality management endpoints - these will need a separate state
-        // TODO: Implement quality routes with proper state management
+        // Quality profile endpoints
+        .route("/v3/qualityprofile", get(list_quality_profiles_simple))
+        .route("/v3/qualityprofile/:id", get(get_quality_profile_simple))
+        // Queue endpoints
+        .route("/v3/queue", get(list_queue_simple))
+        .route("/v3/queue/:id", delete(remove_queue_item_simple))
+        .route("/v3/queue/:id/pause", axum::routing::put(pause_queue_item_simple))
+        .route("/v3/queue/:id/resume", axum::routing::put(resume_queue_item_simple))
         .with_state(state.clone());
 
     // Create static file service for React app
@@ -1940,4 +1946,313 @@ fn create_mock_search_response() -> Value {
         "executionTimeMs": 50,
         "fallbackUsed": true
     })
+}
+
+// ============================================================================
+// QUALITY PROFILE ENDPOINTS
+// ============================================================================
+
+/// Quality profile for API responses
+#[derive(Debug, Serialize)]
+struct QualityProfileResponse {
+    pub id: i32,
+    pub name: String,
+    pub cutoff: i32,
+    pub items: Vec<QualityItemResponse>,
+    pub min_format_score: i32,
+    pub cutoff_format_score: i32,
+    pub format_items: Vec<FormatItemResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct QualityItemResponse {
+    pub quality: QualityResponse,
+    pub allowed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct QualityResponse {
+    pub id: i32,
+    pub name: String,
+    pub source: String,
+    pub resolution: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct FormatItemResponse {
+    pub format: CustomFormatResponse,
+    pub name: String,
+    pub score: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct CustomFormatResponse {
+    pub id: i32,
+    pub name: String,
+    pub include_custom_format_when_renaming: bool,
+}
+
+/// GET /v3/qualityprofile - List all quality profiles
+async fn list_quality_profiles_simple(
+    State(_state): State<SimpleApiState>,
+) -> Json<Vec<QualityProfileResponse>> {
+    let default_profiles = vec![
+        QualityProfileResponse {
+            id: 1,
+            name: "HD-1080p".to_string(),
+            cutoff: 7,
+            items: vec![
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 4,
+                        name: "HDTV-720p".to_string(),
+                        source: "Television".to_string(),
+                        resolution: 720,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 6,
+                        name: "Bluray-720p".to_string(),
+                        source: "BluRay".to_string(),
+                        resolution: 720,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 7,
+                        name: "WEBDL-1080p".to_string(),
+                        source: "WebDL".to_string(),
+                        resolution: 1080,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 8,
+                        name: "Bluray-1080p".to_string(),
+                        source: "BluRay".to_string(),
+                        resolution: 1080,
+                    },
+                    allowed: true,
+                },
+            ],
+            min_format_score: 0,
+            cutoff_format_score: 0,
+            format_items: vec![],
+        },
+        QualityProfileResponse {
+            id: 2,
+            name: "Ultra-HD".to_string(),
+            cutoff: 19,
+            items: vec![
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 18,
+                        name: "WEBDL-2160p".to_string(),
+                        source: "WebDL".to_string(),
+                        resolution: 2160,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 19,
+                        name: "Bluray-2160p".to_string(),
+                        source: "BluRay".to_string(),
+                        resolution: 2160,
+                    },
+                    allowed: true,
+                },
+            ],
+            min_format_score: 0,
+            cutoff_format_score: 0,
+            format_items: vec![],
+        },
+    ];
+
+    Json(default_profiles)
+}
+
+/// GET /v3/qualityprofile/{id} - Get specific quality profile
+async fn get_quality_profile_simple(
+    State(_state): State<SimpleApiState>,
+    Path(id): Path<i32>,
+) -> Result<Json<QualityProfileResponse>, StatusCode> {
+    let profile = match id {
+        1 => QualityProfileResponse {
+            id: 1,
+            name: "HD-1080p".to_string(),
+            cutoff: 7,
+            items: vec![
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 7,
+                        name: "WEBDL-1080p".to_string(),
+                        source: "WebDL".to_string(),
+                        resolution: 1080,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 8,
+                        name: "Bluray-1080p".to_string(),
+                        source: "BluRay".to_string(),
+                        resolution: 1080,
+                    },
+                    allowed: true,
+                },
+            ],
+            min_format_score: 0,
+            cutoff_format_score: 0,
+            format_items: vec![],
+        },
+        2 => QualityProfileResponse {
+            id: 2,
+            name: "Ultra-HD".to_string(),
+            cutoff: 19,
+            items: vec![
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 18,
+                        name: "WEBDL-2160p".to_string(),
+                        source: "WebDL".to_string(),
+                        resolution: 2160,
+                    },
+                    allowed: true,
+                },
+                QualityItemResponse {
+                    quality: QualityResponse {
+                        id: 19,
+                        name: "Bluray-2160p".to_string(),
+                        source: "BluRay".to_string(),
+                        resolution: 2160,
+                    },
+                    allowed: true,
+                },
+            ],
+            min_format_score: 0,
+            cutoff_format_score: 0,
+            format_items: vec![],
+        },
+        _ => return Err(StatusCode::NOT_FOUND),
+    };
+
+    Ok(Json(profile))
+}
+
+// ============================================================================
+// QUEUE ENDPOINTS
+// ============================================================================
+
+/// Queue item for API responses (compatible with frontend expectations)
+#[derive(Debug, Serialize)]
+struct QueueItemSimpleResponse {
+    pub id: String,
+    #[serde(rename = "movieId")]
+    pub movie_id: i32,
+    #[serde(rename = "movieTitle")]
+    pub movie_title: String,
+    pub quality: String,
+    pub protocol: String,
+    pub indexer: String,
+    #[serde(rename = "downloadClient")]
+    pub download_client: String,
+    pub status: String,
+    pub size: i64,
+    #[serde(rename = "sizeLeft")]
+    pub size_left: i64,
+    #[serde(rename = "downloadedSize")]
+    pub downloaded_size: i64,
+    pub progress: f64,
+    #[serde(rename = "downloadRate")]
+    pub download_rate: Option<u64>,
+    #[serde(rename = "uploadRate")]
+    pub upload_rate: Option<u64>,
+    pub seeders: Option<i32>,
+    pub leechers: Option<i32>,
+    pub eta: Option<String>,
+    #[serde(rename = "errorMessage")]
+    pub error_message: Option<String>,
+    pub added: String,
+}
+
+#[derive(Debug, Serialize)]
+struct QueueResponseSimple {
+    pub records: Vec<QueueItemSimpleResponse>,
+    #[serde(rename = "totalRecords")]
+    pub total_records: i32,
+    pub page: i32,
+    #[serde(rename = "pageSize")]
+    pub page_size: i32,
+}
+
+/// GET /v3/queue - List queue items
+async fn list_queue_simple(
+    State(_state): State<SimpleApiState>,
+) -> Json<QueueResponseSimple> {
+    // Return mock queue data
+    let mock_items = vec![
+        QueueItemSimpleResponse {
+            id: Uuid::new_v4().to_string(),
+            movie_id: 1,
+            movie_title: "The Matrix".to_string(),
+            quality: "Bluray-1080p".to_string(),
+            protocol: "torrent".to_string(),
+            indexer: "HDBits".to_string(),
+            download_client: "qBittorrent".to_string(),
+            status: "downloading".to_string(),
+            size: 8_000_000_000, // 8GB
+            size_left: 2_000_000_000, // 2GB
+            downloaded_size: 6_000_000_000, // 6GB
+            progress: 75.0,
+            download_rate: Some(1_048_576), // 1MB/s
+            upload_rate: Some(524_288), // 512KB/s
+            seeders: Some(15),
+            leechers: Some(3),
+            eta: Some("00:32:00".to_string()),
+            error_message: None,
+            added: chrono::Utc::now().to_rfc3339(),
+        },
+    ];
+
+    Json(QueueResponseSimple {
+        records: mock_items,
+        total_records: 1,
+        page: 1,
+        page_size: 50,
+    })
+}
+
+/// DELETE /v3/queue/{id} - Remove queue item
+async fn remove_queue_item_simple(
+    State(_state): State<SimpleApiState>,
+    Path(id): Path<String>,
+) -> StatusCode {
+    info!("Removing queue item: {}", id);
+    // For MVP, always return success
+    StatusCode::OK
+}
+
+/// PUT /v3/queue/{id}/pause - Pause queue item
+async fn pause_queue_item_simple(
+    State(_state): State<SimpleApiState>,
+    Path(id): Path<String>,
+) -> StatusCode {
+    info!("Pausing queue item: {}", id);
+    // For MVP, always return success
+    StatusCode::OK
+}
+
+/// PUT /v3/queue/{id}/resume - Resume queue item
+async fn resume_queue_item_simple(
+    State(_state): State<SimpleApiState>,
+    Path(id): Path<String>,
+) -> StatusCode {
+    info!("Resuming queue item: {}", id);
+    // For MVP, always return success
+    StatusCode::OK
 }

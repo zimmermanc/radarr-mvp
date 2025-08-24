@@ -356,21 +356,14 @@ fn build_router(app_state: AppState) -> Router {
             "/api/rss/calendar",
             get(api::get_calendar).post(api::add_calendar_entry),
         )
-        // Add v3 movie endpoints using AppServices (will override simple_api routes)
-        .route("/api/v3/movie", get(api::list_movies))
-        .route("/api/v3/movie/:id", get(api::get_movie))
-        .route("/api/v3/movie", post(api::add_movie))
-        .route("/api/v3/movie/:id", axum::routing::put(api::update_movie))
-        .route("/api/v3/movie/:id", delete(api::delete_movie))
-        .route("/api/v3/movie/lookup", get(api::lookup_movies))
+        // Note: Movie endpoints are handled by the simple_api router nested under /api
+        // These additional routes complement the simple API
         .route("/api/v3/movies/:id/search", get(api::search_movie_releases))
         .route("/api/v3/movies/download", post(api::download_release))
         .route(
             "/api/v3/movies/bulk",
             axum::routing::put(api::bulk_update_movies),
         )
-        .route("/api/v3/qualityprofile", get(api::list_quality_profiles))
-        .route("/api/v3/qualityprofile/:id", get(api::get_quality_profile))
         // Add Prometheus metrics endpoint (this will be replaced by monitoring routes)
         .route("/legacy-metrics", get(metrics_endpoint))
         // Add metrics collector and services to extensions

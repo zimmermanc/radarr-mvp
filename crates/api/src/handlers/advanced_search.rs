@@ -23,42 +23,42 @@ pub struct AdvancedSearchParams {
     #[serde(rename = "movieId")]
     pub movie_id: Option<Uuid>,
     pub query: Option<String>,
-    
+
     // Quality filters
     pub min_quality: Option<String>,
     pub max_quality: Option<String>,
     pub preferred_quality: Option<Vec<String>>,
     pub excluded_quality: Option<Vec<String>>,
-    
+
     // Size filters (in bytes)
     pub min_size: Option<u64>,
     pub max_size: Option<u64>,
-    
+
     // Seeding filters
     pub min_seeders: Option<i32>,
     pub max_leechers: Option<i32>,
     pub freeleech_only: Option<bool>,
-    
+
     // Date filters
     pub published_after: Option<DateTime<Utc>>,
     pub published_before: Option<DateTime<Utc>>,
-    
+
     // Indexer filters
     pub indexers: Option<Vec<String>>,
     pub excluded_indexers: Option<Vec<String>>,
-    
+
     // Quality score filters
     pub min_quality_score: Option<i32>,
     pub max_quality_score: Option<i32>,
-    
+
     // Sorting options
     pub sort_by: Option<SortField>,
     pub sort_order: Option<SortOrder>,
-    
+
     // Pagination
     pub page: Option<u32>,
     pub per_page: Option<u32>,
-    
+
     // Advanced options
     pub group_by_quality: Option<bool>,
     pub include_metadata: Option<bool>,
@@ -94,7 +94,7 @@ pub enum SortOrder {
 pub struct EnhancedReleaseResponse {
     #[serde(flatten)]
     pub release: ReleaseResponse,
-    
+
     // Additional metadata
     pub relevance_score: f64,
     pub quality_tier: String,
@@ -216,10 +216,10 @@ pub async fn advanced_search(
 ) -> ApiResult<Json<AdvancedSearchResponse>> {
     let start_time = std::time::Instant::now();
     info!("Advanced search with params: {:?}", params);
-    
+
     // Generate cache key
     let cache_key = generate_cache_key(&params);
-    
+
     // Check cache first
     {
         let cache = state.search_cache.read().await;
@@ -228,19 +228,19 @@ pub async fn advanced_search(
             return Ok(Json(cached_result.clone()));
         }
     }
-    
+
     // Perform enhanced search
     let search_result = perform_enhanced_search(&state, &params).await?;
-    
+
     // Calculate search duration
     let duration = start_time.elapsed();
-    
+
     // Extract values before moving results
     let total_count = search_result.total_count;
     let filtered_count = search_result.filtered_count;
     let quality_distribution = calculate_quality_distribution(&search_result.results);
     let recommendations = generate_search_recommendations(&params, &search_result);
-    
+
     // Create enhanced response
     let mut response = AdvancedSearchResponse {
         results: search_result.results,
@@ -260,12 +260,12 @@ pub async fn advanced_search(
         },
         recommendations,
     };
-    
+
     // Cache the result (TTL: 5 minutes)
     {
         let mut cache = state.search_cache.write().await;
         cache.insert(cache_key, response.clone());
-        
+
         // Simple cache cleanup - keep only last 100 entries
         if cache.len() > 100 {
             let oldest_key = cache.keys().next().cloned();
@@ -274,10 +274,13 @@ pub async fn advanced_search(
             }
         }
     }
-    
-    info!("Advanced search completed in {}ms, found {} results", 
-          duration.as_millis(), response.total_count);
-    
+
+    info!(
+        "Advanced search completed in {}ms, found {} results",
+        duration.as_millis(),
+        response.total_count
+    );
+
     Ok(Json(response))
 }
 
@@ -287,13 +290,16 @@ pub async fn bulk_operations(
     State(state): State<AdvancedSearchState>,
     Json(request): Json<BulkOperationRequest>,
 ) -> ApiResult<Json<BulkOperationResponse>> {
-    info!("Performing bulk operation: {:?} on {} items", 
-          request.operation, request.release_guids.len());
-    
+    info!(
+        "Performing bulk operation: {:?} on {} items",
+        request.operation,
+        request.release_guids.len()
+    );
+
     let mut successful = 0;
     let mut failed = 0;
     let mut errors = Vec::new();
-    
+
     for guid in &request.release_guids {
         match perform_bulk_operation(&state, &request.operation, guid, &request).await {
             Ok(_) => successful += 1,
@@ -308,14 +314,30 @@ pub async fn bulk_operations(
             }
         }
     }
-    
+
     let summary = match request.operation {
-        BulkOperation::Download => format!("Downloaded {} of {} releases", successful, request.release_guids.len()),
-        BulkOperation::Block => format!("Blocked {} of {} releases", successful, request.release_guids.len()),
-        BulkOperation::AddToWatchlist => format!("Added {} of {} releases to watchlist", successful, request.release_guids.len()),
-        _ => format!("Processed {} of {} releases", successful, request.release_guids.len()),
+        BulkOperation::Download => format!(
+            "Downloaded {} of {} releases",
+            successful,
+            request.release_guids.len()
+        ),
+        BulkOperation::Block => format!(
+            "Blocked {} of {} releases",
+            successful,
+            request.release_guids.len()
+        ),
+        BulkOperation::AddToWatchlist => format!(
+            "Added {} of {} releases to watchlist",
+            successful,
+            request.release_guids.len()
+        ),
+        _ => format!(
+            "Processed {} of {} releases",
+            successful,
+            request.release_guids.len()
+        ),
     };
-    
+
     Ok(Json(BulkOperationResponse {
         operation: format!("{:?}", request.operation),
         total_items: request.release_guids.len() as u32,
@@ -340,59 +362,59 @@ async fn perform_enhanced_search(
 ) -> ApiResult<InternalSearchResult> {
     // For this advanced implementation, we'll create enhanced mock data that demonstrates
     // all the filtering and enhancement capabilities
-    
+
     let mut results = create_diverse_mock_releases()?;
-    
+
     // Apply quality filters
     if let Some(ref min_quality) = params.min_quality {
         results = apply_quality_filter(results, min_quality, true);
     }
-    
+
     if let Some(ref max_quality) = params.max_quality {
         results = apply_quality_filter(results, max_quality, false);
     }
-    
+
     // Apply size filters
     if let Some(min_size) = params.min_size {
         results.retain(|r| r.release.size.unwrap_or(0) as u64 >= min_size);
     }
-    
+
     if let Some(max_size) = params.max_size {
         results.retain(|r| r.release.size.unwrap_or(0) as u64 <= max_size);
     }
-    
+
     // Apply seeder filters
     if let Some(min_seeders) = params.min_seeders {
         results.retain(|r| r.release.seeders.unwrap_or(0) >= min_seeders);
     }
-    
+
     // Apply freeleech filter
     if let Some(true) = params.freeleech_only {
         results.retain(|r| r.release.freeleech.unwrap_or(false));
     }
-    
+
     // Apply quality score filters
     if let Some(min_score) = params.min_quality_score {
         results.retain(|r| (r.release.quality_score.unwrap_or(0) as i32) >= min_score);
     }
-    
+
     let total_before_filtering = results.len() as u32;
-    
+
     // Apply sorting
     apply_sorting(&mut results, &params.sort_by, &params.sort_order);
-    
+
     // Apply pagination
     let page = params.page.unwrap_or(1);
     let per_page = params.per_page.unwrap_or(50);
     let start_idx = ((page - 1) * per_page) as usize;
     let end_idx = (start_idx + per_page as usize).min(results.len());
-    
+
     let paginated_results = if start_idx < results.len() {
         results[start_idx..end_idx].to_vec()
     } else {
         Vec::new()
     };
-    
+
     Ok(InternalSearchResult {
         total_count: total_before_filtering,
         filtered_count: total_before_filtering - results.len() as u32,
@@ -403,19 +425,85 @@ async fn perform_enhanced_search(
 /// Create diverse mock releases to demonstrate filtering capabilities
 fn create_diverse_mock_releases() -> ApiResult<Vec<EnhancedReleaseResponse>> {
     let base_releases = vec![
-        ("Fight Club 1999 2160p UHD BluRay x265-SUPERB", 4_500_000_000, 150, 2, 95, "4K", true),
-        ("Fight Club 1999 1080p BluRay x264-SPARKS", 1_500_000_000, 100, 5, 85, "1080p", false),
-        ("Fight Club 1999 720p BluRay x264-HDTV", 800_000_000, 50, 2, 75, "720p", false),
-        ("The Matrix 1999 2160p UHD BluRay HDR x265-ELITE", 5_200_000_000, 200, 3, 98, "4K", true),
-        ("The Matrix 1999 1080p BluRay x264-CLASSIC", 1_800_000_000, 180, 8, 88, "1080p", false),
-        ("Blade Runner 2049 2160p UHD BluRay x265-PREMIUM", 6_800_000_000, 120, 1, 92, "4K", true),
-        ("Blade Runner 2049 1080p BluRay x264-STANDARD", 2_200_000_000, 90, 4, 82, "1080p", false),
-        ("Interstellar 2014 2160p UHD BluRay x265-IMAX", 8_400_000_000, 300, 5, 96, "4K", true),
+        (
+            "Fight Club 1999 2160p UHD BluRay x265-SUPERB",
+            4_500_000_000,
+            150,
+            2,
+            95,
+            "4K",
+            true,
+        ),
+        (
+            "Fight Club 1999 1080p BluRay x264-SPARKS",
+            1_500_000_000,
+            100,
+            5,
+            85,
+            "1080p",
+            false,
+        ),
+        (
+            "Fight Club 1999 720p BluRay x264-HDTV",
+            800_000_000,
+            50,
+            2,
+            75,
+            "720p",
+            false,
+        ),
+        (
+            "The Matrix 1999 2160p UHD BluRay HDR x265-ELITE",
+            5_200_000_000,
+            200,
+            3,
+            98,
+            "4K",
+            true,
+        ),
+        (
+            "The Matrix 1999 1080p BluRay x264-CLASSIC",
+            1_800_000_000,
+            180,
+            8,
+            88,
+            "1080p",
+            false,
+        ),
+        (
+            "Blade Runner 2049 2160p UHD BluRay x265-PREMIUM",
+            6_800_000_000,
+            120,
+            1,
+            92,
+            "4K",
+            true,
+        ),
+        (
+            "Blade Runner 2049 1080p BluRay x264-STANDARD",
+            2_200_000_000,
+            90,
+            4,
+            82,
+            "1080p",
+            false,
+        ),
+        (
+            "Interstellar 2014 2160p UHD BluRay x265-IMAX",
+            8_400_000_000,
+            300,
+            5,
+            96,
+            "4K",
+            true,
+        ),
     ];
-    
+
     let mut enhanced_releases = Vec::new();
-    
-    for (i, (title, size, seeders, leechers, quality_score, quality_tier, freeleech)) in base_releases.into_iter().enumerate() {
+
+    for (i, (title, size, seeders, leechers, quality_score, quality_tier, freeleech)) in
+        base_releases.into_iter().enumerate()
+    {
         let enhanced = EnhancedReleaseResponse {
             release: ReleaseResponse {
                 guid: format!("enhanced-guid-{}", i + 1),
@@ -450,7 +538,7 @@ fn create_diverse_mock_releases() -> ApiResult<Vec<EnhancedReleaseResponse>> {
         };
         enhanced_releases.push(enhanced);
     }
-    
+
     Ok(enhanced_releases)
 }
 
@@ -461,19 +549,26 @@ fn apply_quality_filter(
     is_minimum: bool,
 ) -> Vec<EnhancedReleaseResponse> {
     let quality_order = ["480p", "720p", "1080p", "4K"];
-    let filter_index = quality_order.iter().position(|&q| q == quality_filter).unwrap_or(0);
-    
-    releases.into_iter().filter(|release| {
-        let release_index = quality_order.iter()
-            .position(|&q| release.quality_tier.contains(q))
-            .unwrap_or(0);
-        
-        if is_minimum {
-            release_index >= filter_index
-        } else {
-            release_index <= filter_index
-        }
-    }).collect()
+    let filter_index = quality_order
+        .iter()
+        .position(|&q| q == quality_filter)
+        .unwrap_or(0);
+
+    releases
+        .into_iter()
+        .filter(|release| {
+            let release_index = quality_order
+                .iter()
+                .position(|&q| release.quality_tier.contains(q))
+                .unwrap_or(0);
+
+            if is_minimum {
+                release_index >= filter_index
+            } else {
+                release_index <= filter_index
+            }
+        })
+        .collect()
 }
 
 /// Apply sorting to search results
@@ -483,42 +578,71 @@ fn apply_sorting(
     sort_order: &Option<SortOrder>,
 ) {
     let ascending = matches!(sort_order, Some(SortOrder::Asc));
-    
+
     match sort_field {
         Some(SortField::QualityScore) => {
             results.sort_by(|a, b| {
-                let cmp = a.release.quality_score.unwrap_or(0)
+                let cmp = a
+                    .release
+                    .quality_score
+                    .unwrap_or(0)
                     .cmp(&b.release.quality_score.unwrap_or(0));
-                if ascending { cmp } else { cmp.reverse() }
+                if ascending {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         Some(SortField::Size) => {
             results.sort_by(|a, b| {
-                let cmp = a.release.size.unwrap_or(0)
+                let cmp = a
+                    .release
+                    .size
+                    .unwrap_or(0)
                     .cmp(&b.release.size.unwrap_or(0));
-                if ascending { cmp } else { cmp.reverse() }
+                if ascending {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         Some(SortField::Seeders) => {
             results.sort_by(|a, b| {
-                let cmp = a.release.seeders.unwrap_or(0)
+                let cmp = a
+                    .release
+                    .seeders
+                    .unwrap_or(0)
                     .cmp(&b.release.seeders.unwrap_or(0));
-                if ascending { cmp } else { cmp.reverse() }
+                if ascending {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         Some(SortField::PublishDate) => {
             results.sort_by(|a, b| {
-                let cmp = a.release.publish_date
-                    .cmp(&b.release.publish_date);
-                if ascending { cmp } else { cmp.reverse() }
+                let cmp = a.release.publish_date.cmp(&b.release.publish_date);
+                if ascending {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
             });
         }
         Some(SortField::Relevance) | None => {
             results.sort_by(|a, b| {
-                let cmp = a.relevance_score
+                let cmp = a
+                    .relevance_score
                     .partial_cmp(&b.relevance_score)
                     .unwrap_or(std::cmp::Ordering::Equal);
-                if ascending { cmp.reverse() } else { cmp }
+                if ascending {
+                    cmp.reverse()
+                } else {
+                    cmp
+                }
             });
         }
         _ => {
@@ -536,7 +660,7 @@ fn apply_sorting(
 fn generate_cache_key(params: &AdvancedSearchParams) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     format!("{:?}", params).hash(&mut hasher);
     format!("search_{}", hasher.finish())
@@ -551,23 +675,23 @@ fn build_applied_filters(params: &AdvancedSearchParams) -> AppliedFilters {
     if let Some(ref max_q) = params.max_quality {
         quality_filters.push(format!("max: {}", max_q));
     }
-    
+
     let size_range = match (params.min_size, params.max_size) {
         (Some(min), Some(max)) => Some((min, max)),
         (Some(min), None) => Some((min, u64::MAX)),
         (None, Some(max)) => Some((0, max)),
         _ => None,
     };
-    
+
     let seeder_range = params.min_seeders.map(|min| (min, params.max_leechers));
-    
+
     let indexer_filters = params.indexers.clone().unwrap_or_default();
-    
+
     let date_range = match (params.published_after, params.published_before) {
         (Some(after), before) => Some((after, before)),
         _ => None,
     };
-    
+
     let mut special_filters = Vec::new();
     if params.freeleech_only.unwrap_or(false) {
         special_filters.push("freeleech".to_string());
@@ -575,7 +699,7 @@ fn build_applied_filters(params: &AdvancedSearchParams) -> AppliedFilters {
     if params.include_similar.unwrap_or(false) {
         special_filters.push("similar".to_string());
     }
-    
+
     AppliedFilters {
         quality_filters,
         size_range,
@@ -589,11 +713,11 @@ fn build_applied_filters(params: &AdvancedSearchParams) -> AppliedFilters {
 /// Calculate quality distribution from results
 fn calculate_quality_distribution(results: &[EnhancedReleaseResponse]) -> HashMap<String, u32> {
     let mut distribution = HashMap::new();
-    
+
     for result in results {
         *distribution.entry(result.quality_tier.clone()).or_insert(0) += 1;
     }
-    
+
     distribution
 }
 
@@ -603,7 +727,7 @@ fn generate_search_recommendations(
     results: &InternalSearchResult,
 ) -> Vec<SearchRecommendation> {
     let mut recommendations = Vec::new();
-    
+
     // Recommend relaxing filters if too few results
     if results.results.len() < 5 {
         if params.min_seeders.is_some() && params.min_seeders.unwrap() > 10 {
@@ -614,7 +738,7 @@ fn generate_search_recommendations(
                 auto_apply: false,
             });
         }
-        
+
         if params.min_quality_score.is_some() && params.min_quality_score.unwrap() > 80 {
             recommendations.push(SearchRecommendation {
                 title: "Quality Filter".to_string(),
@@ -624,21 +748,27 @@ fn generate_search_recommendations(
             });
         }
     }
-    
+
     // Recommend freeleech if many results have it
-    let freeleech_count = results.results.iter()
+    let freeleech_count = results
+        .results
+        .iter()
         .filter(|r| r.release.freeleech.unwrap_or(false))
         .count();
-    
+
     if freeleech_count > results.results.len() / 2 && !params.freeleech_only.unwrap_or(false) {
         recommendations.push(SearchRecommendation {
             title: "Freeleech Available".to_string(),
-            reason: format!("{} of {} results are freeleech", freeleech_count, results.results.len()),
+            reason: format!(
+                "{} of {} results are freeleech",
+                freeleech_count,
+                results.results.len()
+            ),
             suggestion: "Enable freeleech-only filter to save on ratio".to_string(),
             auto_apply: true,
         });
     }
-    
+
     recommendations
 }
 
@@ -667,7 +797,7 @@ async fn perform_bulk_operation(
             warn!("Unsupported bulk operation: {:?}", operation);
         }
     }
-    
+
     Ok(())
 }
 
@@ -685,12 +815,12 @@ fn estimate_download_time(size: u64, seeders: i32) -> Option<String> {
     if seeders == 0 {
         return Some("Unable to estimate".to_string());
     }
-    
+
     // Rough estimation based on average speeds
     let avg_speed_per_seeder = 500_000; // 500 KB/s per seeder (conservative)
     let total_speed = (seeders as u64 * avg_speed_per_seeder).min(10_000_000); // Cap at 10 MB/s
     let seconds = size / total_speed;
-    
+
     if seconds < 60 {
         Some(format!("{}s", seconds))
     } else if seconds < 3600 {
@@ -701,8 +831,12 @@ fn estimate_download_time(size: u64, seeders: i32) -> Option<String> {
 }
 
 fn assess_risk(seeders: i32, leechers: i32, freeleech: bool) -> String {
-    let ratio = if leechers > 0 { seeders as f64 / leechers as f64 } else { 10.0 };
-    
+    let ratio = if leechers > 0 {
+        seeders as f64 / leechers as f64
+    } else {
+        10.0
+    };
+
     match (seeders, ratio, freeleech) {
         (0..=2, _, _) => "High Risk".to_string(),
         (3..=10, r, _) if r < 1.0 => "Medium Risk".to_string(),
@@ -715,7 +849,7 @@ fn assess_risk(seeders: i32, leechers: i32, freeleech: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     // Test commented out - would need proper database pool setup
     /*
     #[tokio::test]
@@ -729,13 +863,13 @@ mod tests {
             sort_order: Some(SortOrder::Desc),
             ..Default::default()
         };
-        
+
         let result = perform_enhanced_search(&state, &params).await;
         assert!(result.is_ok());
-        
+
         let search_result = result.unwrap();
         assert!(search_result.results.len() > 0);
-        
+
         // Verify filtering worked
         for release in &search_result.results {
             assert!(release.release.quality_score.unwrap_or(0) >= 85);
@@ -744,18 +878,18 @@ mod tests {
         }
     }
     */
-    
+
     #[test]
     fn test_quality_filter() {
         let releases = create_diverse_mock_releases().unwrap();
         let filtered = apply_quality_filter(releases, "1080p", true);
-        
+
         // Should only have 1080p and higher quality releases
         for release in &filtered {
             assert!(release.quality_tier.contains("1080p") || release.quality_tier.contains("4K"));
         }
     }
-    
+
     #[test]
     fn test_cache_key_generation() {
         let params1 = AdvancedSearchParams {
@@ -763,23 +897,23 @@ mod tests {
             min_quality_score: Some(80),
             ..Default::default()
         };
-        
+
         let params2 = AdvancedSearchParams {
             query: Some("test".to_string()),
             min_quality_score: Some(80),
             ..Default::default()
         };
-        
+
         let params3 = AdvancedSearchParams {
             query: Some("different".to_string()),
             min_quality_score: Some(80),
             ..Default::default()
         };
-        
+
         let key1 = generate_cache_key(&params1);
         let key2 = generate_cache_key(&params2);
         let key3 = generate_cache_key(&params3);
-        
+
         assert_eq!(key1, key2);
         assert_ne!(key1, key3);
     }

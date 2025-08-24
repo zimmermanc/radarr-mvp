@@ -8,13 +8,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::models::{ApiResponse, PaginationQuery};
 use radarr_core::{
-    QueueItem, QueueStatus, QueuePriority, QueueStats,
-    services::{QueueService, DownloadClientService, ClientDownloadStatus},
-    RadarrError,
+    services::{ClientDownloadStatus, DownloadClientService, QueueService},
+    QueueItem, QueuePriority, QueueStats, QueueStatus, RadarrError,
 };
 use radarr_infrastructure::{repositories::PostgresQueueRepository, DatabasePool};
-use crate::models::{ApiResponse, PaginationQuery};
 
 /// Request to add a release to the queue
 #[derive(Debug, Deserialize)]
@@ -80,17 +79,19 @@ pub struct QueueItemResponse {
 impl From<QueueItem> for QueueItemResponse {
     fn from(queue_item: QueueItem) -> Self {
         let eta = queue_item.human_readable_eta();
-        
+
         // Format display fields
         let size_display = queue_item.size_bytes.map(|s| format_bytes(s));
-        let download_speed_display = queue_item.download_speed.map(|s| format!("{}/s", format_bytes(s as i64)));
+        let download_speed_display = queue_item
+            .download_speed
+            .map(|s| format!("{}/s", format_bytes(s as i64)));
         let eta_display = queue_item.eta_seconds.map(|seconds| {
             let hours = seconds / 3600;
             let minutes = (seconds % 3600) / 60;
             format!("{}h {}m", hours, minutes)
         });
         let can_retry = matches!(queue_item.status, QueueStatus::Failed);
-        
+
         Self {
             id: queue_item.id.to_string(),
             movie_id: queue_item.movie_id.as_u128() as i32, // Convert UUID to int (simplified)
@@ -101,7 +102,8 @@ impl From<QueueItem> for QueueItemResponse {
             download_client: "qBittorrent".to_string(),
             status: queue_item.status.to_string(),
             size: queue_item.size_bytes.unwrap_or(0),
-            size_left: queue_item.size_bytes.unwrap_or(0) - queue_item.downloaded_bytes.unwrap_or(0),
+            size_left: queue_item.size_bytes.unwrap_or(0)
+                - queue_item.downloaded_bytes.unwrap_or(0),
             downloaded_size: queue_item.downloaded_bytes.unwrap_or(0),
             progress: queue_item.progress,
             download_rate: queue_item.download_speed,
@@ -118,7 +120,6 @@ impl From<QueueItem> for QueueItemResponse {
         }
     }
 }
-
 
 /// Enhanced queue statistics with additional metadata
 #[derive(Debug, Serialize)]
@@ -144,7 +145,7 @@ impl From<QueueStats> for QueueStatsResponse {
         } else {
             0.0
         };
-        
+
         Self {
             total_size_display: format_bytes(stats.total_size_bytes),
             total_downloaded_display: format_bytes(stats.total_downloaded_bytes),
@@ -162,8 +163,8 @@ pub struct QueueServiceState {
     pub queue_service: Arc<QueueService<PostgresQueueRepository, MockDownloadClient>>,
 }
 
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// Mock download client for API handlers
 #[derive(Clone)]
@@ -179,8 +180,11 @@ impl DownloadClientService for MockDownloadClient {
     ) -> radarr_core::Result<String> {
         Ok(format!("mock_client_{}", uuid::Uuid::new_v4()))
     }
-    
-    async fn get_download_status(&self, _client_id: &str) -> radarr_core::Result<Option<ClientDownloadStatus>> {
+
+    async fn get_download_status(
+        &self,
+        _client_id: &str,
+    ) -> radarr_core::Result<Option<ClientDownloadStatus>> {
         Ok(Some(ClientDownloadStatus {
             client_id: _client_id.to_string(),
             name: "Mock Download".to_string(),
@@ -196,19 +200,23 @@ impl DownloadClientService for MockDownloadClient {
             save_path: Some("/downloads".to_string()),
         }))
     }
-    
-    async fn remove_download(&self, _client_id: &str, _delete_files: bool) -> radarr_core::Result<()> {
+
+    async fn remove_download(
+        &self,
+        _client_id: &str,
+        _delete_files: bool,
+    ) -> radarr_core::Result<()> {
         Ok(())
     }
-    
+
     async fn pause_download(&self, _client_id: &str) -> radarr_core::Result<()> {
         Ok(())
     }
-    
+
     async fn resume_download(&self, _client_id: &str) -> radarr_core::Result<()> {
         Ok(())
     }
-    
+
     async fn get_all_downloads(&self) -> radarr_core::Result<Vec<ClientDownloadStatus>> {
         Ok(vec![])
     }
@@ -219,10 +227,8 @@ impl QueueServiceState {
         let queue_repo = PostgresQueueRepository::new(pool);
         let download_client = MockDownloadClient;
         let queue_service = Arc::new(QueueService::new(queue_repo, download_client));
-        
-        Self {
-            queue_service,
-        }
+
+        Self { queue_service }
     }
 }
 
@@ -230,13 +236,16 @@ impl QueueServiceState {
 pub async fn grab_release(
     State(_state): State<QueueServiceState>,
     Json(request): Json<GrabReleaseRequest>,
-) -> std::result::Result<Json<ApiResponse<QueueItemResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+) -> std::result::Result<Json<ApiResponse<QueueItemResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+{
     // For now, return not implemented as this requires movie/release data
     let _ = request;
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::error("Grab release endpoint requires movie/release integration".to_string())),
+        Json(ApiResponse::error(
+            "Grab release endpoint requires movie/release integration".to_string(),
+        )),
     ))
 }
 
@@ -249,7 +258,7 @@ pub async fn update_queue_priority(
     // This is a simplified implementation - in practice you'd need to
     // implement priority reordering logic in the queue service
     let _ = request; // For now, just acknowledge the request
-    
+
     match state.queue_service.pause_queue_item(id).await {
         Ok(()) => Ok(Json(ApiResponse::success(()))),
         Err(e) => {
@@ -260,7 +269,10 @@ pub async fn update_queue_priority(
             };
             Err((
                 status_code,
-                Json(ApiResponse::error(format!("Failed to update priority: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to update priority: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -276,33 +288,39 @@ pub struct PriorityUpdateRequest {
 pub async fn list_queue(
     State(state): State<QueueServiceState>,
     Query(query): Query<QueueQuery>,
-) -> std::result::Result<Json<ApiResponse<QueueResponseData>>, (StatusCode, Json<ApiResponse<()>>)> {
-    match state.queue_service.get_queue_items(
-        query.status,
-        query.movie_id,
-        Some(query.pagination.page_size as usize),
-        Some(((query.pagination.page - 1) * query.pagination.page_size) as usize),
-    ).await {
+) -> std::result::Result<Json<ApiResponse<QueueResponseData>>, (StatusCode, Json<ApiResponse<()>>)>
+{
+    match state
+        .queue_service
+        .get_queue_items(
+            query.status,
+            query.movie_id,
+            Some(query.pagination.page_size as usize),
+            Some(((query.pagination.page - 1) * query.pagination.page_size) as usize),
+        )
+        .await
+    {
         Ok(items) => {
-            let response_items: Vec<QueueItemResponse> = items
-                .into_iter()
-                .map(QueueItemResponse::from)
-                .collect();
-            
+            let response_items: Vec<QueueItemResponse> =
+                items.into_iter().map(QueueItemResponse::from).collect();
+
             let response = QueueResponseData {
                 items: response_items.clone(),
                 total_records: response_items.len() as i64,
                 page: Some(query.pagination.page as i32),
                 page_size: Some(query.pagination.page_size as i32),
             };
-            
+
             Ok(Json(ApiResponse::success(response)))
         }
         Err(e) => {
             tracing::error!("Failed to list queue items: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::error(format!("Failed to list queue items: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to list queue items: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -323,15 +341,18 @@ pub struct QueueResponseData {
 pub async fn grab_release_by_id(
     State(_state): State<QueueServiceState>,
     Path(release_id): Path<Uuid>,
-) -> std::result::Result<Json<ApiResponse<QueueItemResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+) -> std::result::Result<Json<ApiResponse<QueueItemResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+{
     // Placeholder implementation
     // This would grab a release by ID, typically from search results
-    
+
     let _ = release_id; // Suppress unused warning
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::error("Queue service not yet wired".to_string())),
+        Json(ApiResponse::error(
+            "Queue service not yet wired".to_string(),
+        )),
     ))
 }
 
@@ -342,11 +363,16 @@ pub async fn remove_queue_item(
     Query(query): Query<serde_json::Value>,
 ) -> std::result::Result<Json<ApiResponse<()>>, (StatusCode, Json<ApiResponse<()>>)> {
     // Extract deleteFiles parameter
-    let delete_files = query.get("deleteFiles")
+    let delete_files = query
+        .get("deleteFiles")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    
-    match state.queue_service.remove_queue_item(id, delete_files).await {
+
+    match state
+        .queue_service
+        .remove_queue_item(id, delete_files)
+        .await
+    {
         Ok(()) => Ok(Json(ApiResponse::success(()))),
         Err(e) => {
             tracing::error!("Failed to remove queue item {}: {}", id, e);
@@ -356,7 +382,10 @@ pub async fn remove_queue_item(
             };
             Err((
                 status_code,
-                Json(ApiResponse::error(format!("Failed to remove queue item: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to remove queue item: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -377,7 +406,10 @@ pub async fn pause_queue_item(
             };
             Err((
                 status_code,
-                Json(ApiResponse::error(format!("Failed to pause queue item: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to pause queue item: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -398,7 +430,10 @@ pub async fn resume_queue_item(
             };
             Err((
                 status_code,
-                Json(ApiResponse::error(format!("Failed to resume queue item: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to resume queue item: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -407,14 +442,18 @@ pub async fn resume_queue_item(
 /// GET /api/v3/queue/status - Queue statistics
 pub async fn get_queue_status(
     State(state): State<QueueServiceState>,
-) -> std::result::Result<Json<ApiResponse<QueueStatsResponse>>, (StatusCode, Json<ApiResponse<()>>)> {
+) -> std::result::Result<Json<ApiResponse<QueueStatsResponse>>, (StatusCode, Json<ApiResponse<()>>)>
+{
     match state.queue_service.get_queue_statistics().await {
         Ok(stats) => Ok(Json(ApiResponse::success(QueueStatsResponse::from(stats)))),
         Err(e) => {
             tracing::error!("Failed to get queue statistics: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::error(format!("Failed to get queue statistics: {}", e))),
+                Json(ApiResponse::error(format!(
+                    "Failed to get queue statistics: {}",
+                    e
+                ))),
             ))
         }
     }
@@ -426,7 +465,9 @@ pub async fn retry_failed_downloads(
 ) -> std::result::Result<Json<ApiResponse<Vec<Uuid>>>, (StatusCode, Json<ApiResponse<()>>)> {
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::error("Queue service not yet wired".to_string())),
+        Json(ApiResponse::error(
+            "Queue service not yet wired".to_string(),
+        )),
     ))
 }
 
@@ -436,7 +477,9 @@ pub async fn process_queue(
 ) -> std::result::Result<Json<ApiResponse<Vec<Uuid>>>, (StatusCode, Json<ApiResponse<()>>)> {
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::error("Queue service not yet wired".to_string())),
+        Json(ApiResponse::error(
+            "Queue service not yet wired".to_string(),
+        )),
     ))
 }
 
@@ -445,15 +488,15 @@ pub async fn cleanup_completed(
     State(_state): State<QueueServiceState>,
     Query(query): Query<serde_json::Value>,
 ) -> std::result::Result<Json<ApiResponse<usize>>, (StatusCode, Json<ApiResponse<()>>)> {
-    let days_old = query.get("daysOld")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(7); // Default to 7 days
-        
+    let days_old = query.get("daysOld").and_then(|v| v.as_i64()).unwrap_or(7); // Default to 7 days
+
     let _ = days_old; // Suppress unused warning
-    
+
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ApiResponse::error("Queue service not yet wired".to_string())),
+        Json(ApiResponse::error(
+            "Queue service not yet wired".to_string(),
+        )),
     ))
 }
 
@@ -462,20 +505,20 @@ pub async fn cleanup_completed(
 /// Format bytes as human readable string
 fn format_bytes(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    
+
     // Special case for 0 bytes
     if bytes == 0 {
         return "0 B".to_string();
     }
-    
+
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     if unit_index == 0 {
         // For bytes, don't show decimal places
         format!("{:.0} {}", size, UNITS[unit_index])
@@ -496,7 +539,7 @@ fn format_bytes_per_sec(bytes_per_sec: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_format_bytes() {
         assert_eq!(format_bytes(0), "0 B");
@@ -507,13 +550,13 @@ mod tests {
         assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GB");
         assert_eq!(format_bytes(1024 * 1024 * 1024 * 1024), "1.00 TB");
     }
-    
+
     #[test]
     fn test_format_bytes_per_sec() {
         assert_eq!(format_bytes_per_sec(1024), "1.00 KB/s");
         assert_eq!(format_bytes_per_sec(1024 * 1024), "1.00 MB/s");
     }
-    
+
     #[test]
     fn test_queue_item_response_conversion() {
         let mut queue_item = QueueItem::new(
@@ -525,15 +568,18 @@ mod tests {
         queue_item.size_bytes = Some(1024 * 1024 * 1024); // 1GB
         queue_item.download_speed = Some(1024 * 1024); // 1MB/s
         queue_item.eta_seconds = Some(3600); // 1 hour
-        
+
         let response = QueueItemResponse::from(queue_item);
-        
+
         assert_eq!(response.size_display, Some("1.00 GB".to_string()));
-        assert_eq!(response.download_speed_display, Some("1.00 MB/s".to_string()));
+        assert_eq!(
+            response.download_speed_display,
+            Some("1.00 MB/s".to_string())
+        );
         assert_eq!(response.eta_display, Some("1h 0m".to_string()));
         assert!(!response.can_retry);
     }
-    
+
     #[test]
     fn test_queue_stats_response_conversion() {
         let stats = QueueStats {
@@ -543,14 +589,14 @@ mod tests {
             completed_count: 2,
             failed_count: 0,
             paused_count: 0,
-            total_download_speed: 2 * 1024 * 1024, // 2MB/s
-            total_upload_speed: 512 * 1024, // 512KB/s
+            total_download_speed: 2 * 1024 * 1024,     // 2MB/s
+            total_upload_speed: 512 * 1024,            // 512KB/s
             total_size_bytes: 10 * 1024 * 1024 * 1024, // 10GB
             total_downloaded_bytes: 3 * 1024 * 1024 * 1024, // 3GB
         };
-        
+
         let response = QueueStatsResponse::from(stats);
-        
+
         assert_eq!(response.total_size_display, "10.0 GB");
         assert_eq!(response.total_downloaded_display, "3.00 GB");
         assert_eq!(response.total_download_speed_display, "2.00 MB/s");

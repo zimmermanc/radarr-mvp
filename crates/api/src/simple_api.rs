@@ -353,8 +353,14 @@ pub fn create_simple_api_router(state: SimpleApiState) -> Router {
         // Queue endpoints
         .route("/v3/queue", get(list_queue_simple))
         .route("/v3/queue/:id", delete(remove_queue_item_simple))
-        .route("/v3/queue/:id/pause", axum::routing::put(pause_queue_item_simple))
-        .route("/v3/queue/:id/resume", axum::routing::put(resume_queue_item_simple))
+        .route(
+            "/v3/queue/:id/pause",
+            axum::routing::put(pause_queue_item_simple),
+        )
+        .route(
+            "/v3/queue/:id/resume",
+            axum::routing::put(resume_queue_item_simple),
+        )
         .with_state(state.clone());
 
     // Create static file service for React app
@@ -2191,33 +2197,29 @@ struct QueueResponseSimple {
 }
 
 /// GET /v3/queue - List queue items
-async fn list_queue_simple(
-    State(_state): State<SimpleApiState>,
-) -> Json<QueueResponseSimple> {
+async fn list_queue_simple(State(_state): State<SimpleApiState>) -> Json<QueueResponseSimple> {
     // Return mock queue data
-    let mock_items = vec![
-        QueueItemSimpleResponse {
-            id: Uuid::new_v4().to_string(),
-            movie_id: 1,
-            movie_title: "The Matrix".to_string(),
-            quality: "Bluray-1080p".to_string(),
-            protocol: "torrent".to_string(),
-            indexer: "HDBits".to_string(),
-            download_client: "qBittorrent".to_string(),
-            status: "downloading".to_string(),
-            size: 8_000_000_000, // 8GB
-            size_left: 2_000_000_000, // 2GB
-            downloaded_size: 6_000_000_000, // 6GB
-            progress: 75.0,
-            download_rate: Some(1_048_576), // 1MB/s
-            upload_rate: Some(524_288), // 512KB/s
-            seeders: Some(15),
-            leechers: Some(3),
-            eta: Some("00:32:00".to_string()),
-            error_message: None,
-            added: chrono::Utc::now().to_rfc3339(),
-        },
-    ];
+    let mock_items = vec![QueueItemSimpleResponse {
+        id: Uuid::new_v4().to_string(),
+        movie_id: 1,
+        movie_title: "The Matrix".to_string(),
+        quality: "Bluray-1080p".to_string(),
+        protocol: "torrent".to_string(),
+        indexer: "HDBits".to_string(),
+        download_client: "qBittorrent".to_string(),
+        status: "downloading".to_string(),
+        size: 8_000_000_000,            // 8GB
+        size_left: 2_000_000_000,       // 2GB
+        downloaded_size: 6_000_000_000, // 6GB
+        progress: 75.0,
+        download_rate: Some(1_048_576), // 1MB/s
+        upload_rate: Some(524_288),     // 512KB/s
+        seeders: Some(15),
+        leechers: Some(3),
+        eta: Some("00:32:00".to_string()),
+        error_message: None,
+        added: chrono::Utc::now().to_rfc3339(),
+    }];
 
     Json(QueueResponseSimple {
         records: mock_items,

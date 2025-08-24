@@ -947,6 +947,97 @@ cargo run 2>&1 | grep "correlation_id"
 
 ---
 
+## 🚨 CRITICAL PATH - Next Session Action Items
+
+### IMMEDIATE BLOCKER: Service Startup Failure
+
+**Current Status**: Service cannot start due to migration checksum conflict
+```
+Error: migration 3 was previously applied but has been modified
+```
+
+### PRIORITY 1: Fix Service Startup (CRITICAL - MUST RESOLVE FIRST)
+
+**Root Cause**: Binary has embedded migrations with different checksums than filesystem migrations
+
+**Resolution Path A - Rebuild Binary** ⭐ RECOMMENDED (45 minutes):
+```bash
+# Setup database for SQLx compile-time validation
+cd unified-radarr
+su - postgres -c "dropdb --force radarr && createdb radarr"
+DATABASE_URL=postgresql://radarr:radarr@localhost:5432/radarr cargo run &
+sleep 10 && pkill radarr-mvp  # Let migrations apply, then stop
+
+# Generate SQLx cache and build with aligned migrations
+cargo sqlx prepare
+SQLX_OFFLINE=true cargo build --release
+
+# Deploy and test
+scp target/release/radarr-mvp root@192.168.0.138:/opt/radarr/
+ssh root@192.168.0.138 'systemctl restart radarr && systemctl status radarr'
+```
+
+**Resolution Path B - Database Reset** ⚡ FASTER (20 minutes):
+```bash
+# Force clean database and let service rebuild
+ssh root@192.168.0.138 'su - postgres -c "dropdb --force radarr && createdb radarr"'
+ssh root@192.168.0.138 'cd /opt/radarr && RADARR_API_KEY=prod_staging_secure_api_key_1756009675_v1 DATABASE_URL=postgresql://radarr:radarr@localhost:5432/radarr /opt/radarr/radarr-mvp'
+```
+
+### PRIORITY 2: Verify Basic Service Health (Only after startup succeeds)
+```bash
+# 1. Confirm service stays running
+ssh root@192.168.0.138 'systemctl status radarr'
+
+# 2. Test health endpoint  
+curl http://192.168.0.138:7878/health
+
+# 3. Test authenticated API endpoint
+curl -H "X-Api-Key: prod_staging_secure_api_key_1756009675_v1" \
+     http://192.168.0.138:7878/api/v3/movies
+```
+
+### PRIORITY 3: Functionality Verification (Only after service healthy)
+
+**Test Session Implementation**:
+1. **TMDb Integration**: Verify 8 newly implemented methods return data
+2. **Queue Operations**: Test 6 backend handlers (pause/resume/remove/bulk/priority)
+3. **Movie Actions**: Test 5 backend handlers (search/download/update/bulk)
+4. **Database Operations**: Confirm persistence and retrieval work
+
+**Success Criteria**:
+- Service starts and remains stable
+- Health endpoint returns 200 OK
+- 3+ API endpoints return real data (not 500/404 errors)
+- Database operations persist correctly
+
+### ⚠️ DO NOT WORK ON UNTIL SERVICE STARTS:
+- Frontend integration testing
+- Performance optimization  
+- Additional feature development
+- Production deployment
+- Documentation updates claiming functionality
+
+### 📊 Current Reality Check
+
+**What Works**:
+- ✅ Code compiles successfully
+- ✅ Infrastructure deployed (PostgreSQL, systemd, server)
+- ✅ Backend handlers implemented in code
+
+**What's Blocked**:  
+- ❌ Service startup (migration conflict)
+- ❌ All API functionality (service won't run)
+- ❌ Database operation testing (service required)
+- ❌ Integration validation (service required)
+
+**Next Session Goal**: 
+Transform from "code works" to "service works" → then verify functionality
+
+**Estimated Time to Working Service**: 1-2 hours focused debugging
+
+---
+
 ## 🏆 SESSION SUMMARY: Code Progress, Service Blocked
 
 **Session Date**: 2025-08-24

@@ -82,4 +82,4 @@ services.env.bak
 # Test credential files
 test_credentials.json
 test_config.json
-hdbits_test_credentials.json
+hdbits_test_credentials.json.venv/

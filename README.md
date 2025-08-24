@@ -197,7 +197,7 @@ nano /opt/radarr/.env
 
 # Run database migrations
 cd /opt/radarr
-export DATABASE_URL="postgresql://radarr:YOUR_PASSWORD@localhost/radarr"
+export DATABASE_URL="postgresql://radarr:CHANGE_ME_PASSWORD@localhost/radarr"
 sqlx migrate run
 
 # Verify service status

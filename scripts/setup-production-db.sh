@@ -325,7 +325,7 @@ success "Schema preparation completed"
 # Test connection
 info "Testing database connection..."
 
-CONNECTION_STRING="postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME"
+CONNECTION_STRING="postgresql://$DB_USER:[PASSWORD]@$DB_HOST:$DB_PORT/$DB_NAME"
 
 if [ -n "$REMOTE_HOST" ]; then
     # For remote, we'll create a test script
@@ -512,7 +512,7 @@ echo "  • Database Host: $DB_HOST"
 echo "  • Database Port: $DB_PORT"
 echo
 info "Connection String:"
-echo "  postgresql://$DB_USER:[PASSWORD]@$DB_HOST:$DB_PORT/$DB_NAME"
+echo "  postgresql://$DB_USER:[YOUR_PASSWORD]@$DB_HOST:$DB_PORT/$DB_NAME"
 echo
 warning "Important: Save the database password securely!"
 echo

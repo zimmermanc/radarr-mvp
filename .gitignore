@@ -6,12 +6,20 @@ Cargo.lock
 
 # Environment
 .env
-.env.local
-.env.*.local
-.env.production
-.env.server
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+*.env
+!*.env.example
+!*.env.template
 services.env
 config/services.env
+config/production.env
+web/.env
+web/.env.*
+!web/.env.example
 
 # IDE
 .vscode/

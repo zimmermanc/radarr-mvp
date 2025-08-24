@@ -9,9 +9,9 @@
 
 use axum::{
     extract::State,
-    http::{header, HeaderValue, StatusCode},
+    http::{header, StatusCode},
     middleware,
-    response::{Html, Json, Response},
+    response::{Json, Response},
     routing::{delete, get, post},
     Router,
 };
@@ -33,7 +33,6 @@ use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
 use tracing::{debug, info, instrument, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
 mod config;

@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use radarr_core::rss::{CalendarEntry, RssFeed, RssItem};
+use radarr_core::rss::{CalendarEntry, RssFeed};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;

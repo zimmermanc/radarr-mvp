@@ -14,9 +14,7 @@ use radarr_core::{
     progress::{OperationType, ProgressTracker},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 /// WebSocket message types

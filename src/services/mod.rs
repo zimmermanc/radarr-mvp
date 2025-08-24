@@ -16,7 +16,7 @@ use radarr_infrastructure::{
     DatabasePool, PostgresMovieRepository, PostgresQueueRepository, QBittorrentDownloadClient,
 };
 use std::sync::Arc;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, warn};
 
 pub mod rss_service;
 pub mod simplified_media_service;

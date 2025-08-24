@@ -633,7 +633,7 @@ impl EventHandler for LoggingEventHandler {
         // Log additional details for certain events
         match &envelope.event {
             SystemEvent::DownloadProgress {
-                progress,
+                
                 speed,
                 eta_seconds,
                 ..

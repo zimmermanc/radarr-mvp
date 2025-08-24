@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📚 Documentation Organization
+
+**Primary Documentation (Keep Updated):**
+- **CLAUDE.md** (this file): Development guidance, workflows, commands, and technical context
+- **TASKLIST.md**: Project status, achievements, implementation details, and current priorities
+- **README.md**: User-facing installation and usage documentation
+
+**Archived Documentation:**
+- **docs/archive/**: Historical documentation, analysis reports, and legacy guides
+- **docs/**: Architecture decisions, detailed guides, and specialized documentation
+
+**Rule**: Only update CLAUDE.md and TASKLIST.md for current development context.
+
 ## 🚀 LATEST UPDATE: GitHub Release Pipeline & Development Workflow Complete (2025-08-24)
 
 ### 🎯 cargo-dist Release Pipeline Implementation Complete (2025-08-24)
@@ -710,7 +723,11 @@ gitleaks detect --source .
 **Documentation**: `docs/` contains architecture decisions, CI/CD guide, and setup guides
 **Analysis Tools**: `unified-radarr/crates/analysis/src/bin/` for HDBits analyzers
 **CI/CD**: `.github/workflows/` for GitHub Actions pipelines
-**Security**: `.github/SECRETS_SETUP.md` for secure token configuration# Development Workflow - Radarr MVP
+**Security**: `.github/SECRETS_SETUP.md` for secure token configuration
+
+---
+
+# Development Workflow - Radarr MVP
 
 **Updated**: 2025-08-24  
 **Tools**: cargo-release + cargo-dist + GitHub Actions  

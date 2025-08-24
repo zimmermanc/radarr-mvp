@@ -142,7 +142,7 @@ jobs:
         run: |
           cargo install tokei --locked
           cargo install loc --locked
-          cargo install cargo-count --locked
+          # cargo-count removed due to yanked dependencies
       
       - name: Lines of code analysis
         run: |

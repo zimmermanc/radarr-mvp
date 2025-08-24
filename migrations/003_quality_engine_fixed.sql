@@ -43,7 +43,7 @@ BEGIN
         CREATE TABLE IF NOT EXISTS quality_profiles (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT NOT NULL UNIQUE,
-            cutoff_quality INTEGER NOT NULL DEFAULT 8,
+            cutoff_quality_id INTEGER NOT NULL DEFAULT 8,
             preferred_qualities JSONB NOT NULL DEFAULT '[]',
             custom_format_scores JSONB NOT NULL DEFAULT '{}',
             min_size_mb INTEGER,

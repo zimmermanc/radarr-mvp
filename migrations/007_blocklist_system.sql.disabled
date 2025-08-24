@@ -27,8 +27,9 @@ CREATE INDEX idx_blocklist_indexer ON blocklist(indexer);
 CREATE INDEX idx_blocklist_reason ON blocklist(reason);
 CREATE INDEX idx_blocklist_movie ON blocklist(movie_id) WHERE movie_id IS NOT NULL;
 CREATE INDEX idx_blocklist_blocked_until ON blocklist(blocked_until);
-CREATE INDEX idx_blocklist_expired ON blocklist(blocked_until) WHERE blocked_until <= NOW();
-CREATE INDEX idx_blocklist_active ON blocklist(blocked_until) WHERE blocked_until > NOW();
+-- Removed immutable function calls from index predicates
+-- CREATE INDEX idx_blocklist_expired ON blocklist(blocked_until) WHERE blocked_until <= NOW();
+-- CREATE INDEX idx_blocklist_active ON blocklist(blocked_until) WHERE blocked_until > NOW();
 CREATE INDEX idx_blocklist_created_at ON blocklist(created_at DESC);
 CREATE INDEX idx_blocklist_retry_count ON blocklist(retry_count);
 

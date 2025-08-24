@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS import_lists (
     sync_interval INTEGER DEFAULT 360, -- Minutes between syncs (default 6 hours)
     add_monitored BOOLEAN DEFAULT true, -- Auto-monitor imported movies
     minimum_availability VARCHAR(50) DEFAULT 'announced', -- 'announced', 'inCinemas', 'released', 'preDB'
-    quality_profile_id UUID REFERENCES quality_profiles(id),
+    quality_profile_id INTEGER REFERENCES quality_profiles(id),
     metadata_profile_id UUID, -- For future metadata profiles
     root_folder_path VARCHAR(500),
     tags TEXT[], -- Array of tags to apply to imported movies

@@ -2,11 +2,15 @@ import axios, { type AxiosInstance } from 'axios';
 import type {
   MediaType,
   TrendingQuery,
-  TrendingResponse,
   AvailabilityResponse,
   ComingSoonResponse,
   ProvidersResponse,
 } from '../types/streaming';
+import { 
+  TrendingResponseSchema, 
+  validateApiResponse,
+  type TrendingResponse 
+} from './schemas';
 
 class StreamingApiClient {
   private client: AxiosInstance;
@@ -36,9 +40,22 @@ class StreamingApiClient {
     mediaType: MediaType,
     params?: TrendingQuery
   ): Promise<TrendingResponse> {
-    const timeWindow = params?.window || 'day';
-    const response = await this.client.get(`/trending/${mediaType}/${timeWindow}`);
-    return response.data.data;
+    try {
+      const timeWindow = params?.window || 'day';
+      const response = await this.client.get(`/trending/${mediaType}/${timeWindow}`);
+      
+      // Validate response structure with Zod
+      const validatedResponse = validateApiResponse(
+        response.data,
+        TrendingResponseSchema,
+        `getTrending(${mediaType}, ${timeWindow})`
+      );
+      
+      return validatedResponse.data;
+    } catch (error) {
+      console.error('Streaming API Error:', error);
+      throw error;
+    }
   }
 
   // Get streaming availability for a specific title

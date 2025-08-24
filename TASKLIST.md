@@ -1,9 +1,9 @@
 # Radarr MVP Task List
 
-**Last Updated**: 2025-08-24 (18:15 UTC)  
-**Sprint**: Release Pipeline Complete  
-**Priority**: Automated GitHub release workflow operational with clean slate validation
-**Status**: **SYSTEM 100% COMPLETE** - All features operational, production-ready deployment
+**Last Updated**: 2025-08-24 (20:45 UTC)  
+**Sprint**: Frontend Testing Infrastructure  
+**Priority**: Implement comprehensive browser-based testing to prevent production JavaScript errors
+**Status**: **SYSTEM 99% COMPLETE** - Core features operational, frontend testing infrastructure needed
 
 ## ✅ TODAY'S ACHIEVEMENTS: GitHub Release Pipeline & Clean Slate Testing Complete (2025-08-24)
 
@@ -1221,8 +1221,58 @@ cargo run 2>&1 | grep "correlation_id"
 - ✅ **Code quality**: Unused imports cleaned up with cargo fix
 - ✅ **Documentation**: Updated to reflect 100% completion
 
-**Final Status**: **RADARR MVP 100% COMPLETE** - All features operational and production-ready.
+**Final Status**: **RADARR MVP 99% COMPLETE** - Core features operational, frontend testing infrastructure needed.
+
+### 🚨 CURRENT ISSUE: Frontend Testing Gap (2025-08-24)
+
+**Problem**: Recurring frontend JavaScript errors reaching production
+- **Current Errors**: "d is not iterable" in streaming components, WebSocket authentication failures
+- **Root Cause**: No browser-based testing infrastructure - backend testing only
+- **Impact**: JavaScript errors and data structure mismatches not caught before production deployment
+
+**Solution**: Design-System-Driven Hybrid Testing Implementation
+
+**✅ SELECTED APPROACH**: Option 9 - Design-System-Driven Hybrid
+- **Stack**: Vitest + RTL (unit/component), Storybook + test-runner (design system), Playwright (E2E), MSW + Zod (data safety)
+- **Goal**: Fast feedback for most changes, high confidence for user flows, living design system with visual guards
+- **Timeline**: Day 1-2 bootstrap, Week 1 hardening, ongoing development rules
+
+**Implementation Plan**:
+
+**Day 1: Bootstrap Testing Infrastructure (120 min)**
+- [ ] Install Vitest + React Testing Library for component testing
+- [ ] Set up Storybook with @storybook/test-runner and MSW addon
+- [ ] Configure Playwright for cross-browser E2E testing (Chromium/Firefox/WebKit)
+- [ ] Add MSW for HTTP mocking and mock-socket for WebSocket testing
+- [ ] Implement Zod schemas for runtime type safety on API responses
+- [ ] Add ErrorBoundary at app root for clean error handling
+
+**Day 2: Seed Initial Coverage (90 min)**
+- [ ] Write 3-5 Vitest specs for critical components (TrendingCarousel, MovieCard, Queue)
+- [ ] Create Storybook stories with all states (loading/empty/error/populated)
+- [ ] Add 1 Playwright smoke test for Streaming page functionality
+- [ ] Test infrastructure catches current "d is not iterable" error
+
+**Week 1: Hardening & CI Integration (180 min)**
+- [ ] Add play() interactions to stories with accessibility checks
+- [ ] Expand E2E to 3-5 critical user flows (search, download, queue management)
+- [ ] Set up Chromatic or Playwright visual regression testing
+- [ ] Integrate testing into GitHub Actions with console error detection
+- [ ] Establish coverage requirements (85% lines, 75% branches)
+
+**Quality Gates & Development Rules**:
+- [ ] CI Workflow: unit → story tests → e2e (all must pass to merge)
+- [ ] Console error detection fails CI builds
+- [ ] Every component PR requires story + RTL test
+- [ ] E2E tests for every new page or major user flow
+
+**Expected Outcomes**:
+- Prevent JavaScript errors from reaching production
+- Catch API-frontend contract mismatches during development  
+- Ensure WebSocket functionality works correctly
+- Maintain visual design consistency
+- Fast developer feedback with comprehensive confidence
 
 ---
 
-**Current Status**: This document reflects final system completion 2025-08-24 (20:30 UTC). **RADARR MVP is 100% COMPLETE** with all features operational: core automation, streaming integration, GitHub Actions optimization, release pipeline, and production deployment validation. **FULLY PRODUCTION-READY**.
+**Current Status**: This document reflects system status 2025-08-24 (20:45 UTC). **RADARR MVP is 99% COMPLETE** with core features operational but frontend testing infrastructure needed to prevent JavaScript errors reaching production. Core automation and streaming integration **FULLY PRODUCTION-READY**.

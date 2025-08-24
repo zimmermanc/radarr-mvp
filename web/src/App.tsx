@@ -16,6 +16,7 @@ import { Settings } from './pages/Settings';
 import { Queue } from './pages/Queue';
 import Streaming from './pages/Streaming';
 import { initStreamingApi } from './lib/streamingApi';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
   // Initialize streaming API globally
@@ -26,7 +27,8 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
       <UIProvider>
         <ToastProvider>
           <ConfirmDialogProvider>
@@ -62,6 +64,7 @@ function App() {
         </ToastProvider>
       </UIProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

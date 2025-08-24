@@ -649,6 +649,9 @@ impl HDBitsClient {
     
     /// Convert Release back to ProwlarrSearchResult for compatibility
     fn release_to_prowlarr_result(&self, release: Release) -> ProwlarrSearchResult {
+        // Extract info hash before moving the release
+        let info_hash = Self::extract_info_hash_from_release(&release);
+        
         ProwlarrSearchResult {
             title: release.title,
             download_url: release.download_url,
@@ -670,8 +673,64 @@ impl HDBitsClient {
             imdb_id: release.quality.get("imdb_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
             tmdb_id: None, // HDBits doesn't provide TMDB IDs
             freeleech: release.quality.get("freeleech").and_then(|v| v.as_bool()),
-            info_hash: None, // TODO: Extract from torrent data if available
+            info_hash
         }
+    }
+    
+    /// Extract info hash from release data
+    fn extract_info_hash_from_release(release: &Release) -> Option<String> {
+        // First try to extract from download URL if it's a magnet link
+        if let Some(hash) = Self::extract_hash_from_magnet(&release.download_url) {
+            return Some(hash);
+        }
+        
+        // Try to extract from quality metadata
+        if let Some(hash) = release.quality.get("info_hash")
+            .and_then(|h| h.as_str())
+            .filter(|h| h.len() == 40 || h.len() == 32) {
+            return Some(hash.to_uppercase());
+        }
+        
+        if let Some(hash) = release.quality.get("hash")
+            .and_then(|h| h.as_str())
+            .filter(|h| h.len() == 40 || h.len() == 32) {
+            return Some(hash.to_uppercase());
+        }
+        
+        // Try to extract from other common metadata fields
+        if let Some(hash) = release.quality.get("torrent_hash")
+            .and_then(|h| h.as_str())
+            .filter(|h| h.len() == 40 || h.len() == 32) {
+            return Some(hash.to_uppercase());
+        }
+        
+        None
+    }
+    
+    /// Extract info hash from magnet URL
+    fn extract_hash_from_magnet(url: &str) -> Option<String> {
+        if url.starts_with("magnet:") {
+            // Parse magnet URL for info hash (xt parameter)
+            if let Some(xt_start) = url.find("xt=") {
+                let xt_part = &url[xt_start + 3..]; // Skip "xt="
+                
+                // Look for btih hash format
+                if xt_part.starts_with("urn:btih:") {
+                    let hash_part = &xt_part[9..]; // Skip "urn:btih:"
+                    return hash_part.split('&').next()
+                        .filter(|h| h.len() == 40 || h.len() == 32)
+                        .map(|hash| hash.to_uppercase());
+                }
+                
+                // Direct hash format
+                if let Some(hash) = xt_part.split('&').next() {
+                    if hash.len() == 40 || hash.len() == 32 {
+                        return Some(hash.to_uppercase());
+                    }
+                }
+            }
+        }
+        None
     }
 }
 

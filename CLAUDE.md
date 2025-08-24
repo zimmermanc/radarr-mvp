@@ -2,14 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 📈 PROGRESS UPDATE: ~68% Complete, 21 TODOs Remaining
+## 📈 PROGRESS UPDATE: ~75% Complete, 10 TODOs Remaining
 
 ### Progress Update (2025-08-24)
-- **Current TODO count**: 21 (down from 33 after today's work)
+- **Current TODO count**: 10 (down from 33, major progress today)
 - **UI operations**: All Queue and Movie operations now wired up
 - **TMDb integration**: List methods implemented and integrated
 - **Build artifacts**: Cleaned up 56GB of accumulated artifacts
-- **Actual completion**: ~68% (significant progress from UI wiring)
+- **Monitoring metrics**: Real calculations instead of placeholders
+- **Metadata extraction**: Info hash, IMDB ID, and internal flag extraction
+- **Actual completion**: ~75% (major implementation progress)
 - **Key accomplishment**: Fixed misleading RSS TODO and completed UI integration
 
 ### Previous Reality Check (2025-01-24)

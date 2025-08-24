@@ -215,6 +215,88 @@ fn default_search_limit() -> u32 { 20 }
 fn default_page() -> u32 { 1 }
 fn default_limit() -> u32 { 50 }
 
+/// Metadata extraction utilities
+mod metadata_utils {
+    use regex::Regex;
+    use once_cell::sync::Lazy;
+    
+    /// Extract IMDB ID from release title or description
+    pub fn extract_imdb_id(title: &str, description: Option<&str>) -> Option<String> {
+        static IMDB_REGEX: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"\b(tt\d{7,8})\b").unwrap()
+        });
+        
+        // Check title first
+        if let Some(captures) = IMDB_REGEX.captures(title) {
+            if let Some(imdb_id) = captures.get(1) {
+                return Some(imdb_id.as_str().to_string());
+            }
+        }
+        
+        // Check description if available
+        if let Some(desc) = description {
+            if let Some(captures) = IMDB_REGEX.captures(desc) {
+                if let Some(imdb_id) = captures.get(1) {
+                    return Some(imdb_id.as_str().to_string());
+                }
+            }
+        }
+        
+        None
+    }
+    
+    /// Extract info hash from magnet URL or torrent metadata
+    pub fn extract_info_hash(download_url: &str, metadata: Option<&serde_json::Value>) -> Option<String> {
+        // Try to extract from magnet URL first
+        if let Some(hash) = extract_hash_from_magnet(download_url) {
+            return Some(hash);
+        }
+        
+        // Try to extract from metadata
+        if let Some(meta) = metadata {
+            if let Some(hash) = meta.get("info_hash")
+                .and_then(|h| h.as_str())
+                .filter(|h| h.len() == 40 || h.len() == 32) {
+                return Some(hash.to_uppercase());
+            }
+            
+            if let Some(hash) = meta.get("hash")
+                .and_then(|h| h.as_str())
+                .filter(|h| h.len() == 40 || h.len() == 32) {
+                return Some(hash.to_uppercase());
+            }
+        }
+        
+        None
+    }
+    
+    /// Extract info hash from magnet URL
+    fn extract_hash_from_magnet(url: &str) -> Option<String> {
+        if url.starts_with("magnet:") {
+            // Parse magnet URL for info hash (xt parameter)
+            if let Some(xt_start) = url.find("xt=") {
+                let xt_part = &url[xt_start + 3..]; // Skip "xt="
+                
+                // Look for btih hash format
+                if xt_part.starts_with("urn:btih:") {
+                    let hash_part = &xt_part[9..]; // Skip "urn:btih:"
+                    return hash_part.split('&').next()
+                        .filter(|h| h.len() == 40 || h.len() == 32)
+                        .map(|hash| hash.to_uppercase());
+                }
+                
+                // Direct hash format
+                if let Some(hash) = xt_part.split('&').next() {
+                    if hash.len() == 40 || hash.len() == 32 {
+                        return Some(hash.to_uppercase());
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 /// Create the simplified API router with security features
 pub fn create_simple_api_router(state: SimpleApiState) -> Router {
     // Load security configuration from environment
@@ -1656,24 +1738,38 @@ async fn search_hdbits_fallback(query: &str) -> Result<SearchResponse, RadarrErr
     // Convert HDBits Release results to SearchResponse format
     let search_response = SearchResponse {
         total: results.len() as i32,
-        results: results.into_iter().map(|release| ProwlarrSearchResult {
-            indexer: "HDBits".to_string(),
-            indexer_id: release.indexer_id,
-            title: release.title.clone(),
-            download_url: release.download_url.clone(),
-            info_url: release.info_url,
-            size: release.size_bytes.map(|s| s as i64),
-            seeders: release.seeders,
-            leechers: release.leechers,
-            imdb_id: None, // TODO: Extract from release metadata
-            tmdb_id: None,
-            freeleech: Some(false), // TODO: Parse from quality info
-            download_factor: Some(1.0),
-            upload_factor: Some(1.0),
-            publish_date: release.published_date,
-            categories: vec![], // TODO: Map HDBits categories
-            attributes: HashMap::new(),
-            info_hash: None, // TODO: Extract from torrent data
+        results: results.into_iter().map(|release| {
+            // Extract IMDB ID from title or quality metadata
+            let imdb_id = metadata_utils::extract_imdb_id(&release.title, None)
+                .or_else(|| release.quality.get("imdb_id").and_then(|v| v.as_str()).map(|s| s.to_string()));
+            
+            // Extract info hash from download URL or quality metadata
+            let info_hash = metadata_utils::extract_info_hash(&release.download_url, Some(&release.quality));
+            
+            // Parse freeleech from quality metadata
+            let freeleech = release.quality.get("freeleech")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            
+            ProwlarrSearchResult {
+                indexer: "HDBits".to_string(),
+                indexer_id: release.indexer_id,
+                title: release.title.clone(),
+                download_url: release.download_url.clone(),
+                info_url: release.info_url,
+                size: release.size_bytes.map(|s| s as i64),
+                seeders: release.seeders,
+                leechers: release.leechers,
+                imdb_id,
+                tmdb_id: None,
+                freeleech: Some(freeleech),
+                download_factor: Some(1.0),
+                upload_factor: Some(1.0),
+                publish_date: release.published_date,
+                categories: vec![], // TODO: Map HDBits categories
+                attributes: HashMap::new(),
+                info_hash,
+            }
         }).collect(),
         indexers_searched: 1,
         indexers_with_errors: 0,

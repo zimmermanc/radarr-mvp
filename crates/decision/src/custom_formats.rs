@@ -321,16 +321,39 @@ pub struct ReleaseData {
 impl ReleaseData {
     /// Create release data from indexer result
     pub fn from_search_result(result: &crate::engine::Release) -> Self {
+        // Check if release is marked as internal
+        let internal = Self::is_internal_release(&result.title, result.release_group.as_deref());
+        
         Self {
             title: result.title.clone(),
             size_bytes: result.size,
             seeders: result.seeders,
             leechers: result.leechers,
             freeleech: result.freeleech,
-            internal: None, // TODO: Extract from indexer data
+            internal: Some(internal),
             indexer: "Unknown".to_string(), // TODO: Pass from context
             release_group: result.release_group.clone(),
         }
+    }
+    
+    /// Check if release is marked as internal
+    fn is_internal_release(title: &str, release_group: Option<&str>) -> bool {
+        let title_lower = title.to_lowercase();
+        
+        // Check for internal markers in title
+        if title_lower.contains("internal") || title_lower.contains("-internal-") {
+            return true;
+        }
+        
+        // Check release group
+        if let Some(group) = release_group {
+            let group_lower = group.to_lowercase();
+            if group_lower.contains("internal") {
+                return true;
+            }
+        }
+        
+        false
     }
 }
 

@@ -15,9 +15,9 @@ fn test_hdbits_config_validation() {
     config.username = String::new();
     // assert!(config.validate().is_err());
 
-    // Test invalid session_cookie length
+    // Test invalid passkey length (session_cookie no longer used)
     config = HDBitsConfig::default();
-    config.session_cookie = "short".to_string();
+    config.passkey = "short".to_string();
     // assert!(config.validate().is_err());
 
     // Test zero rate limit

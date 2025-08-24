@@ -283,8 +283,7 @@ impl MultiIndexerService {
         for result in results {
             let mut should_add = true;
 
-            // Check InfoHash deduplication (exact match) - using download_url as hash for now
-            // TODO: Extract actual InfoHash from magnet URLs
+            // Check InfoHash deduplication (exact match)
             let hash_key = Self::extract_hash_from_url(&result.download_url);
             if let Some(hash) = hash_key {
                 if let Some(&existing_idx) = seen_hashes.get(&hash) {
@@ -329,14 +328,76 @@ impl MultiIndexerService {
 
     /// Extract InfoHash from magnet URL or return None
     fn extract_hash_from_url(url: &str) -> Option<String> {
-        if url.starts_with("magnet:?xt=urn:btih:") {
-            url.split("urn:btih:")
-                .nth(1)
-                .and_then(|hash_part| hash_part.split('&').next())
-                .map(|hash| hash.to_uppercase())
-        } else {
-            None
+        if url.starts_with("magnet:") {
+            // Parse magnet URL for info hash (xt parameter)
+            if let Some(xt_start) = url.find("xt=") {
+                let xt_part = &url[xt_start + 3..]; // Skip "xt="
+                
+                // Look for btih hash format
+                if xt_part.starts_with("urn:btih:") {
+                    let hash_part = &xt_part[9..]; // Skip "urn:btih:"
+                    return hash_part.split('&').next()
+                        .filter(|h| h.len() == 40 || h.len() == 32) // Valid hash lengths
+                        .map(|hash| hash.to_uppercase());
+                }
+                
+                // Direct hash format (magnet:?xt=<hash>)
+                if let Some(hash) = xt_part.split('&').next() {
+                    if hash.len() == 40 || hash.len() == 32 {
+                        return Some(hash.to_uppercase());
+                    }
+                }
+            }
         }
+        None
+    }
+    
+    /// Extract IMDB ID from release title, description, or metadata
+    fn extract_imdb_id(title: &str, description: Option<&str>) -> Option<String> {
+        use regex::Regex;
+        use once_cell::sync::Lazy;
+        
+        static IMDB_REGEX: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"\b(tt\d{7,8})\b").unwrap()
+        });
+        
+        // Check title first
+        if let Some(captures) = IMDB_REGEX.captures(title) {
+            if let Some(imdb_id) = captures.get(1) {
+                return Some(imdb_id.as_str().to_string());
+            }
+        }
+        
+        // Check description if available
+        if let Some(desc) = description {
+            if let Some(captures) = IMDB_REGEX.captures(desc) {
+                if let Some(imdb_id) = captures.get(1) {
+                    return Some(imdb_id.as_str().to_string());
+                }
+            }
+        }
+        
+        None
+    }
+    
+    /// Check if release is marked as internal
+    fn is_internal_release(title: &str, release_group: Option<&str>) -> bool {
+        let title_lower = title.to_lowercase();
+        
+        // Check for internal markers in title
+        if title_lower.contains("internal") || title_lower.contains("-internal-") {
+            return true;
+        }
+        
+        // Check release group
+        if let Some(group) = release_group {
+            let group_lower = group.to_lowercase();
+            if group_lower.contains("internal") {
+                return true;
+            }
+        }
+        
+        false
     }
 
     /// Normalize title for similarity comparison
@@ -537,5 +598,58 @@ mod tests {
         
         // Should get high score for: freeleech (50) + seeders (25) + 4K (15) + HDBits (3) + HDR (8) = 101+
         assert!(score > 100.0, "Score was {}, expected > 100", score);
+    }
+    
+    #[test]
+    fn test_extract_hash_from_magnet_url() {
+        // Test standard magnet URL with urn:btih format
+        let magnet1 = "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn=test";
+        assert_eq!(MultiIndexer::extract_hash_from_url(magnet1), Some("1234567890ABCDEF1234567890ABCDEF12345678".to_string()));
+        
+        // Test magnet URL with direct hash
+        let magnet2 = "magnet:?xt=1234567890abcdef1234567890abcdef12345678&dn=test";
+        assert_eq!(MultiIndexer::extract_hash_from_url(magnet2), Some("1234567890ABCDEF1234567890ABCDEF12345678".to_string()));
+        
+        // Test non-magnet URL
+        let http_url = "https://example.com/torrent.torrent";
+        assert_eq!(MultiIndexer::extract_hash_from_url(http_url), None);
+        
+        // Test invalid hash length
+        let invalid_magnet = "magnet:?xt=urn:btih:tooshort&dn=test";
+        assert_eq!(MultiIndexer::extract_hash_from_url(invalid_magnet), None);
+    }
+    
+    #[test]
+    fn test_extract_imdb_id() {
+        // Test IMDB ID in title
+        let title1 = "The Movie (2023) [tt1234567] 1080p BluRay";
+        assert_eq!(MultiIndexer::extract_imdb_id(title1, None), Some("tt1234567".to_string()));
+        
+        // Test IMDB ID in description
+        let title2 = "The Movie (2023) 1080p BluRay";
+        let description = "Great movie with excellent reviews. IMDB: tt7654321";
+        assert_eq!(MultiIndexer::extract_imdb_id(title2, Some(description)), Some("tt7654321".to_string()));
+        
+        // Test no IMDB ID found
+        let title3 = "The Movie (2023) 1080p BluRay";
+        assert_eq!(MultiIndexer::extract_imdb_id(title3, None), None);
+        
+        // Test invalid IMDB ID format
+        let title4 = "The Movie tt123 1080p BluRay"; // Too short
+        assert_eq!(MultiIndexer::extract_imdb_id(title4, None), None);
+    }
+    
+    #[test]
+    fn test_is_internal_release() {
+        // Test internal in title
+        assert!(MultiIndexer::is_internal_release("Movie.2023.INTERNAL.1080p.BluRay", None));
+        assert!(MultiIndexer::is_internal_release("Movie.2023-INTERNAL-1080p.BluRay", None));
+        
+        // Test internal in release group
+        assert!(MultiIndexer::is_internal_release("Movie.2023.1080p.BluRay", Some("INTERNAL-GROUP")));
+        
+        // Test not internal
+        assert!(!MultiIndexer::is_internal_release("Movie.2023.1080p.BluRay", None));
+        assert!(!MultiIndexer::is_internal_release("Movie.2023.1080p.BluRay", Some("PUBLIC-GROUP")));
     }
 }

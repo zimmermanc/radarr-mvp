@@ -416,7 +416,7 @@ impl ListSyncMonitor {
     /// Evaluate alert conditions across all monitoring components
     async fn evaluate_alert_conditions(
         alert_manager: &AlertManager,
-        metrics: &PrometheusMetrics,
+        _metrics: &PrometheusMetrics,
         health_checker: &RwLock<HealthChecker>,
         circuit_breakers: &RwLock<HashMap<String, CircuitBreaker>>,
     ) {

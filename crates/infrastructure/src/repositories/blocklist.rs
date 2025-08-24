@@ -593,8 +593,8 @@ mod tests {
         assert!(is_blocked);
     }
     
-    #[test]
-    fn test_failure_reason_conversion() {
+    #[tokio::test]
+    async fn test_failure_reason_conversion() {
         let repo = PostgresBlocklistRepository::new(PgPool::connect("").await.unwrap());
         
         let reason = FailureReason::ImportFailed(ImportFailureType::FileMoveError);

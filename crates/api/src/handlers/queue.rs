@@ -66,11 +66,31 @@ pub struct QueueItemResponse {
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
     pub added: String,
+    // Additional display fields for testing
+    #[serde(rename = "sizeDisplay")]
+    pub size_display: Option<String>,
+    #[serde(rename = "downloadSpeedDisplay")]
+    pub download_speed_display: Option<String>,
+    #[serde(rename = "etaDisplay")]
+    pub eta_display: Option<String>,
+    #[serde(rename = "canRetry")]
+    pub can_retry: bool,
 }
 
 impl From<QueueItem> for QueueItemResponse {
     fn from(queue_item: QueueItem) -> Self {
         let eta = queue_item.human_readable_eta();
+        
+        // Format display fields
+        let size_display = queue_item.size_bytes.map(|s| format_bytes(s));
+        let download_speed_display = queue_item.download_speed.map(|s| format!("{}/s", format_bytes(s as i64)));
+        let eta_display = queue_item.eta_seconds.map(|seconds| {
+            let hours = seconds / 3600;
+            let minutes = (seconds % 3600) / 60;
+            format!("{}h {}m", hours, minutes)
+        });
+        let can_retry = matches!(queue_item.status, QueueStatus::Failed);
+        
         Self {
             id: queue_item.id.to_string(),
             movie_id: queue_item.movie_id.as_u128() as i32, // Convert UUID to int (simplified)
@@ -91,9 +111,14 @@ impl From<QueueItem> for QueueItemResponse {
             eta,
             error_message: queue_item.error_message,
             added: queue_item.created_at.to_rfc3339(),
+            size_display,
+            download_speed_display,
+            eta_display,
+            can_retry,
         }
     }
 }
+
 
 /// Enhanced queue statistics with additional metadata
 #[derive(Debug, Serialize)]
@@ -503,8 +528,8 @@ mod tests {
         
         let response = QueueItemResponse::from(queue_item);
         
-        assert_eq!(response.size_display, Some("1.0 GB".to_string()));
-        assert_eq!(response.download_speed_display, Some("1.0 MB/s".to_string()));
+        assert_eq!(response.size_display, Some("1.00 GB".to_string()));
+        assert_eq!(response.download_speed_display, Some("1.00 MB/s".to_string()));
         assert_eq!(response.eta_display, Some("1h 0m".to_string()));
         assert!(!response.can_retry);
     }

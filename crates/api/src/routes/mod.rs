@@ -1,5 +1,6 @@
 //! Basic route configuration
 
+pub mod advanced_search;
 pub mod monitoring;
 pub mod streaming;
 
@@ -14,4 +15,5 @@ pub fn create_routes() -> Router {
 }
 
 // Re-export route creation functions
+pub use advanced_search::create_advanced_search_routes;
 pub use monitoring::create_monitoring_routes;

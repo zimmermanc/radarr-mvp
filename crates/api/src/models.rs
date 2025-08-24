@@ -203,7 +203,7 @@ pub struct SearchResponse {
 }
 
 /// Individual release/torrent result
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseResponse {
     pub guid: String,

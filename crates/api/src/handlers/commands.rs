@@ -9,13 +9,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use radarr_core::{
-    models::{Download, DownloadStatus},
-    repositories::DownloadRepository,
-};
+use radarr_core::models::{Download, DownloadStatus};
 use radarr_infrastructure::{repositories::PostgresDownloadRepository, DatabasePool};
 use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 

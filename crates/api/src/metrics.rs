@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, Encoder,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec,
     GaugeVec, HistogramVec, TextEncoder,
 };
 use std::{

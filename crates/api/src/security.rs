@@ -5,12 +5,11 @@
 
 use axum::{
     http::{header, HeaderValue, Method},
-    middleware::from_fn,
     Router,
 };
 use std::str::FromStr;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     set_header::SetResponseHeaderLayer,
 };
 

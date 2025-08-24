@@ -2,10 +2,10 @@
 
 use crate::error::{ApiError, ApiResult};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Router,
 };
 use radarr_decision::{CustomFormat, CustomFormatEngine, FormatSpecification, ReleaseData};
@@ -13,7 +13,6 @@ use radarr_infrastructure::{
     CustomFormatsRepository, DatabasePool, PostgresCustomFormatsRepository,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info, instrument};
 use uuid::Uuid;

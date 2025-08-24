@@ -6,11 +6,11 @@
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     Json,
 };
-use chrono::{DateTime, NaiveDate, Utc};
-use radarr_core::{Movie, Result};
+use chrono::{DateTime, Utc};
+use radarr_core::Movie;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

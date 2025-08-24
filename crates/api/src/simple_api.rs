@@ -21,7 +21,7 @@ use tower_http::services::ServeDir;
 use chrono;
 use radarr_core::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState};
 use radarr_indexers::{IndexerClient, ProwlarrSearchResult, SearchRequest, SearchResponse};
-use radarr_infrastructure::{CachedTmdbClient, DatabasePool, PostgresMovieRepository, TmdbClient};
+use radarr_infrastructure::{CachedTmdbClient, DatabasePool, PostgresMovieRepository};
 use regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

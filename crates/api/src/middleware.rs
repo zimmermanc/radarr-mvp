@@ -2,12 +2,10 @@
 
 use axum::{
     body::Body,
-    extract::State,
     http::{HeaderMap, Request, Response, StatusCode},
     middleware::Next,
     response::Response as AxumResponse,
 };
-use std::sync::Arc;
 
 /// Simple request logging middleware
 pub async fn request_logger(request: Request<Body>, next: Next) -> Response<Body> {

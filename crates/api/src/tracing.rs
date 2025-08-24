@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{body::Body, extract::Request, http::HeaderMap, middleware::Next, response::Response};
-use tracing::{field, Instrument, Span};
+use tracing::{field, Span};
 use uuid::Uuid;
 
 /// Simplified tracing utilities for Radarr MVP

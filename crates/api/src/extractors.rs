@@ -10,7 +10,6 @@ use axum::{
     http::request::Parts,
 };
 use serde::de::DeserializeOwned;
-use uuid::Uuid;
 
 /// Validated path extractor that ensures valid UUIDs
 pub struct ValidatedPath<T>(pub T);

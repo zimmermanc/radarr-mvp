@@ -1,0 +1,199 @@
+# GitLeaks Configuration for Radarr MVP
+# Comprehensive secret detection with custom rules for HDBits, TMDB, and other sensitive data
+
+title = "Radarr MVP Secret Protection"
+
+[extend]
+# Use the default gitleaks ruleset as base
+useDefault = true
+
+[[rules]]
+id = "hdbits-passkey"
+description = "HDBits passkey (128-character hexadecimal string)"
+regex = '''(?i)(passkey|key|hdbits[_-]?key)\s*[:=]\s*["\']?([a-f0-9]{128})["\']?'''
+secretGroup = 2
+tags = ["hdbits", "passkey", "private-tracker"]
+keywords = ["hdbits", "passkey"]
+
+[[rules]]
+id = "hdbits-passkey-standalone"
+description = "Standalone HDBits passkey (128-character hex)"
+regex = '''[a-f0-9]{128}'''
+secretGroup = 0
+entropy = 3.8
+tags = ["hdbits", "passkey"]
+keywords = ["hdbits"]
+
+[[rules]]
+id = "tmdb-api-key-jwt"
+description = "TMDB API Key (JWT Bearer Token)"
+regex = '''(?i)(tmdb|movie[_-]?db)[_-]?(api[_-]?key|key|token)\s*[:=]\s*["\']?(eyJ[a-zA-Z0-9\-._~+/]+=*)["\']?'''
+secretGroup = 3
+tags = ["tmdb", "jwt", "api-key"]
+keywords = ["tmdb", "moviedb"]
+
+[[rules]]
+id = "generic-api-key-long"
+description = "Long API keys (64+ characters, high entropy)"
+regex = '''(?i)(api[_-]?key|key|token)\s*[:=]\s*["\']?([a-zA-Z0-9\-._~+/]{64,})["\']?'''
+secretGroup = 2
+entropy = 3.5
+tags = ["api-key", "long-key"]
+keywords = ["api", "key", "token"]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database connection strings with credentials"
+regex = '''(?i)(database[_-]?url|db[_-]?url|connection[_-]?string)\s*[:=]\s*["\']?(postgresql|mysql|postgres)://([^:]+):([^@]+)@([^/]+)/([^"\'\s]+)["\']?'''
+secretGroup = 0
+tags = ["database", "connection-string"]
+keywords = ["database", "postgres", "mysql"]
+
+[[rules]]
+id = "postgresql-password"
+description = "PostgreSQL password in connection strings"
+regex = '''postgresql://[^:]+:([^@]+)@'''
+secretGroup = 1
+tags = ["postgres", "password"]
+keywords = ["postgresql", "postgres"]
+
+[[rules]]
+id = "qbittorrent-credentials"
+description = "qBittorrent API credentials"
+regex = '''(?i)(qb[_-]?(username|password|host|port|api[_-]?key))\s*[:=]\s*["\']?([^\s"'\n]+)["\']?'''
+secretGroup = 3
+tags = ["qbittorrent", "torrent-client"]
+keywords = ["qbittorrent", "torrent"]
+
+[[rules]]
+id = "discord-webhook"
+description = "Discord webhook URLs"
+regex = '''https://discord(?:app)?\.com/api/webhooks/[0-9]{17,19}/[a-zA-Z0-9\-._~]{68}'''
+tags = ["discord", "webhook"]
+keywords = ["discord", "webhook"]
+
+[[rules]]
+id = "grafana-secret-key"
+description = "Grafana secret keys and passwords"
+regex = '''(?i)(grafana[_-]?(secret[_-]?key|password|admin[_-]?password))\s*[:=]\s*["\']?([^\s"'\n]+)["\']?'''
+secretGroup = 3
+tags = ["grafana", "monitoring"]
+keywords = ["grafana"]
+
+[[rules]]
+id = "prometheus-token"
+description = "Prometheus authentication tokens"
+regex = '''(?i)(prometheus[_-]?token|prom[_-]?token)\s*[:=]\s*["\']?([a-zA-Z0-9\-._~+/=]{20,})["\']?'''
+secretGroup = 2
+tags = ["prometheus", "monitoring"]
+keywords = ["prometheus", "prom"]
+
+[[rules]]
+id = "jwt-token"
+description = "Generic JWT tokens"
+regex = '''eyJ[a-zA-Z0-9\-._~+/]+=*\.eyJ[a-zA-Z0-9\-._~+/]+=*\.[a-zA-Z0-9\-._~+/]+=*'''
+tags = ["jwt", "token"]
+keywords = ["jwt", "bearer"]
+
+[[rules]]
+id = "base64-encoded-credentials"
+description = "Base64 encoded credentials (basic auth style)"
+regex = '''(?i)(auth|authorization|credentials|basic)\s*[:=]\s*["\']?([a-zA-Z0-9+/]{20,}={0,2})["\']?'''
+secretGroup = 2
+entropy = 4.0
+tags = ["base64", "credentials"]
+keywords = ["auth", "basic", "credentials"]
+
+[[rules]]
+id = "email-credentials"
+description = "Email server credentials"
+regex = '''(?i)(smtp[_-]?(password|user)|mail[_-]?(password|user))\s*[:=]\s*["\']?([^\s"'\n]+)["\']?'''
+secretGroup = 4
+tags = ["email", "smtp"]
+keywords = ["smtp", "mail", "email"]
+
+# Allowlist patterns to reduce false positives
+[allowlist]
+description = "Allowlist for false positives"
+regexes = [
+    # Template/placeholder values
+    '''your[_-]?(api[_-]?key|key|token)[_-]?here''',
+    '''placeholder[_-]?(key|token)''',
+    '''example[_-]?(key|token|password)''',
+    '''test[_-]?(key|token|password)''',
+    '''sample[_-]?(key|token)''',
+    '''dummy[_-]?(key|token)''',
+    '''fake[_-]?(key|token)''',
+    '''mock[_-]?(key|token)''',
+    
+    # Common placeholder patterns
+    '''xxx+''',
+    '''aaa+''',
+    '''111+''',
+    '''000+''',
+    '''changeme''',
+    '''password123''',
+    '''admin123''',
+    
+    # Configuration examples
+    '''\.example$''',
+    '''\.template$''',
+    '''\.sample$''',
+    
+    # Documentation patterns
+    '''README\.md''',
+    '''SETUP\.md''',
+    '''CONFIG\.md''',
+    '''docs/.*\.md''',
+    
+    # Known safe values from examples
+    '''a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6''',
+    '''YWRtaW46JDJ5JDEwJGV4YW1wbGU=''',
+    '''eW91ci1wcm9tZXRoZXVzLXRva2VuLWhlcmU=''',
+    '''radarr-grafana-secret-key-2024'''
+]
+
+paths = [
+    # Always ignore these paths
+    '''target/''',
+    '''\.git/''',
+    '''node_modules/''',
+    '''dist/''',
+    '''build/''',
+    
+    # Log files and test artifacts
+    '''\.log$''',
+    '''logs/''',
+    '''test-results/''',
+    '''coverage/''',
+    
+    # Temporary files
+    '''tmp/''',
+    '''temp/''',
+    '''\.tmp$''',
+    '''\.temp$''',
+    
+    # Archived/disabled files
+    '''\.disabled$''',
+    '''\.bak$''',
+    '''\.backup$''',
+    '''k8s\.archived/'''
+]
+
+files = [
+    # Specific files to ignore
+    '''package-lock\.json''',
+    '''Cargo\.lock''',
+    '''\.sqlx/'''
+]
+
+# Configure commit and file scanning
+[gitleaks]
+# Stop scanning when first secret is found (for pre-commit speed)
+noGit = false
+# Set verbosity for better debugging
+verbose = true
+# Report format
+reportFormat = "json"
+# Exit code behavior
+exitCode = 1

@@ -1,0 +1,172 @@
+# Pre-commit hooks for Radarr MVP security and code quality
+# Run with: pre-commit install && pre-commit run --all-files
+
+repos:
+  # GitLeaks for secret detection (PRIMARY SECURITY CONTROL)
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: "🔒 Scan for secrets and credentials"
+        description: "Prevent commits containing secrets, API keys, or credentials"
+        entry: gitleaks detect --config=.gitleaks.toml --verbose --redact --no-git
+        language: golang
+        types: [text]
+        stages: [commit, push]
+
+  # Additional security checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: "🕵️  Detect additional secret patterns"
+        description: "Secondary secret detection with different algorithms"
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            target/.*|
+            \.git/.*|
+            node_modules/.*|
+            \.sqlx/.*|
+            .*\.lock$|
+            secret_scan_report\.json$
+          )$
+
+  # Password and sensitive data detection
+  - repo: https://github.com/thoughtworks/talisman
+    rev: v1.32.0
+    hooks:
+      - id: talisman-commit
+        name: "🛡️  Talisman security scan"
+        description: "Advanced pattern matching for sensitive data"
+        entry: talisman --githook pre-commit
+
+  # File security and permissions
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        name: "📦 Check for large files"
+        description: "Prevent accidentally committing large files"
+        args: ['--maxkb=1000']
+      
+      - id: check-case-conflict
+        name: "📁 Check filename case conflicts"
+        description: "Ensure cross-platform filename compatibility"
+      
+      - id: check-merge-conflict
+        name: "🔀 Check for merge conflicts"
+        description: "Prevent committing unresolved merge conflicts"
+      
+      - id: check-executables-have-shebangs
+        name: "⚡ Check executable shebangs"
+        description: "Ensure executable scripts have proper shebangs"
+      
+      - id: check-shebang-scripts-are-executable
+        name: "📜 Check script permissions"
+        description: "Ensure scripts with shebangs are executable"
+      
+      - id: forbid-new-submodules
+        name: "🚫 Forbid new git submodules"
+        description: "Prevent accidental submodule creation"
+      
+      - id: no-commit-to-branch
+        name: "🌿 Protect main branches"
+        description: "Prevent direct commits to protected branches"
+        args: ['--branch', 'main', '--branch', 'master', '--branch', 'production']
+
+  # Configuration file validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-json
+        name: "📋 Validate JSON files"
+        description: "Ensure JSON files are valid"
+      
+      - id: check-toml
+        name: "⚙️  Validate TOML files"
+        description: "Ensure TOML configuration files are valid"
+      
+      - id: check-yaml
+        name: "📄 Validate YAML files"
+        description: "Ensure YAML files are valid"
+        args: ['--allow-multiple-documents']
+
+  # Environment and credential file checks
+  - repo: local
+    hooks:
+      - id: check-env-files
+        name: "🔐 Check environment files"
+        description: "Ensure .env files are not committed"
+        entry: bash -c 'if git diff --cached --name-only | grep -E "\\.env$|\\.env\\.[^.]+$" | grep -v "\\.env\\.example$" | grep -v "\\.env\\.template$"; then echo "❌ .env files detected in commit. Use .env.example instead."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: check-test-credentials
+        name: "🧪 Check test credentials"
+        description: "Ensure test files don't contain real credentials"
+        entry: bash -c 'if git diff --cached --name-only | grep -E "(test|spec)" | xargs grep -l "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863" 2>/dev/null; then echo "❌ Real HDBits passkey found in test files. Use mock data."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: check-config-templates
+        name: "📝 Check config templates"
+        description: "Ensure config examples don't have real values"
+        entry: bash -c 'if git diff --cached --name-only | grep -E "(example|template|sample)" | xargs grep -l -E "(eyJ[a-zA-Z0-9\\-._~+/]+=*|[a-f0-9]{64,})" 2>/dev/null; then echo "❌ Potential real credentials in template files."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # Rust-specific security checks
+  - repo: https://github.com/rust-lang/rust-clippy
+    rev: rust-1.81.0
+    hooks:
+      - id: clippy
+        name: "🦀 Rust security linting"
+        description: "Check Rust code for security issues"
+        args: [
+          "--all-features",
+          "--", 
+          "-W", "clippy::all",
+          "-W", "clippy::suspicious",
+          "-W", "clippy::security_vulnerable_string",
+          "-W", "clippy::panic",
+          "-W", "clippy::unwrap_used",
+          "-W", "clippy::expect_used"
+        ]
+        pass_filenames: false
+
+  # Database migration safety
+  - repo: local
+    hooks:
+      - id: check-sql-migrations
+        name: "🗃️  Check SQL migrations"
+        description: "Ensure SQL migrations don't contain credentials"
+        entry: bash -c 'if git diff --cached --name-only | grep -E "\\.sql$" | xargs grep -l -i -E "(password|secret|key|token)\\s*=" 2>/dev/null; then echo "❌ Potential credentials in SQL migrations."; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+# Global configuration
+default_language_version:
+  python: python3.9
+  node: 18.17.0
+
+# Performance and reliability settings
+fail_fast: true
+minimum_pre_commit_version: "3.0.0"
+
+# CI integration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+    
+    For more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [clippy, talisman-commit]  # Skip heavy checks in CI
+  submodules: false

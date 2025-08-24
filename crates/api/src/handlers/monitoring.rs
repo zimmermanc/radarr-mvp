@@ -9,7 +9,7 @@ use crate::{
     models::PaginationParams,
 };
 use axum::{
-    extract::{Query, Path},
+    extract::{Query, Path, Extension},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -18,6 +18,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::sync::Arc;
+use radarr_infrastructure::monitoring::list_sync_monitor::{ListSyncMonitor, MonitoringStatus};
 use tracing::{debug, warn};
 
 /// Response model for monitoring status
@@ -123,11 +125,19 @@ pub struct AlertFilterParams {
 }
 
 /// GET /metrics - Prometheus metrics endpoint
-pub async fn get_prometheus_metrics() -> impl IntoResponse {
+pub async fn get_prometheus_metrics(
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> impl IntoResponse {
     debug!("Serving Prometheus metrics");
     
-    // TODO: Integrate with ListSyncMonitor once it's wired into the main application
-    let metrics = generate_placeholder_metrics();
+    let metrics = if let Some(Extension(monitor)) = monitor {
+        // Get real metrics from the monitor
+        monitor.get_prometheus_metrics().await
+    } else {
+        // Fallback to placeholder if monitor not available
+        warn!("ListSyncMonitor not available, using placeholder metrics");
+        generate_placeholder_metrics()
+    };
     
     Response::builder()
         .status(StatusCode::OK)
@@ -137,19 +147,76 @@ pub async fn get_prometheus_metrics() -> impl IntoResponse {
 }
 
 /// GET /api/v3/monitoring/status - Comprehensive monitoring status
-pub async fn get_monitoring_status() -> ApiResult<Json<MonitoringStatusResponse>> {
+pub async fn get_monitoring_status(
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> ApiResult<Json<MonitoringStatusResponse>> {
     debug!("Fetching comprehensive monitoring status");
     
-    // TODO: Integrate with ListSyncMonitor once it's wired into the main application
-    let response = generate_placeholder_status();
+    let response = if let Some(Extension(monitor)) = monitor {
+        // Get real status from the monitor
+        let status = monitor.get_monitoring_status().await;
+        convert_monitoring_status_to_response(status)
+    } else {
+        // Fallback to placeholder if monitor not available
+        warn!("ListSyncMonitor not available, using placeholder status");
+        generate_placeholder_status()
+    };
     
     Ok(Json(response))
 }
 
 // ========================================
+// ListSyncMonitor Integration
+// ========================================
+
+/// Convert the internal MonitoringStatus to our API response format
+fn convert_monitoring_status_to_response(status: MonitoringStatus) -> MonitoringStatusResponse {
+    MonitoringStatusResponse {
+        status: "active".to_string(), // Monitor is active if we got a response
+        started_at: status.started_at,
+        uptime_seconds: status.uptime_seconds,
+        total_operations_monitored: status.total_operations_monitored,
+        sync_metrics: SyncMetricsResponse {
+            total_sync_operations: status.sync_metrics.total_sync_operations,
+            successful_sync_operations: status.sync_metrics.successful_sync_operations,
+            failed_sync_operations: status.sync_metrics.failed_sync_operations,
+            average_sync_duration_ms: 0.0, // TODO: Calculate from actual data
+            items_processed_total: 0, // TODO: Calculate from actual data
+            cache_hit_rate: status.sync_metrics.cache_hit_rate,
+        },
+        alert_stats: AlertStatsResponse {
+            total_alerts: status.alert_stats.total_active + status.alert_stats.total_resolved_today,
+            active_alerts: status.alert_stats.total_active,
+            critical_alerts: status.alert_stats.active_critical,
+            warning_alerts: status.alert_stats.active_warning,
+            resolved_alerts: status.alert_stats.total_resolved_today,
+        },
+        active_critical_alerts: status.active_critical_alerts,
+        health_summary: HealthSummaryResponse {
+            overall_status: if status.health_summary.unhealthy_services == 0 { "healthy".to_string() } else { "degraded".to_string() },
+            healthy_services: status.health_summary.healthy_services,
+            unhealthy_services: status.health_summary.unhealthy_services,
+            unknown_services: status.health_summary.unknown_services,
+            last_check: Utc::now(), // TODO: Get actual last check time
+        },
+        circuit_breaker_status: status.circuit_breaker_status
+            .into_iter()
+            .map(|(k, v)| {
+                (k, CircuitBreakerStatusResponse {
+                    state: v.state,
+                    consecutive_failures: v.consecutive_failures,
+                    success_rate: v.success_rate,
+                    is_healthy: v.is_healthy,
+                })
+            })
+            .collect(),
+    }
+}
+
+// ========================================
 // Placeholder implementations
 // ========================================
-// TODO: Replace these with real ListSyncMonitor integration
+// NOTE: These are fallbacks when ListSyncMonitor is not available
 
 /// Generate placeholder Prometheus metrics
 fn generate_placeholder_metrics() -> String {
@@ -299,4 +366,120 @@ fn generate_placeholder_circuit_breakers() -> HashMap<String, CircuitBreakerStat
 fn generate_placeholder_alert_by_id(_alert_id: &str) -> Option<AlertResponse> {
     // Return None for now - real implementation would query ListSyncMonitor
     None
+}
+
+// ========================================
+// Additional Handler Functions
+// ========================================
+
+/// GET /api/v3/monitoring/alerts - List alerts with filtering
+pub async fn get_alerts(
+    Query(filter): Query<AlertFilterParams>,
+    Query(pagination): Query<PaginationParams>,
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> ApiResult<Json<serde_json::Value>> {
+    debug!("Fetching alerts with filter: {:?}", filter);
+    
+    let alerts = if let Some(Extension(monitor)) = monitor {
+        // TODO: Implement real alert querying from monitor
+        // For now, return empty as the monitor doesn't expose alerts directly yet
+        Vec::new()
+    } else {
+        generate_placeholder_alerts(&filter, &pagination)
+    };
+    
+    Ok(Json(json!({
+        "data": alerts,
+        "pagination": {
+            "page": pagination.page,
+            "pageSize": pagination.page_size,
+            "totalCount": alerts.len()
+        }
+    })))
+}
+
+/// GET /api/v3/monitoring/alerts/{id} - Get specific alert by ID
+pub async fn get_alert_by_id(
+    Path(alert_id): Path<String>,
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> ApiResult<Json<AlertResponse>> {
+    debug!("Fetching alert by ID: {}", alert_id);
+    
+    let alert = if let Some(Extension(_monitor)) = monitor {
+        // TODO: Implement real alert querying by ID from monitor
+        generate_placeholder_alert_by_id(&alert_id)
+    } else {
+        generate_placeholder_alert_by_id(&alert_id)
+    };
+    
+    match alert {
+        Some(alert) => Ok(Json(alert)),
+        None => Err(ApiError::NotFound {
+            resource: "alert".to_string(),
+        }),
+    }
+}
+
+/// GET /api/v3/monitoring/health - Service health status
+pub async fn get_health_status(
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> ApiResult<Json<serde_json::Value>> {
+    debug!("Fetching service health status");
+    
+    let (health_summary, services) = if let Some(Extension(monitor)) = monitor {
+        // Get real health data from monitor
+        let status = monitor.get_monitoring_status().await;
+        let overall_status = if status.health_summary.unhealthy_services == 0 {
+            "healthy"
+        } else {
+            "degraded"
+        };
+        
+        let summary = json!({
+            "status": overall_status,
+            "healthyServices": status.health_summary.healthy_services,
+            "unhealthyServices": status.health_summary.unhealthy_services,
+            "unknownServices": status.health_summary.unknown_services,
+            "lastCheck": Utc::now(),
+        });
+        
+        // TODO: Get actual service details from monitor
+        // For now, use placeholder services
+        let (_, services) = generate_placeholder_health();
+        (summary, services)
+    } else {
+        generate_placeholder_health()
+    };
+    
+    Ok(Json(json!({
+        "healthSummary": health_summary,
+        "services": services
+    })))
+}
+
+/// GET /api/v3/monitoring/circuit-breakers - Circuit breaker states
+pub async fn get_circuit_breaker_states(
+    monitor: Option<Extension<Arc<ListSyncMonitor>>>,
+) -> ApiResult<Json<HashMap<String, CircuitBreakerStatusResponse>>> {
+    debug!("Fetching circuit breaker states");
+    
+    let circuit_breakers = if let Some(Extension(monitor)) = monitor {
+        // Get real circuit breaker data from monitor
+        let status = monitor.get_monitoring_status().await;
+        status.circuit_breaker_status
+            .into_iter()
+            .map(|(k, v)| {
+                (k, CircuitBreakerStatusResponse {
+                    state: v.state,
+                    consecutive_failures: v.consecutive_failures,
+                    success_rate: v.success_rate,
+                    is_healthy: v.is_healthy,
+                })
+            })
+            .collect()
+    } else {
+        generate_placeholder_circuit_breakers()
+    };
+    
+    Ok(Json(circuit_breakers))
 }

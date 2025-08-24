@@ -10,7 +10,10 @@ use radarr_core::{RadarrError, Result, EventBus, EventProcessor, QueueProcessor,
 use radarr_indexers::{IndexerClient};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
-use radarr_infrastructure::{DatabasePool, PostgresQueueRepository, QBittorrentDownloadClient};
+use radarr_infrastructure::{
+    DatabasePool, PostgresQueueRepository, QBittorrentDownloadClient, PostgresMovieRepository,
+    monitoring::list_sync_monitor::{ListSyncMonitor, ListSyncMonitorConfig}
+};
 use tracing::{info, debug, error, warn, instrument};
 
 pub mod simplified_media_service;
@@ -28,6 +31,8 @@ pub struct AppServices {
     pub media_service: Arc<SimplifiedMediaService>,
     /// Database pool
     pub database_pool: DatabasePool,
+    /// Movie repository for database operations
+    pub movie_repository: Arc<PostgresMovieRepository>,
     /// Indexer client for direct API access
     pub indexer_client: Arc<dyn IndexerClient + Send + Sync>,
     /// Event bus for inter-component communication
@@ -38,6 +43,8 @@ pub struct AppServices {
     pub rss_service: Option<Arc<RssService>>,
     /// Streaming service aggregator
     pub streaming_aggregator: Option<Arc<dyn radarr_core::streaming::traits::StreamingAggregator>>,
+    /// List sync monitor for system monitoring
+    pub list_sync_monitor: Option<Arc<ListSyncMonitor>>,
 }
 
 impl AppServices {
@@ -58,14 +65,19 @@ impl AppServices {
             import_pipeline,
         ));
         
+        // Create movie repository
+        let movie_repository = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
+        
         Ok(Self {
             media_service,
             database_pool,
+            movie_repository,
             indexer_client: prowlarr_client,
             event_bus,
             queue_processor: None, // Will be initialized separately
             rss_service: None, // Will be initialized separately
             streaming_aggregator: None, // Will be initialized separately
+            list_sync_monitor: None, // Will be initialized separately
         })
     }
     
@@ -116,6 +128,44 @@ impl AppServices {
         self.streaming_aggregator = Some(aggregator);
         
         info!("Streaming service aggregator initialized");
+        Ok(())
+    }
+    
+    /// Initialize list sync monitor with default configuration
+    pub async fn initialize_list_sync_monitor(&mut self) -> Result<()> {
+        let config = ListSyncMonitorConfig::default();
+        let monitor = Arc::new(
+            ListSyncMonitor::new(config).await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "list_sync_monitor".to_string(),
+                    error: format!("Failed to create ListSyncMonitor: {}", e),
+                })?
+        );
+        
+        // Setup default health checkers
+        monitor.setup_default_health_checkers().await
+            .map_err(|e| RadarrError::ExternalServiceError {
+                service: "list_sync_monitor".to_string(),
+                error: format!("Failed to setup health checkers: {}", e),
+            })?;
+        
+        self.list_sync_monitor = Some(monitor);
+        info!("List sync monitor initialized");
+        Ok(())
+    }
+    
+    /// Start the list sync monitor in the background
+    pub async fn start_list_sync_monitor(&self) -> Result<()> {
+        if let Some(monitor) = &self.list_sync_monitor {
+            monitor.start_monitoring().await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "list_sync_monitor".to_string(),
+                    error: format!("Failed to start monitoring: {}", e),
+                })?;
+            info!("List sync monitor started successfully");
+        } else {
+            warn!("List sync monitor not initialized, skipping start");
+        }
         Ok(())
     }
     
@@ -179,6 +229,7 @@ impl AppServices {
         let download_import_handler = Arc::new(DownloadImportHandler::new(
             self.media_service.import_pipeline.clone(),
             self.database_pool.clone(),
+            self.event_bus.clone(),
         ));
         
         // Create event processor

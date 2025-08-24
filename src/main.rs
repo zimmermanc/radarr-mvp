@@ -277,6 +277,14 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
     // Initialize streaming aggregator
     services.initialize_streaming_aggregator()?;
     info!("✅ Streaming service aggregator initialized");
+    
+    // Initialize list sync monitor
+    services.initialize_list_sync_monitor().await?;
+    info!("✅ List sync monitor initialized");
+    
+    // Start list sync monitor
+    services.start_list_sync_monitor().await?;
+    info!("✅ List sync monitor started");
 
     Ok(services)
 }
@@ -339,6 +347,15 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/rss/feeds/:id", delete(api::remove_feed))
         .route("/api/rss/test", get(api::test_feed))
         .route("/api/rss/calendar", get(api::get_calendar).post(api::add_calendar_entry))
+        // Add v3 movie endpoints using AppServices (will override simple_api routes)
+        .route("/api/v3/movie", get(api::list_movies))
+        .route("/api/v3/movie/:id", get(api::get_movie))
+        .route("/api/v3/movie", post(api::add_movie))
+        .route("/api/v3/movie/:id", axum::routing::put(api::update_movie))
+        .route("/api/v3/movie/:id", delete(api::delete_movie))
+        .route("/api/v3/movie/lookup", get(api::lookup_movies))
+        .route("/api/v3/qualityprofile", get(api::list_quality_profiles))
+        .route("/api/v3/qualityprofile/:id", get(api::get_quality_profile))
         // Add Prometheus metrics endpoint (this will be replaced by monitoring routes)
         .route("/legacy-metrics", get(metrics_endpoint))
         
@@ -360,9 +377,17 @@ fn build_router(app_state: AppState) -> Router {
         info!("Streaming routes added to API");
     }
     
-    // Add monitoring routes
+    // Add monitoring routes with optional monitor extension
     use radarr_api::routes::create_monitoring_routes;
-    router = router.merge(create_monitoring_routes());
+    let mut monitoring_router = create_monitoring_routes();
+    
+    // Add ListSyncMonitor as extension if available
+    if let Some(monitor) = &app_state.services.list_sync_monitor {
+        monitoring_router = monitoring_router.layer(axum::Extension(monitor.clone()));
+        info!("ListSyncMonitor added to monitoring routes");
+    }
+    
+    router = router.merge(monitoring_router);
     info!("Monitoring routes added to API");
     
     router

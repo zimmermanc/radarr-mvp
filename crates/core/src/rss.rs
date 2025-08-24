@@ -212,6 +212,11 @@ impl RssMonitor {
         }
     }
     
+    /// Get all RSS feeds
+    pub fn get_feeds(&self) -> Vec<&RssFeed> {
+        self.feeds.iter().collect()
+    }
+    
     /// Add a calendar entry
     pub fn add_calendar_entry(&mut self, entry: CalendarEntry) {
         self.calendar.push(entry);
@@ -407,5 +412,43 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Test Movie 2024 1080p");
         assert_eq!(items[0].guid, "12345");
+    }
+    
+    #[test]
+    fn test_rss_monitor_get_feeds() {
+        let mut monitor = RssMonitor::new();
+        
+        // Initially empty
+        let feeds = monitor.get_feeds();
+        assert_eq!(feeds.len(), 0);
+        
+        // Add a feed
+        let feed1 = RssFeed::new("Test Feed 1", "http://example.com/rss1");
+        let feed1_id = feed1.id;
+        monitor.add_feed(feed1);
+        
+        // Should have one feed
+        let feeds = monitor.get_feeds();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, feed1_id);
+        assert_eq!(feeds[0].name, "Test Feed 1");
+        
+        // Add another feed
+        let feed2 = RssFeed::new("Test Feed 2", "http://example.com/rss2");
+        let feed2_id = feed2.id;
+        monitor.add_feed(feed2);
+        
+        // Should have two feeds
+        let feeds = monitor.get_feeds();
+        assert_eq!(feeds.len(), 2);
+        
+        // Remove a feed
+        monitor.remove_feed(feed1_id);
+        
+        // Should have one feed remaining
+        let feeds = monitor.get_feeds();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, feed2_id);
+        assert_eq!(feeds[0].name, "Test Feed 2");
     }
 }

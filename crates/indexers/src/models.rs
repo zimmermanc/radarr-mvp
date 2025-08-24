@@ -220,6 +220,11 @@ impl SearchRequest {
         }
     }
     
+    /// Create a new search request for a movie by title
+    pub fn for_movie_title(title: &str) -> Self {
+        Self::for_title(title)
+    }
+    
     /// Set minimum seeders requirement
     pub fn with_min_seeders(mut self, min_seeders: i32) -> Self {
         self.min_seeders = Some(min_seeders);

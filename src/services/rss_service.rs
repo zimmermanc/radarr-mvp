@@ -11,7 +11,7 @@ use radarr_core::{
     models::{Movie, QueueItem, QueuePriority},
     domain::repositories::{MovieRepository, QueueRepository},
 };
-use radarr_indexers::IndexerClient;
+use radarr_indexers::{IndexerClient, SearchRequest};
 use radarr_infrastructure::DatabasePool;
 use radarr_decision::{DecisionEngine, Release};
 use tracing::{info, warn, error, debug};
@@ -497,16 +497,143 @@ impl RssService {
             None
         };
         
-        // TODO: Implement actual movie search
-        // 1. Build search query
-        // 2. Search indexers
-        // 3. Evaluate results
-        // 4. Queue best match
+        let search_result = self.perform_movie_search(entry).await;
         
-        // Complete progress
+        // Complete or fail progress based on result
         if let (Some(tracker), Some(id)) = (&self.progress_tracker, progress_id) {
-            tracker.complete_operation(id, "Search completed").await;
+            match search_result {
+                Ok(Some(release_title)) => {
+                    tracker.complete_operation(id, format!("Found and queued: {}", release_title)).await;
+                }
+                Ok(None) => {
+                    tracker.complete_operation(id, "No suitable releases found").await;
+                }
+                Err(e) => {
+                    tracker.fail_operation(id, e.to_string()).await;
+                }
+            }
         }
+    }
+    
+    /// Perform the actual movie search and queue the best match
+    async fn perform_movie_search(&self, entry: &CalendarEntry) -> Result<Option<String>> {
+        // 1. Build search query using the movie title
+        let search_request = SearchRequest::for_movie_title(&entry.title)
+            .with_limit(50) // Get up to 50 results to choose from
+            .with_min_seeders(1); // Require at least 1 seeder
+        
+        // 2. Search indexers
+        let search_response = match self.indexer_client.search(&search_request).await {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Failed to search indexers for movie '{}': {}", entry.title, e);
+                return Err(e.into());
+            }
+        };
+        
+        if search_response.results.is_empty() {
+            info!("No search results found for movie: {}", entry.title);
+            return Ok(None);
+        }
+        
+        info!("Found {} search results for movie: {}", search_response.results.len(), entry.title);
+        
+        // 3. Convert search results to Release objects for evaluation
+        let releases: Vec<Release> = search_response.results.into_iter().map(|result| {
+            let mut release = Release::from_title(result.title.clone(), result.download_url);
+            
+            // Set additional properties from search result
+            if let Some(size) = result.size {
+                if size > 0 {
+                    release = release.with_size(size as u64);
+                }
+            }
+            if let Some(seeders) = result.seeders {
+                if seeders > 0 {
+                    release = release.with_seeders(seeders as u32);
+                }
+            }
+            if let Some(leechers) = result.leechers {
+                if leechers > 0 {
+                    release = release.with_leechers(leechers as u32);
+                }
+            }
+            if let Some(publish_date) = result.publish_date {
+                let age = Utc::now() - publish_date;
+                let age_hours = age.num_hours().max(0) as u32;
+                release = release.with_age_hours(age_hours);
+            }
+            if result.freeleech == Some(true) {
+                release = release.with_freeleech(true);
+            }
+            
+            release
+        }).collect();
+        
+        // 4. Evaluate results using decision engine if available
+        let best_release = if let Some(decision_engine) = &self.decision_engine {
+            match decision_engine.select_best_release(releases) {
+                Some(release) => release,
+                None => {
+                    info!("No releases met quality requirements for movie: {}", entry.title);
+                    return Ok(None);
+                }
+            }
+        } else {
+            // No decision engine - just pick the first release
+            warn!("No decision engine configured, selecting first release");
+            match releases.into_iter().next() {
+                Some(release) => release,
+                None => {
+                    error!("No releases available after conversion");
+                    return Ok(None);
+                }
+            }
+        };
+        
+        info!("Selected release for movie '{}': {}", entry.title, best_release.title);
+        
+        // 5. Queue the best match
+        self.queue_movie_release(entry, &best_release).await.map(|_| Some(best_release.title))
+    }
+    
+    /// Queue a movie release for download
+    async fn queue_movie_release(&self, entry: &CalendarEntry, release: &Release) -> Result<()> {
+        // Create queue item
+        let mut queue_item = QueueItem::new(
+            entry.movie_id,
+            Uuid::new_v4(), // Release ID (generated for calendar searches)
+            release.title.clone(),
+            release.download_url.clone(),
+        );
+        
+        // Set optional queue item properties from release
+        if let Some(size) = release.size {
+            queue_item.size_bytes = Some(size as i64);
+        }
+        
+        // Set priority for calendar-triggered searches
+        queue_item.priority = QueuePriority::High;
+        
+        // Add to download queue
+        self.queue_repository.add_queue_item(&queue_item).await.map_err(|e| {
+            error!("Failed to queue calendar release '{}' for movie '{}': {}", release.title, entry.title, e);
+            e
+        })?;
+        
+        info!("Successfully queued calendar release '{}' for movie '{}'", release.title, entry.title);
+        
+        // Emit event
+        if let Some(bus) = &self.event_bus {
+            let _ = bus.publish(SystemEvent::DownloadQueued {
+                movie_id: entry.movie_id,
+                release_id: queue_item.release_id,
+                download_url: release.download_url.clone(),
+                title: release.title.clone(),
+            }).await;
+        }
+        
+        Ok(())
     }
     
     /// Add an RSS feed
@@ -527,11 +654,7 @@ impl RssService {
     pub async fn get_feeds(&self) -> Vec<RssFeed> {
         let monitor = self.monitor.read().await;
         // Clone the feeds since we can't return references
-        let mut feeds = Vec::new();
-        for _ in 0..0 { // TODO: RssMonitor needs a get_feeds method
-            // feeds.push(feed.clone());
-        }
-        feeds
+        monitor.get_feeds().into_iter().cloned().collect()
     }
     
     /// Add a calendar entry

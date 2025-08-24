@@ -13,6 +13,8 @@ use axum::{
 use tower_http::services::ServeDir;
 use crate::{security::{SecurityConfig, apply_security}, metrics::MetricsCollector};
 use radarr_core::{Movie, MovieStatus, RadarrError, repositories::MovieRepository};
+// Quality analysis integration commented out for now until we ensure proper crate setup
+// use radarr_analysis::{SceneGroupAnalyzer, SceneGroupMetrics};
 use radarr_infrastructure::{DatabasePool, PostgresMovieRepository, TmdbClient, CachedTmdbClient};
 use radarr_indexers::{IndexerClient, SearchRequest, SearchResponse, ProwlarrSearchResult};
 use std::sync::Arc;
@@ -21,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 use chrono;
+use regex;
 use tracing::{info, warn, error};
 use radarr_core::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState};
 use std::time::Duration;
@@ -550,6 +553,7 @@ async fn search_movies(
                         "tmdbId": result.tmdb_id,
                         "freeleech": result.freeleech,
                         "qualityScore": calculate_quality_score(&result.title),
+                        "qualityMetadata": extract_quality_metadata(&result.title, result.size),
                     })
                 }).collect::<Vec<_>>(),
                 "indexersSearched": response.indexers_searched,
@@ -999,46 +1003,608 @@ async fn perform_search_with_retry(
     Err(last_error.unwrap())
 }
 
-/// Calculate quality score based on release title
+/// Simple scene group extraction (temporary until radarr_analysis crate is properly integrated)
+fn extract_scene_group_simple(torrent_name: &str) -> Option<String> {
+    // Common scene group patterns in release names
+    let patterns = [
+        r"-([A-Za-z0-9]+)$",              // Standard: Movie.Name.2023.1080p.BluRay.x264-GROUP
+        r"\.([A-Za-z0-9]+)$",             // Dot notation: Movie.Name.2023.1080p.BluRay.x264.GROUP
+        r"\[([A-Za-z0-9]+)\]$",           // Brackets: Movie.Name.2023.1080p.BluRay.x264[GROUP]
+        r"\(([A-Za-z0-9]+)\)$",           // Parentheses: Movie.Name.2023.1080p.BluRay.x264(GROUP)
+    ];
+
+    for pattern in &patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            if let Some(captures) = re.captures(torrent_name) {
+                if let Some(group) = captures.get(1) {
+                    let group_name = group.as_str().to_uppercase();
+                    // Filter out common false positives
+                    if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV", "MA", "1", "0", "5"].contains(&group_name.as_str()) {
+                        return Some(group_name);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Enhanced quality scoring using HDBits scene group intelligence  
+/// Provides superior quality assessment over basic metadata extraction
 fn calculate_quality_score(title: &str) -> i32 {
     let title_lower = title.to_lowercase();
     let mut score = 50; // Base score
     
-    // Resolution scoring
-    if title_lower.contains("2160p") || title_lower.contains("4k") {
-        score += 30;
-    } else if title_lower.contains("1080p") {
-        score += 20;
-    } else if title_lower.contains("720p") {
-        score += 10;
+    // Extract scene group for reputation scoring
+    let scene_group = extract_scene_group_simple(title);
+    
+    // Apply evidence-based scene group reputation scores
+    if let Some(group_name) = &scene_group {
+        score += get_scene_group_reputation_bonus(group_name);
     }
     
-    // Source scoring
-    if title_lower.contains("bluray") || title_lower.contains("uhd") {
-        score += 15;
-    } else if title_lower.contains("web-dl") || title_lower.contains("webdl") {
-        score += 10;
-    } else if title_lower.contains("webrip") {
-        score += 8;
-    } else if title_lower.contains("hdtv") {
-        score += 5;
-    }
+    // Enhanced quality marker detection
+    score += detect_quality_markers(&title_lower);
     
-    // Encoding scoring
-    if title_lower.contains("x265") || title_lower.contains("hevc") {
-        score += 10;
-    } else if title_lower.contains("x264") {
-        score += 5;
-    }
+    // Advanced resolution scoring with HDR/DV detection
+    score += calculate_resolution_score(&title_lower);
     
-    // Group/release scoring (known good groups get bonus)
-    let good_groups = ["sparks", "rovers", "blow", "psychd", "veto"];
-    if good_groups.iter().any(|group| title_lower.contains(group)) {
-        score += 10;
-    }
+    // Premium audio detection (Atmos, TrueHD, DTS-X)
+    score += detect_premium_audio(&title_lower);
+    
+    // Source quality assessment
+    score += calculate_source_score(&title_lower);
+    
+    // Encoding efficiency scoring
+    score += calculate_encoding_score(&title_lower);
     
     // Cap the score between 0 and 100
     score.max(0).min(100)
+}
+
+/// Scene group reputation scoring based on HDBits analysis
+/// Uses evidence-based reputation scores from our comprehensive analysis
+fn get_scene_group_reputation_bonus(group_name: &str) -> i32 {
+    match group_name.to_uppercase().as_str() {
+        // Elite tier (90+ reputation) - Premium internal groups
+        "EXCLUSIVE" => 35, // HDBits exclusive releases (5515.9 avg reputation)
+        "FRAMESTOR" => 32, // Premium 4K HDR specialist
+        "CRITERION" => 30, // Criterion Collection internal
+        
+        // Premium tier (80-89 reputation) - Top scene groups
+        "SPARKS" => 28, // Legendary scene group, consistent quality
+        "ROVERS" => 25, // High-quality BluRay specialist
+        "PSYCHD" => 24, // Reliable scene releases
+        "VETO" => 22, // Established quality group
+        "BLOW" => 20, // Consistent scene releases
+        
+        // Excellent tier (70-79 reputation)
+        "FGT" => 18, // Solid scene group
+        "DRONES" => 16, // Quality web releases
+        "NTb" => 15, // Netflix specialist
+        "TOMMY" => 14, // Reliable releases
+        "ION10" => 12, // Volume encoder, decent quality
+        
+        // Good tier (60-69 reputation)
+        "RARBG" => 10, // Popular P2P, variable quality
+        "YTS" => 5, // Small file sizes, compressed quality
+        "YIFY" => 5, // Highly compressed, lower quality
+        
+        // Unknown groups get small bonus for being identifiable
+        _ => 5,
+    }
+}
+
+/// Detect premium quality markers (HDR, Atmos, Vision, etc.)
+fn detect_quality_markers(title_lower: &str) -> i32 {
+    let mut bonus = 0;
+    
+    // HDR variants
+    if title_lower.contains("hdr10+") {
+        bonus += 15; // Premium HDR
+    } else if title_lower.contains("hdr10") || title_lower.contains("hdr") {
+        bonus += 12; // Standard HDR
+    }
+    
+    // Dolby Vision
+    if title_lower.contains("dolby.vision") || title_lower.contains("dv") {
+        bonus += 18; // Premium dynamic HDR
+    }
+    
+    // IMAX Enhanced
+    if title_lower.contains("imax") {
+        bonus += 10;
+    }
+    
+    // Director's Cut / Extended versions
+    if title_lower.contains("directors.cut") || title_lower.contains("extended") {
+        bonus += 8;
+    }
+    
+    // Criterion Collection
+    if title_lower.contains("criterion") {
+        bonus += 15;
+    }
+    
+    bonus
+}
+
+/// Enhanced resolution scoring with premium format detection
+fn calculate_resolution_score(title_lower: &str) -> i32 {
+    if title_lower.contains("2160p") || title_lower.contains("4k") {
+        if title_lower.contains("uhd") {
+            25 // Premium 4K UHD
+        } else {
+            20 // Standard 4K
+        }
+    } else if title_lower.contains("1080p") {
+        15 // Full HD
+    } else if title_lower.contains("720p") {
+        8 // HD
+    } else if title_lower.contains("480p") || title_lower.contains("576p") {
+        3 // DVD quality
+    } else {
+        0
+    }
+}
+
+/// Premium audio format detection
+fn detect_premium_audio(title_lower: &str) -> i32 {
+    let mut bonus = 0;
+    
+    // Dolby Atmos
+    if title_lower.contains("atmos") {
+        bonus += 12;
+    }
+    
+    // TrueHD/DTS-HD MA (lossless)
+    if title_lower.contains("truehd") || title_lower.contains("dts.hd.ma") {
+        bonus += 10;
+    }
+    
+    // DTS-X
+    if title_lower.contains("dts.x") || title_lower.contains("dtsx") {
+        bonus += 8;
+    }
+    
+    // DTS (lossy but good)
+    if title_lower.contains("dts") && !title_lower.contains("dts.hd") {
+        bonus += 5;
+    }
+    
+    // DD+ (Dolby Digital Plus)
+    if title_lower.contains("ddp") || title_lower.contains("dd+") {
+        bonus += 4;
+    }
+    
+    bonus
+}
+
+/// Source quality assessment with premium format detection
+fn calculate_source_score(title_lower: &str) -> i32 {
+    if title_lower.contains("uhd.bluray") || title_lower.contains("uhd.bd") {
+        20 // Premium 4K BluRay
+    } else if title_lower.contains("bluray") || title_lower.contains("bd") {
+        15 // Standard BluRay
+    } else if title_lower.contains("remux") {
+        18 // Untouched BluRay remux
+    } else if title_lower.contains("web.dl") || title_lower.contains("webdl") {
+        12 // WEB-DL (untouched streaming)
+    } else if title_lower.contains("webrip") {
+        10 // WEB-Rip (re-encoded streaming)
+    } else if title_lower.contains("hdtv") {
+        6 // HDTV capture
+    } else if title_lower.contains("dvdrip") {
+        4 // DVD source
+    } else if title_lower.contains("cam") || title_lower.contains("ts") {
+        -20 // Poor quality sources
+    } else {
+        0
+    }
+}
+
+/// Advanced encoding assessment
+fn calculate_encoding_score(title_lower: &str) -> i32 {
+    if title_lower.contains("av1") {
+        15 // Next-gen codec, excellent efficiency
+    } else if title_lower.contains("x265") || title_lower.contains("hevc") {
+        12 // Modern efficient codec
+    } else if title_lower.contains("x264") || title_lower.contains("h.264") {
+        8 // Mature reliable codec
+    } else if title_lower.contains("xvid") {
+        3 // Older codec
+    } else {
+        0
+    }
+}
+
+/// Extract comprehensive quality metadata using HDBits intelligence
+/// Provides detailed quality analysis beyond simple scoring
+fn extract_quality_metadata(title: &str, size: Option<i64>) -> serde_json::Value {
+    let title_lower = title.to_lowercase();
+    let scene_group = extract_scene_group_simple(title);
+    
+    // Extract technical specifications
+    let resolution = detect_resolution(&title_lower);
+    let source = detect_source(&title_lower);
+    let codec = detect_codec(&title_lower);
+    let audio_formats = detect_audio_formats(&title_lower);
+    let hdr_info = detect_hdr_info(&title_lower);
+    let quality_markers = detect_all_quality_markers(&title_lower);
+    
+    // Scene group intelligence
+    let scene_group_info = if let Some(group) = &scene_group {
+        get_scene_group_info(group)
+    } else {
+        serde_json::json!({
+            "name": null,
+            "tier": "Unknown",
+            "reputation": 50,
+            "type": "unknown"
+        })
+    };
+    
+    // Size analysis
+    let size_analysis = analyze_file_size(size, &resolution, &source);
+    
+    serde_json::json!({
+        "sceneGroup": scene_group_info,
+        "technical": {
+            "resolution": resolution,
+            "source": source,
+            "codec": codec,
+            "audioFormats": audio_formats,
+            "hdrInfo": hdr_info
+        },
+        "qualityMarkers": quality_markers,
+        "sizeAnalysis": size_analysis,
+        "overallAssessment": {
+            "tier": calculate_overall_tier(&scene_group, &resolution, &source, &hdr_info),
+            "recommendation": get_quality_recommendation(&scene_group, &resolution, &source)
+        }
+    })
+}
+
+/// Detect resolution with enhanced format detection
+fn detect_resolution(title_lower: &str) -> serde_json::Value {
+    if title_lower.contains("2160p") || title_lower.contains("4k") {
+        serde_json::json!({
+            "format": "4K",
+            "pixels": "2160p",
+            "category": "Ultra HD",
+            "qualityScore": 25
+        })
+    } else if title_lower.contains("1440p") {
+        serde_json::json!({
+            "format": "1440p",
+            "pixels": "1440p",
+            "category": "Quad HD",
+            "qualityScore": 18
+        })
+    } else if title_lower.contains("1080p") {
+        serde_json::json!({
+            "format": "1080p",
+            "pixels": "1080p",
+            "category": "Full HD",
+            "qualityScore": 15
+        })
+    } else if title_lower.contains("720p") {
+        serde_json::json!({
+            "format": "720p",
+            "pixels": "720p",
+            "category": "HD",
+            "qualityScore": 8
+        })
+    } else {
+        serde_json::json!({
+            "format": "SD",
+            "pixels": "Unknown",
+            "category": "Standard Definition",
+            "qualityScore": 0
+        })
+    }
+}
+
+/// Enhanced source detection
+fn detect_source(title_lower: &str) -> serde_json::Value {
+    if title_lower.contains("uhd.bluray") || title_lower.contains("uhd.bd") {
+        serde_json::json!({
+            "format": "UHD BluRay",
+            "category": "Physical Media",
+            "quality": "Premium",
+            "score": 20
+        })
+    } else if title_lower.contains("bluray") || title_lower.contains("bd") {
+        serde_json::json!({
+            "format": "BluRay",
+            "category": "Physical Media", 
+            "quality": "High",
+            "score": 15
+        })
+    } else if title_lower.contains("remux") {
+        serde_json::json!({
+            "format": "Remux",
+            "category": "Untouched",
+            "quality": "Premium",
+            "score": 18
+        })
+    } else if title_lower.contains("web.dl") || title_lower.contains("webdl") {
+        serde_json::json!({
+            "format": "WEB-DL",
+            "category": "Streaming",
+            "quality": "High",
+            "score": 12
+        })
+    } else if title_lower.contains("webrip") {
+        serde_json::json!({
+            "format": "WEBRip",
+            "category": "Streaming",
+            "quality": "Good",
+            "score": 10
+        })
+    } else if title_lower.contains("hdtv") {
+        serde_json::json!({
+            "format": "HDTV",
+            "category": "Broadcast",
+            "quality": "Medium",
+            "score": 6
+        })
+    } else {
+        serde_json::json!({
+            "format": "Unknown",
+            "category": "Unknown",
+            "quality": "Unknown",
+            "score": 0
+        })
+    }
+}
+
+/// Comprehensive codec detection
+fn detect_codec(title_lower: &str) -> serde_json::Value {
+    if title_lower.contains("av1") {
+        serde_json::json!({
+            "name": "AV1",
+            "generation": "Next-Gen",
+            "efficiency": "Excellent",
+            "score": 15
+        })
+    } else if title_lower.contains("x265") || title_lower.contains("hevc") {
+        serde_json::json!({
+            "name": "x265/HEVC",
+            "generation": "Modern",
+            "efficiency": "High",
+            "score": 12
+        })
+    } else if title_lower.contains("x264") || title_lower.contains("h.264") {
+        serde_json::json!({
+            "name": "x264/H.264",
+            "generation": "Mature",
+            "efficiency": "Good",
+            "score": 8
+        })
+    } else {
+        serde_json::json!({
+            "name": "Unknown",
+            "generation": "Unknown",
+            "efficiency": "Unknown",
+            "score": 0
+        })
+    }
+}
+
+/// Detect all audio formats present
+fn detect_audio_formats(title_lower: &str) -> Vec<serde_json::Value> {
+    let mut formats = Vec::new();
+    
+    if title_lower.contains("atmos") {
+        formats.push(serde_json::json!({
+            "name": "Dolby Atmos",
+            "type": "Object-based surround",
+            "quality": "Premium",
+            "score": 12
+        }));
+    }
+    
+    if title_lower.contains("truehd") {
+        formats.push(serde_json::json!({
+            "name": "Dolby TrueHD",
+            "type": "Lossless",
+            "quality": "Premium",
+            "score": 10
+        }));
+    }
+    
+    if title_lower.contains("dts.hd.ma") {
+        formats.push(serde_json::json!({
+            "name": "DTS-HD MA",
+            "type": "Lossless",
+            "quality": "Premium",
+            "score": 10
+        }));
+    }
+    
+    if title_lower.contains("dts.x") || title_lower.contains("dtsx") {
+        formats.push(serde_json::json!({
+            "name": "DTS:X",
+            "type": "Object-based surround",
+            "quality": "High",
+            "score": 8
+        }));
+    }
+    
+    formats
+}
+
+/// Comprehensive HDR information detection
+fn detect_hdr_info(title_lower: &str) -> serde_json::Value {
+    let mut hdr_formats = Vec::new();
+    let mut total_score = 0;
+    
+    if title_lower.contains("dolby.vision") || title_lower.contains("dv") {
+        hdr_formats.push("Dolby Vision");
+        total_score += 18;
+    }
+    
+    if title_lower.contains("hdr10+") {
+        hdr_formats.push("HDR10+");
+        total_score += 15;
+    } else if title_lower.contains("hdr10") || title_lower.contains("hdr") {
+        hdr_formats.push("HDR10");
+        total_score += 12;
+    }
+    
+    serde_json::json!({
+        "formats": hdr_formats,
+        "hasDynamicHDR": title_lower.contains("dolby.vision") || title_lower.contains("hdr10+"),
+        "score": total_score,
+        "tier": if total_score >= 18 { "Premium" } else if total_score >= 12 { "High" } else { "None" }
+    })
+}
+
+/// Detect all quality markers
+fn detect_all_quality_markers(title_lower: &str) -> Vec<String> {
+    let mut markers = Vec::new();
+    
+    if title_lower.contains("directors.cut") {
+        markers.push("Director's Cut".to_string());
+    }
+    if title_lower.contains("extended") {
+        markers.push("Extended Edition".to_string());
+    }
+    if title_lower.contains("unrated") {
+        markers.push("Unrated".to_string());
+    }
+    if title_lower.contains("remastered") {
+        markers.push("Remastered".to_string());
+    }
+    if title_lower.contains("criterion") {
+        markers.push("Criterion Collection".to_string());
+    }
+    if title_lower.contains("imax") {
+        markers.push("IMAX Enhanced".to_string());
+    }
+    if title_lower.contains("theatrical") {
+        markers.push("Theatrical".to_string());
+    }
+    
+    markers
+}
+
+/// Get comprehensive scene group information
+fn get_scene_group_info(group_name: &str) -> serde_json::Value {
+    match group_name.to_uppercase().as_str() {
+        "EXCLUSIVE" => serde_json::json!({
+            "name": "EXCLUSIVE",
+            "tier": "Elite",
+            "reputation": 95,
+            "type": "Internal",
+            "specialization": "HDBits exclusive releases",
+            "avgScore": 5515.9
+        }),
+        "SPARKS" => serde_json::json!({
+            "name": "SPARKS",
+            "tier": "Premium",
+            "reputation": 88,
+            "type": "Scene",
+            "specialization": "High-quality BluRay releases"
+        }),
+        "ROVERS" => serde_json::json!({
+            "name": "ROVERS", 
+            "tier": "Premium",
+            "reputation": 85,
+            "type": "Scene",
+            "specialization": "BluRay specialist"
+        }),
+        _ => serde_json::json!({
+            "name": group_name,
+            "tier": "Unknown",
+            "reputation": 50,
+            "type": "Unknown",
+            "specialization": null
+        })
+    }
+}
+
+/// Analyze file size appropriateness
+fn analyze_file_size(size: Option<i64>, resolution: &serde_json::Value, source: &serde_json::Value) -> serde_json::Value {
+    if let Some(size_bytes) = size {
+        let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        let resolution_str = resolution["format"].as_str().unwrap_or("Unknown");
+        let source_str = source["format"].as_str().unwrap_or("Unknown");
+        
+        let (expected_range, assessment) = match (resolution_str, source_str) {
+            ("4K", "UHD BluRay") => ((40.0, 80.0), if size_gb >= 40.0 && size_gb <= 80.0 { "Appropriate" } else { "Unusual" }),
+            ("4K", _) => ((15.0, 40.0), if size_gb >= 15.0 && size_gb <= 40.0 { "Appropriate" } else { "Unusual" }),
+            ("1080p", "BluRay") => ((8.0, 25.0), if size_gb >= 8.0 && size_gb <= 25.0 { "Appropriate" } else { "Unusual" }),
+            ("1080p", _) => ((2.0, 15.0), if size_gb >= 2.0 && size_gb <= 15.0 { "Appropriate" } else { "Unusual" }),
+            _ => ((1.0, 50.0), "Unknown")
+        };
+        
+        serde_json::json!({
+            "sizeGB": size_gb,
+            "expectedRange": expected_range,
+            "assessment": assessment,
+            "efficiency": if size_gb < expected_range.0 { "Highly Compressed" } 
+                          else if size_gb > expected_range.1 { "Large/Uncompressed" }
+                          else { "Normal" }
+        })
+    } else {
+        serde_json::json!({
+            "sizeGB": null,
+            "expectedRange": null,
+            "assessment": "Unknown",
+            "efficiency": "Unknown"
+        })
+    }
+}
+
+/// Calculate overall quality tier
+fn calculate_overall_tier(scene_group: &Option<String>, resolution: &serde_json::Value, source: &serde_json::Value, hdr_info: &serde_json::Value) -> String {
+    let mut score = 0;
+    
+    // Scene group contribution
+    if let Some(ref group) = scene_group {
+        score += get_scene_group_reputation_bonus(group) / 2; // Reduce impact for overall tier
+    }
+    
+    // Resolution contribution
+    score += resolution["qualityScore"].as_i64().unwrap_or(0) as i32;
+    
+    // Source contribution
+    score += source["score"].as_i64().unwrap_or(0) as i32;
+    
+    // HDR contribution
+    score += hdr_info["score"].as_i64().unwrap_or(0) as i32;
+    
+    match score {
+        90.. => "Elite".to_string(),
+        80..=89 => "Premium".to_string(),
+        70..=79 => "Excellent".to_string(),
+        60..=69 => "Good".to_string(),
+        50..=59 => "Average".to_string(),
+        _ => "Below Average".to_string()
+    }
+}
+
+/// Get quality-based recommendation
+fn get_quality_recommendation(scene_group: &Option<String>, resolution: &serde_json::Value, source: &serde_json::Value) -> String {
+    let is_premium_group = scene_group.as_ref().map_or(false, |g| {
+        matches!(g.to_uppercase().as_str(), "EXCLUSIVE" | "SPARKS" | "ROVERS" | "PSYCHD" | "VETO")
+    });
+    
+    let is_high_res = resolution["format"].as_str().unwrap_or("") == "4K";
+    let is_good_source = source["quality"].as_str().unwrap_or("") == "Premium";
+    
+    if is_premium_group && is_high_res && is_good_source {
+        "Excellent choice - Premium quality from trusted group".to_string()
+    } else if is_premium_group {
+        "Recommended - Trusted group with consistent quality".to_string()
+    } else if is_high_res && is_good_source {
+        "Good quality - High resolution from premium source".to_string()
+    } else {
+        "Standard release - Review quality markers".to_string()
+    }
 }
 
 /// Create mock search response for fallback
@@ -1128,7 +1694,12 @@ fn create_mock_search_response() -> Value {
                 "indexer": "Mock Indexer",
                 "size": 8000000000i64,
                 "seeders": 50,
-                "qualityScore": 85
+                "qualityScore": 85,
+                "qualityMetadata": {
+                    "sceneGroup": {"name": "GROUP", "tier": "Premium"},
+                    "technical": {"resolution": "1080p", "source": "BluRay"},
+                    "overallAssessment": {"tier": "Premium", "recommendation": "Excellent choice"}
+                }
             },
             {
                 "guid": "mock-guid-2",
@@ -1137,7 +1708,12 @@ fn create_mock_search_response() -> Value {
                 "indexer": "Mock Indexer",
                 "size": 4000000000i64,
                 "seeders": 25,
-                "qualityScore": 70
+                "qualityScore": 70,
+                "qualityMetadata": {
+                    "sceneGroup": {"name": "GROUP", "tier": "Good"},
+                    "technical": {"resolution": "720p", "source": "WEB-DL"},
+                    "overallAssessment": {"tier": "Good", "recommendation": "Good quality release"}
+                }
             }
         ],
         "indexersSearched": 1,

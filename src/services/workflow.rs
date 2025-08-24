@@ -6,9 +6,10 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
-use radarr_core::{RadarrError, Result, EventHandler, SystemEvent, EventEnvelope};
+use radarr_core::{RadarrError, Result, EventHandler, SystemEvent, EventEnvelope, EventBus};
+use radarr_core::domain::repositories::MovieRepository;
 use radarr_import::ImportPipeline;
-use radarr_infrastructure::DatabasePool;
+use radarr_infrastructure::{DatabasePool, repositories::movie::PostgresMovieRepository};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
@@ -447,13 +448,22 @@ pub mod movie_workflows {
 pub struct DownloadImportHandler {
     import_pipeline: Arc<ImportPipeline>,
     database_pool: DatabasePool,
+    movie_repository: Arc<PostgresMovieRepository>,
+    event_bus: Arc<EventBus>,
 }
 
 impl DownloadImportHandler {
-    pub fn new(import_pipeline: Arc<ImportPipeline>, database_pool: DatabasePool) -> Self {
+    pub fn new(
+        import_pipeline: Arc<ImportPipeline>, 
+        database_pool: DatabasePool,
+        event_bus: Arc<EventBus>
+    ) -> Self {
+        let movie_repository = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
         Self {
             import_pipeline,
             database_pool,
+            movie_repository,
+            event_bus,
         }
     }
 }
@@ -465,8 +475,22 @@ impl EventHandler for DownloadImportHandler {
             SystemEvent::DownloadComplete { movie_id, file_path, .. } => {
                 info!("Download completed for movie {}, triggering import from {}", movie_id, file_path);
                 
-                // TODO: Get actual movie information from database
-                // For now, trigger import with the file path
+                // Get movie information from database
+                let movie_info = match self.movie_repository.find_by_id(*movie_id).await {
+                    Ok(Some(movie)) => {
+                        debug!("Found movie information: {} ({})", movie.title, movie.year);
+                        Some(movie)
+                    }
+                    Ok(None) => {
+                        warn!("Movie {} not found in database", movie_id);
+                        None
+                    }
+                    Err(e) => {
+                        error!("Failed to retrieve movie {} from database: {}", movie_id, e);
+                        None
+                    }
+                };
+                
                 use std::path::Path;
                 
                 let source_path = Path::new(file_path);
@@ -477,11 +501,56 @@ impl EventHandler for DownloadImportHandler {
                     Ok(import_result) => {
                         info!("Import triggered successfully for {}: success={}", 
                               file_path, import_result.success);
-                        // TODO: Publish ImportComplete event
+                        
+                        if import_result.success {
+                            // Publish ImportComplete event
+                            let destination_path = import_result.hardlink_result
+                                .as_ref()
+                                .map(|hr| hr.destination.to_string_lossy().to_string())
+                                .unwrap_or_else(|| dest_dir.to_string_lossy().to_string());
+                            let import_complete_event = SystemEvent::ImportComplete {
+                                movie_id: *movie_id,
+                                destination_path,
+                                file_count: 1, // Import pipeline currently handles single files
+                            };
+                            
+                            if let Err(e) = self.event_bus.publish(import_complete_event).await {
+                                error!("Failed to publish ImportComplete event for movie {}: {}", movie_id, e);
+                            } else {
+                                debug!("Published ImportComplete event for movie {}", movie_id);
+                            }
+                        } else {
+                            // Publish ImportFailed event for unsuccessful import
+                            let error_message = import_result.error.clone().unwrap_or_else(|| "Import completed but marked as unsuccessful".to_string());
+                            let import_failed_event = SystemEvent::ImportFailed {
+                                movie_id: *movie_id,
+                                source_path: file_path.clone(),
+                                error: error_message,
+                            };
+                            
+                            if let Err(e) = self.event_bus.publish(import_failed_event).await {
+                                error!("Failed to publish ImportFailed event for movie {}: {}", movie_id, e);
+                            } else {
+                                debug!("Published ImportFailed event for movie {}", movie_id);
+                            }
+                        }
                     }
                     Err(e) => {
                         error!("Failed to trigger import for {}: {}", file_path, e);
-                        // TODO: Publish ImportFailed event
+                        
+                        // Publish ImportFailed event
+                        let import_failed_event = SystemEvent::ImportFailed {
+                            movie_id: *movie_id,
+                            source_path: file_path.clone(),
+                            error: format!("Import pipeline error: {}", e),
+                        };
+                        
+                        if let Err(event_err) = self.event_bus.publish(import_failed_event).await {
+                            error!("Failed to publish ImportFailed event for movie {}: {}", movie_id, event_err);
+                        } else {
+                            debug!("Published ImportFailed event for movie {}", movie_id);
+                        }
+                        
                         return Err(RadarrError::ExternalServiceError {
                             service: "import_pipeline".to_string(),
                             error: format!("Import failed: {}", e),

@@ -477,7 +477,7 @@ impl RssService {
             for entry in searchable {
                 info!("Calendar trigger for movie: {}", entry.title);
                 
-                // TODO: Trigger movie search
+                // Perform indexer search for calendar-triggered movie
                 self.search_movie(entry).await;
             }
         }

@@ -13,6 +13,8 @@ import type {
   SearchMovieRequest,
   MovieListParams,
   ApiConfig,
+  QueueItem,
+  QueueResponse,
 } from '../types/api';
 
 class RadarrApiClient {
@@ -195,6 +197,29 @@ class RadarrApiClient {
 
   async getQualityProfile(id: number): Promise<ApiResponse<QualityProfile>> {
     return this.handleResponse(this.client.get<QualityProfile>(`/api/v3/qualityprofile/${id}`));
+  }
+
+  // Queue endpoints
+  async getQueue(): Promise<ApiResponse<QueueResponse>> {
+    return this.handleResponse(this.client.get<QueueResponse>('/api/v3/queue'));
+  }
+
+  async pauseQueueItem(id: string): Promise<ApiResponse<void>> {
+    return this.handleResponse(this.client.put<void>(`/api/v3/queue/${id}/pause`));
+  }
+
+  async resumeQueueItem(id: string): Promise<ApiResponse<void>> {
+    return this.handleResponse(this.client.put<void>(`/api/v3/queue/${id}/resume`));
+  }
+
+  async removeQueueItem(id: string): Promise<ApiResponse<void>> {
+    return this.handleResponse(this.client.delete<void>(`/api/v3/queue/${id}`));
+  }
+
+  async updateQueueItemPriority(id: string, direction: 'up' | 'down'): Promise<ApiResponse<void>> {
+    return this.handleResponse(
+      this.client.put<void>(`/api/v3/queue/${id}/priority`, { direction })
+    );
   }
 
   // Utility methods

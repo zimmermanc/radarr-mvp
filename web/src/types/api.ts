@@ -85,6 +85,42 @@ export interface SearchResult {
   popularity?: number;
 }
 
+export interface QueueItem {
+  id: string;
+  movieId: number;
+  movieTitle: string;
+  quality: string;
+  protocol: 'torrent' | 'usenet';
+  indexer: string;
+  downloadClient: string;
+  status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'importing';
+  size: number;
+  sizeLeft: number;
+  timeleft?: string;
+  estimatedCompletionTime?: string;
+  downloadedSize: number;
+  progress: number;
+  downloadRate?: number;
+  uploadRate?: number;
+  seeders?: number;
+  leechers?: number;
+  eta?: string;
+  errorMessage?: string;
+  trackedDownloadStatus?: string;
+  trackedDownloadState?: string;
+  statusMessages?: string[];
+  outputPath?: string;
+  downloadId?: string;
+  added: string;
+}
+
+export interface QueueResponse {
+  items: QueueItem[];
+  totalRecords: number;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface ApiError {
   error: string;
   message: string;

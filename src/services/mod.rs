@@ -5,24 +5,26 @@
 //! - Component initialization and dependency injection
 //! - Business logic coordination
 
-use std::sync::Arc;
-use radarr_core::{RadarrError, Result, EventBus, EventProcessor, QueueProcessor, QueueProcessorConfig};
-use radarr_indexers::{IndexerClient};
+use radarr_core::{
+    EventBus, EventProcessor, QueueProcessor, QueueProcessorConfig, RadarrError, Result,
+};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
+use radarr_indexers::IndexerClient;
 use radarr_infrastructure::{
-    DatabasePool, PostgresQueueRepository, QBittorrentDownloadClient, PostgresMovieRepository,
-    monitoring::list_sync_monitor::{ListSyncMonitor, ListSyncMonitorConfig}
+    monitoring::list_sync_monitor::{ListSyncMonitor, ListSyncMonitorConfig},
+    DatabasePool, PostgresMovieRepository, PostgresQueueRepository, QBittorrentDownloadClient,
 };
-use tracing::{info, debug, error, warn, instrument};
+use std::sync::Arc;
+use tracing::{debug, error, info, instrument, warn};
 
+pub mod rss_service;
 pub mod simplified_media_service;
 pub mod workflow;
-pub mod rss_service;
 
+pub use rss_service::*;
 pub use simplified_media_service::*;
 pub use workflow::*;
-pub use rss_service::*;
 
 /// Application services container
 #[derive(Clone)]
@@ -40,7 +42,8 @@ pub struct AppServices {
     /// Queue repository for download queue operations
     pub queue_repository: Option<Arc<dyn radarr_core::services::QueueRepository + Send + Sync>>,
     /// Queue processor for background download processing
-    pub queue_processor: Option<Arc<QueueProcessor<PostgresQueueRepository, QBittorrentDownloadClient>>>,
+    pub queue_processor:
+        Option<Arc<QueueProcessor<PostgresQueueRepository, QBittorrentDownloadClient>>>,
     /// RSS monitoring service
     pub rss_service: Option<Arc<RssService>>,
     /// Streaming service aggregator
@@ -59,31 +62,31 @@ impl AppServices {
     ) -> Result<Self> {
         // Create event bus
         let event_bus = Arc::new(EventBus::new());
-        
+
         let media_service = Arc::new(SimplifiedMediaService::new(
             database_pool.clone(),
             prowlarr_client.clone(),
             qbittorrent_client.clone(),
             import_pipeline,
         ));
-        
+
         // Create movie repository
         let movie_repository = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
-        
+
         Ok(Self {
             media_service,
             database_pool,
             movie_repository,
             indexer_client: prowlarr_client,
             event_bus,
-            queue_repository: None, // Will be initialized separately
-            queue_processor: None, // Will be initialized separately
-            rss_service: None, // Will be initialized separately
+            queue_repository: None,     // Will be initialized separately
+            queue_processor: None,      // Will be initialized separately
+            rss_service: None,          // Will be initialized separately
             streaming_aggregator: None, // Will be initialized separately
-            list_sync_monitor: None, // Will be initialized separately
+            list_sync_monitor: None,    // Will be initialized separately
         })
     }
-    
+
     /// Initialize queue processor with proper configuration
     pub fn initialize_queue_processor(
         &mut self,
@@ -91,13 +94,13 @@ impl AppServices {
     ) -> Result<()> {
         // Create queue repository
         let queue_repo = Arc::new(PostgresQueueRepository::new(self.database_pool.clone()));
-        
+
         // Store queue repository for use by other services
         self.queue_repository = Some(queue_repo.clone());
-        
+
         // Create download client service adapter
         let download_client = Arc::new(QBittorrentDownloadClient::new(qbittorrent_config)?);
-        
+
         // Create queue processor
         let queue_config = QueueProcessorConfig::default();
         let queue_processor = Arc::new(QueueProcessor::new(
@@ -105,74 +108,78 @@ impl AppServices {
             queue_repo,
             download_client,
         ));
-        
+
         self.queue_processor = Some(queue_processor);
         Ok(())
     }
-    
+
     /// Initialize RSS service
-    pub fn initialize_rss_service(
-        &mut self,
-        config: RssServiceConfig,
-    ) -> Result<()> {
+    pub fn initialize_rss_service(&mut self, config: RssServiceConfig) -> Result<()> {
         // Ensure queue repository is initialized
-        let queue_repository = self.queue_repository.as_ref()
-            .ok_or_else(|| RadarrError::ValidationError {
-                field: "queue_repository".to_string(),
-                message: "Queue repository must be initialized before RSS service".to_string(),
-            })?;
-        
-        let rss_service = Arc::new(RssService::new(
-            config,
-            self.indexer_client.clone(),
-            self.database_pool.clone(),
-            self.movie_repository.clone(),
-            queue_repository.clone(),
-        ).with_event_bus(self.event_bus.clone()));
-        
+        let queue_repository =
+            self.queue_repository
+                .as_ref()
+                .ok_or_else(|| RadarrError::ValidationError {
+                    field: "queue_repository".to_string(),
+                    message: "Queue repository must be initialized before RSS service".to_string(),
+                })?;
+
+        let rss_service = Arc::new(
+            RssService::new(
+                config,
+                self.indexer_client.clone(),
+                self.database_pool.clone(),
+                self.movie_repository.clone(),
+                queue_repository.clone(),
+            )
+            .with_event_bus(self.event_bus.clone()),
+        );
+
         self.rss_service = Some(rss_service);
         Ok(())
     }
-    
+
     /// Initialize streaming service aggregator
     pub fn initialize_streaming_aggregator(&mut self) -> Result<()> {
         use radarr_infrastructure::streaming::create_default_aggregator;
-        
+
         // Create aggregator from environment variables
         let aggregator = create_default_aggregator(self.database_pool.clone());
         self.streaming_aggregator = Some(aggregator);
-        
+
         info!("Streaming service aggregator initialized");
         Ok(())
     }
-    
+
     /// Initialize list sync monitor with default configuration
     pub async fn initialize_list_sync_monitor(&mut self) -> Result<()> {
         let config = ListSyncMonitorConfig::default();
-        let monitor = Arc::new(
-            ListSyncMonitor::new(config).await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "list_sync_monitor".to_string(),
-                    error: format!("Failed to create ListSyncMonitor: {}", e),
-                })?
-        );
-        
+        let monitor = Arc::new(ListSyncMonitor::new(config).await.map_err(|e| {
+            RadarrError::ExternalServiceError {
+                service: "list_sync_monitor".to_string(),
+                error: format!("Failed to create ListSyncMonitor: {}", e),
+            }
+        })?);
+
         // Setup default health checkers
-        monitor.setup_default_health_checkers().await
-            .map_err(|e| RadarrError::ExternalServiceError {
+        monitor.setup_default_health_checkers().await.map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "list_sync_monitor".to_string(),
                 error: format!("Failed to setup health checkers: {}", e),
-            })?;
-        
+            }
+        })?;
+
         self.list_sync_monitor = Some(monitor);
         info!("List sync monitor initialized");
         Ok(())
     }
-    
+
     /// Start the list sync monitor in the background
     pub async fn start_list_sync_monitor(&self) -> Result<()> {
         if let Some(monitor) = &self.list_sync_monitor {
-            monitor.start_monitoring().await
+            monitor
+                .start_monitoring()
+                .await
                 .map_err(|e| RadarrError::ExternalServiceError {
                     service: "list_sync_monitor".to_string(),
                     error: format!("Failed to start monitoring: {}", e),
@@ -183,7 +190,7 @@ impl AppServices {
         }
         Ok(())
     }
-    
+
     /// Start the RSS service in the background
     pub async fn start_rss_service(&self) -> Result<()> {
         if let Some(rss_service) = &self.rss_service {
@@ -194,17 +201,18 @@ impl AppServices {
         }
         Ok(())
     }
-    
+
     /// Start the queue processor in the background
     pub async fn start_queue_processor(&mut self) -> Result<()> {
         if let Some(queue_processor) = self.queue_processor.take() {
             // Extract the processor from Arc to pass ownership to start()
-            let processor = Arc::try_unwrap(queue_processor)
-                .map_err(|_| RadarrError::ValidationError {
+            let processor =
+                Arc::try_unwrap(queue_processor).map_err(|_| RadarrError::ValidationError {
                     field: "queue_processor".to_string(),
-                    message: "Cannot extract queue processor from Arc - multiple references exist".to_string(),
+                    message: "Cannot extract queue processor from Arc - multiple references exist"
+                        .to_string(),
                 })?;
-            
+
             tokio::spawn(async move {
                 info!("Starting queue processor...");
                 if let Err(e) = processor.start().await {
@@ -220,17 +228,17 @@ impl AppServices {
         }
         Ok(())
     }
-    
+
     /// Initialize all services and test connectivity
     pub async fn initialize(&self) -> Result<()> {
         info!("Initializing application services");
-        
+
         // Test database connectivity
         self.test_database().await?;
-        
+
         // Initialize media service
         self.media_service.initialize().await?;
-        
+
         info!("All services initialized successfully");
         Ok(())
     }
@@ -238,7 +246,7 @@ impl AppServices {
     /// Start event processing with all handlers
     pub async fn start_event_processing(&self) -> Result<()> {
         info!("Starting event processing system");
-        
+
         // Create event handlers
         let logging_handler = Arc::new(LoggingEventHandler::new());
         let download_import_handler = Arc::new(DownloadImportHandler::new(
@@ -246,12 +254,12 @@ impl AppServices {
             self.database_pool.clone(),
             self.event_bus.clone(),
         ));
-        
+
         // Create event processor
         let event_processor = EventProcessor::new(&self.event_bus)
             .add_handler(logging_handler)
             .add_handler(download_import_handler);
-        
+
         // Start event processor in background
         let event_bus = self.event_bus.clone();
         tokio::spawn(async move {
@@ -259,17 +267,19 @@ impl AppServices {
                 error!("Event processor failed: {}", e);
             }
         });
-        
-        info!("Event processing system started with {} subscribers", 
-              self.event_bus.subscriber_count());
-        
+
+        info!(
+            "Event processing system started with {} subscribers",
+            self.event_bus.subscriber_count()
+        );
+
         Ok(())
     }
-    
+
     /// Test database connectivity
     pub async fn test_database(&self) -> Result<()> {
         debug!("Testing database connectivity");
-        
+
         // Try a simple query to verify database is accessible
         sqlx::query("SELECT 1")
             .fetch_one(&self.database_pool)
@@ -278,7 +288,7 @@ impl AppServices {
                 service: "database_connectivity_test".to_string(),
                 error: e.to_string(),
             })?;
-            
+
         info!("Database connectivity verified");
         Ok(())
     }
@@ -303,65 +313,77 @@ impl ServiceBuilder {
             import_pipeline: None,
         }
     }
-    
+
     pub fn with_database(mut self, pool: DatabasePool) -> Self {
         self.database_pool = Some(pool);
         self
     }
-    
+
     pub fn with_prowlarr(mut self, client: Arc<dyn IndexerClient + Send + Sync>) -> Self {
         self.prowlarr_client = Some(client);
         self
     }
-    
+
     pub fn with_qbittorrent(mut self, client: Arc<QBittorrentClient>) -> Self {
         self.qbittorrent_client = Some(client);
         self
     }
-    
-    pub fn with_qbittorrent_config(mut self, config: radarr_downloaders::QBittorrentConfig) -> Self {
+
+    pub fn with_qbittorrent_config(
+        mut self,
+        config: radarr_downloaders::QBittorrentConfig,
+    ) -> Self {
         self.qbittorrent_config = Some(config);
         self
     }
-    
+
     pub fn with_import_pipeline(mut self, pipeline: Arc<ImportPipeline>) -> Self {
         self.import_pipeline = Some(pipeline);
         self
     }
-    
+
     pub async fn build(self) -> Result<AppServices> {
-        let database_pool = self.database_pool.ok_or_else(|| RadarrError::ValidationError {
-            field: "database_pool".to_string(),
-            message: "Database pool is required".to_string(),
-        })?;
-        
-        let prowlarr_client = self.prowlarr_client.ok_or_else(|| RadarrError::ValidationError {
-            field: "prowlarr_client".to_string(),
-            message: "Prowlarr client is required".to_string(),
-        })?;
-        
-        let qbittorrent_client = self.qbittorrent_client.ok_or_else(|| RadarrError::ValidationError {
-            field: "qbittorrent_client".to_string(),
-            message: "qBittorrent client is required".to_string(),
-        })?;
-        
-        let import_pipeline = self.import_pipeline.ok_or_else(|| RadarrError::ValidationError {
-            field: "import_pipeline".to_string(),
-            message: "Import pipeline is required".to_string(),
-        })?;
-        
+        let database_pool = self
+            .database_pool
+            .ok_or_else(|| RadarrError::ValidationError {
+                field: "database_pool".to_string(),
+                message: "Database pool is required".to_string(),
+            })?;
+
+        let prowlarr_client = self
+            .prowlarr_client
+            .ok_or_else(|| RadarrError::ValidationError {
+                field: "prowlarr_client".to_string(),
+                message: "Prowlarr client is required".to_string(),
+            })?;
+
+        let qbittorrent_client =
+            self.qbittorrent_client
+                .ok_or_else(|| RadarrError::ValidationError {
+                    field: "qbittorrent_client".to_string(),
+                    message: "qBittorrent client is required".to_string(),
+                })?;
+
+        let import_pipeline = self
+            .import_pipeline
+            .ok_or_else(|| RadarrError::ValidationError {
+                field: "import_pipeline".to_string(),
+                message: "Import pipeline is required".to_string(),
+            })?;
+
         let mut services = AppServices::new(
             database_pool.clone(),
             prowlarr_client,
             qbittorrent_client,
             import_pipeline,
-        ).await?;
-        
+        )
+        .await?;
+
         // Initialize queue processor if config is provided
         if let Some(qbittorrent_config) = self.qbittorrent_config {
             services.initialize_queue_processor(qbittorrent_config)?;
         }
-        
+
         Ok(services)
     }
 }
@@ -384,11 +406,12 @@ mod tests {
         };
         let pool = radarr_infrastructure::create_pool(db_config).await.unwrap();
         let prowlarr_config = radarr_indexers::ProwlarrConfig::default();
-        let prowlarr_client = Arc::new(radarr_indexers::ProwlarrClient::new(prowlarr_config).unwrap());
+        let prowlarr_client =
+            Arc::new(radarr_indexers::ProwlarrClient::new(prowlarr_config).unwrap());
         let qbittorrent_config = radarr_downloaders::QBittorrentConfig::default();
         let qbittorrent_client = Arc::new(QBittorrentClient::new(qbittorrent_config).unwrap());
         let import_pipeline = Arc::new(ImportPipeline::default());
-        
+
         let services = ServiceBuilder::new()
             .with_database(pool)
             .with_prowlarr(prowlarr_client)
@@ -396,14 +419,14 @@ mod tests {
             .with_import_pipeline(import_pipeline)
             .build()
             .await;
-            
+
         assert!(services.is_ok());
     }
-    
+
     #[test]
     fn test_incomplete_service_builder() {
         let builder = ServiceBuilder::new();
-        
+
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let result = builder.build().await;
             assert!(result.is_err());

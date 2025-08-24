@@ -1,5 +1,5 @@
 //! Integration demo showing how to wire queue system with real components
-//! 
+//!
 //! This example demonstrates:
 //! 1. PostgreSQL queue repository
 //! 2. qBittorrent download client integration  
@@ -18,7 +18,7 @@ use uuid::Uuid;
 async fn main() -> radarr_core::Result<()> {
     println!("🏗️  Radarr Integration Demo");
     println!("==========================\n");
-    
+
     // This would be the real integration setup:
     println!("🔧 Setup Steps (requires configuration):");
     println!("  1. Set DATABASE_URL environment variable");
@@ -26,7 +26,7 @@ async fn main() -> radarr_core::Result<()> {
     println!("  3. Configure qBittorrent WebUI (default: localhost:8080)");
     println!("  4. Set up HDBits credentials");
     println!();
-    
+
     // Example configuration
     println!("📋 Example Configuration:");
     println!("```bash");
@@ -38,11 +38,11 @@ async fn main() -> radarr_core::Result<()> {
     println!("export HDBITS_PASSKEY='your_passkey'");
     println!("```");
     println!();
-    
+
     // This is what the real setup would look like:
     println!("🚀 Real Implementation Example:");
     println!();
-    
+
     println!("```rust");
     println!("// Database setup");
     println!("let pool = sqlx::postgres::PgPoolOptions::new()");
@@ -99,7 +99,7 @@ async fn main() -> radarr_core::Result<()> {
     println!("    .with_state(queue_service);");
     println!("```");
     println!();
-    
+
     // Example usage
     println!("📊 Usage Examples:");
     println!();
@@ -115,7 +115,7 @@ async fn main() -> radarr_core::Result<()> {
     println!("    println!(\"Started auto-download: {{}}.\", queue_id);");
     println!("}}");
     println!();
-    
+
     // API usage examples
     println!("🌐 API Usage Examples:");
     println!();
@@ -139,7 +139,7 @@ async fn main() -> radarr_core::Result<()> {
     println!("# Remove from queue");
     println!("curl -X DELETE http://localhost:7878/api/v3/queue/{{queue_id}}?deleteFiles=true");
     println!();
-    
+
     // Quality preferences example
     println!("⚙️  Quality Preferences Configuration:");
     println!();
@@ -166,14 +166,14 @@ async fn main() -> radarr_core::Result<()> {
     println!("}};");
     println!("```");
     println!();
-    
+
     // Database migration info
     println!("💾 Database Migration:");
     println!("  The queue system requires the following migration:");
     println!("  📁 migrations/002_add_queue_table.sql");
     println!("  Run with: sqlx migrate run");
     println!();
-    
+
     // Final recommendations
     println!("🎯 Next Steps:");
     println!("  1. Set up development environment with PostgreSQL");
@@ -183,8 +183,8 @@ async fn main() -> radarr_core::Result<()> {
     println!("  5. Configure HDBits integration for automatic downloads");
     println!("  6. Set up monitoring and alerting for the queue processor");
     println!();
-    
+
     println!("✅ Integration guide complete!");
-    
+
     Ok(())
 }

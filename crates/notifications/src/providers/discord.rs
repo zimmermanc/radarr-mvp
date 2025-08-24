@@ -30,11 +30,11 @@ impl DiscordProvider {
             client: reqwest::Client::new(),
         }
     }
-    
+
     fn create_embed(&self, notification: &Notification) -> serde_json::Value {
         let color = notification.event_type.color();
         let emoji = notification.event_type.emoji();
-        
+
         let mut embed = json!({
             "title": format!("{} {}", emoji, notification.title),
             "description": notification.message,
@@ -45,24 +45,29 @@ impl DiscordProvider {
                 "icon_url": self.config.avatar_url.as_deref().unwrap_or("https://radarr.video/img/logo.png")
             }
         });
-        
+
         // Add fields based on notification data
         if let Some(fields) = self.create_fields(&notification.data) {
             embed["fields"] = fields;
         }
-        
+
         // Add thumbnail for movie notifications
         if let NotificationData::Movie(data) = &notification.data {
-            if let Some(poster_path) = data.movie.metadata.get("poster_path").and_then(|v| v.as_str()) {
+            if let Some(poster_path) = data
+                .movie
+                .metadata
+                .get("poster_path")
+                .and_then(|v| v.as_str())
+            {
                 embed["thumbnail"] = json!({
                     "url": format!("https://image.tmdb.org/t/p/w342{}", poster_path)
                 });
             }
         }
-        
+
         embed
     }
-    
+
     fn create_fields(&self, data: &NotificationData) -> Option<serde_json::Value> {
         match data {
             NotificationData::Movie(movie_data) => Some(json!([
@@ -82,7 +87,7 @@ impl DiscordProvider {
                     "inline": true
                 }
             ])),
-            
+
             NotificationData::Download(dl_data) => Some(json!([
                 {
                     "name": "Movie",
@@ -116,7 +121,7 @@ impl DiscordProvider {
                     "inline": true
                 }
             ])),
-            
+
             NotificationData::Import(import_data) => Some(json!([
                 {
                     "name": "Movie",
@@ -139,7 +144,7 @@ impl DiscordProvider {
                     "inline": false
                 }
             ])),
-            
+
             _ => None,
         }
     }
@@ -150,18 +155,18 @@ impl NotificationProvider for DiscordProvider {
     fn name(&self) -> &str {
         "Discord"
     }
-    
+
     fn is_enabled(&self) -> bool {
         self.config.enabled
     }
-    
+
     async fn test(&self) -> Result<()> {
         if !self.is_enabled() {
             return Err(NotificationError::ProviderUnavailable(
                 "Discord provider is disabled".to_string(),
             ));
         }
-        
+
         let test_notification = Notification::new(
             NotificationEventType::HealthCheckFailed,
             "Test Notification".to_string(),
@@ -173,18 +178,18 @@ impl NotificationProvider for DiscordProvider {
                 details: None,
             }),
         );
-        
+
         self.send(&test_notification).await
     }
-    
+
     async fn send(&self, notification: &Notification) -> Result<()> {
         if !self.is_enabled() {
             debug!("Discord provider is disabled, skipping notification");
             return Ok(());
         }
-        
+
         let embed = self.create_embed(notification);
-        
+
         let mut content = String::new();
         if self.config.mention_everyone {
             content.push_str("@everyone ");
@@ -192,31 +197,38 @@ impl NotificationProvider for DiscordProvider {
         for role in &self.config.mention_roles {
             content.push_str(&format!("<@&{}> ", role));
         }
-        
+
         let webhook_data = json!({
             "username": self.config.username.as_deref().unwrap_or("Radarr MVP"),
             "avatar_url": self.config.avatar_url.as_deref(),
             "content": if content.is_empty() { None } else { Some(content) },
             "embeds": [embed]
         });
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&self.config.webhook_url)
             .json(&webhook_data)
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             error!("Discord webhook failed with status {}: {}", status, text);
             return Err(NotificationError::SendFailed(format!(
                 "Discord webhook returned status {}: {}",
                 status, text
             )));
         }
-        
-        info!("Successfully sent Discord notification for event: {:?}", notification.event_type);
+
+        info!(
+            "Successfully sent Discord notification for event: {:?}",
+            notification.event_type
+        );
         Ok(())
     }
 }
@@ -225,12 +237,12 @@ fn format_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     format!("{:.2} {}", size, UNITS[unit_index])
 }
 

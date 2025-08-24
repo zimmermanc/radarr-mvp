@@ -4,10 +4,17 @@
 //! This is suitable for demonstration and testing within the core crate.
 
 use crate::jobs::{
-    EnhancedSyncHandler, ListSyncScheduler, SyncHandlerConfig, ConflictStrategy,
-    SyncJob, SyncError, ConflictResolution,
     // SyncResult, SyncStatus, // Currently unused
-    enhanced_sync_handler::{MovieRepository, ListSyncRepository, SyncMonitoring, PerformanceMetrics},
+    enhanced_sync_handler::{
+        ListSyncRepository, MovieRepository, PerformanceMetrics, SyncMonitoring,
+    },
+    ConflictResolution,
+    ConflictStrategy,
+    EnhancedSyncHandler,
+    ListSyncScheduler,
+    SyncError,
+    SyncHandlerConfig,
+    SyncJob,
 };
 use crate::models::Movie;
 use chrono::{Duration, Utc};
@@ -98,7 +105,11 @@ impl MovieRepository for MockMovieRepo {
 
 #[async_trait::async_trait]
 impl ListSyncRepository for MockSyncRepo {
-    async fn start_sync(&self, list_id: Uuid, _metadata: Option<serde_json::Value>) -> Result<Uuid, SyncError> {
+    async fn start_sync(
+        &self,
+        list_id: Uuid,
+        _metadata: Option<serde_json::Value>,
+    ) -> Result<Uuid, SyncError> {
         let sync_id = Uuid::new_v4();
         let mut syncs = self.syncs.write().await;
         syncs.push(SyncRecord {
@@ -132,7 +143,11 @@ impl ListSyncRepository for MockSyncRepo {
         Ok(())
     }
 
-    async fn record_performance_metrics(&self, _metrics: &PerformanceMetrics, _list_id: Uuid) -> Result<(), SyncError> {
+    async fn record_performance_metrics(
+        &self,
+        _metrics: &PerformanceMetrics,
+        _list_id: Uuid,
+    ) -> Result<(), SyncError> {
         Ok(()) // No-op for demo
     }
 }
@@ -149,10 +164,18 @@ impl SyncMonitoring for MockMonitoring {
         items_total: u64,
     ) {
         let mut ops = self.operations.lock().await;
-        ops.push(format!("Sync {}: success={}, added={}, total={}", source, success, items_added, items_total));
+        ops.push(format!(
+            "Sync {}: success={}, added={}, total={}",
+            source, success, items_added, items_total
+        ));
     }
 
-    async fn record_api_request(&self, service: &str, _duration: std::time::Duration, rate_limited: bool) {
+    async fn record_api_request(
+        &self,
+        service: &str,
+        _duration: std::time::Duration,
+        rate_limited: bool,
+    ) {
         let mut ops = self.operations.lock().await;
         ops.push(format!("API {}: rate_limited={}", service, rate_limited));
     }
@@ -278,7 +301,7 @@ impl MockSetup {
         };
 
         let mut results = Vec::new();
-        
+
         for strategy in [
             ConflictStrategy::KeepExisting,
             ConflictStrategy::UseNew,
@@ -298,45 +321,47 @@ impl MockSetup {
 /// Demonstrate the complete system
 pub async fn run_integration_demo() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting List Sync Integration Demo");
-    
+
     // Setup the system
     let setup = MockSetup::new();
-    
+
     // Add some jobs
     let imdb_job = setup.add_sample_job("IMDb Top 250", "imdb").await?;
     let tmdb_job = setup.add_sample_job("TMDb Popular", "tmdb").await?;
-    
+
     println!("✅ Added {} sync jobs", 2);
-    
+
     // Trigger syncs
     setup.trigger_sync(imdb_job).await?;
     setup.trigger_sync(tmdb_job).await?;
-    
+
     println!("✅ Triggered sync jobs");
-    
+
     // Check results
     let sync_history = setup.get_sync_history().await;
     println!("📊 Sync History ({} entries):", sync_history.len());
     for sync in &sync_history {
-        println!("  - {}: {} (found: {}, added: {})", 
-                 sync.list_id, sync.status, sync.items_found, sync.items_added);
+        println!(
+            "  - {}: {} (found: {}, added: {})",
+            sync.list_id, sync.status, sync.items_found, sync.items_added
+        );
     }
-    
+
     let monitoring_logs = setup.get_monitoring_logs().await;
     println!("📈 Monitoring Logs ({} entries):", monitoring_logs.len());
     for log in &monitoring_logs {
         println!("  - {}", log);
     }
-    
+
     // Demo conflict resolution
     println!("🔄 Conflict Resolution Demo:");
     let conflict_results = setup.demo_conflict_resolution().await;
     for (strategy, resolution) in conflict_results {
         println!("  - Strategy {:?} → Resolution {:?}", strategy, resolution);
     }
-    
+
     println!("✨ Integration demo completed successfully!");
-    
+
     Ok(())
 }
 
@@ -354,18 +379,18 @@ mod tests {
     #[tokio::test]
     async fn test_job_lifecycle() {
         let setup = MockSetup::new();
-        
+
         // Add job
         let job_id = setup.add_sample_job("Test List", "test").await.unwrap();
-        
+
         // Trigger sync
         setup.trigger_sync(job_id).await.unwrap();
-        
+
         // Check sync history
         let history = setup.get_sync_history().await;
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].status, "success");
-        
+
         // Check monitoring
         let logs = setup.get_monitoring_logs().await;
         assert!(!logs.is_empty());
@@ -375,13 +400,19 @@ mod tests {
     async fn test_conflict_resolution_demo() {
         let setup = MockSetup::new();
         let results = setup.demo_conflict_resolution().await;
-        
+
         assert_eq!(results.len(), 4);
-        
+
         // Verify each strategy produces a different result pattern
-        let keep_existing = results.iter().find(|(s, _)| matches!(s, ConflictStrategy::KeepExisting)).unwrap();
-        let use_new = results.iter().find(|(s, _)| matches!(s, ConflictStrategy::UseNew)).unwrap();
-        
+        let keep_existing = results
+            .iter()
+            .find(|(s, _)| matches!(s, ConflictStrategy::KeepExisting))
+            .unwrap();
+        let use_new = results
+            .iter()
+            .find(|(s, _)| matches!(s, ConflictStrategy::UseNew))
+            .unwrap();
+
         assert_eq!(keep_existing.1, ConflictResolution::Keep);
         assert_eq!(use_new.1, ConflictResolution::Update);
     }

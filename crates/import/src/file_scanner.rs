@@ -1,14 +1,14 @@
 //! File scanner for detecting and cataloging media files
-//! 
+//!
 //! This module provides functionality to recursively scan directories
 //! for video files and extract metadata about them.
 
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-use std::pin::Pin;
-use std::future::Future;
 use radarr_core::RadarrError;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::time::SystemTime;
 use tokio::fs;
 use tracing::{debug, info, warn};
 
@@ -31,7 +31,7 @@ impl Default for ScanConfig {
             max_depth: 10,
             follow_symlinks: false,
             min_file_size: 100 * 1024 * 1024, // 100MB minimum
-            max_file_size: 0, // No limit
+            max_file_size: 0,                 // No limit
         }
     }
 }
@@ -66,14 +66,12 @@ pub enum MediaType {
 
 /// Video file extensions supported for scanning
 const VIDEO_EXTENSIONS: &[&str] = &[
-    "mkv", "mp4", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    "3gp", "3g2", "mxf", "roq", "nsv", "f4v", "f4p", "f4a", "f4b"
+    "mkv", "mp4", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "3g2", "mxf",
+    "roq", "nsv", "f4v", "f4p", "f4a", "f4b",
 ];
 
 /// Sample file indicators in filename
-const SAMPLE_INDICATORS: &[&str] = &[
-    "sample", "trailer", "preview", "rarbg", "proof"
-];
+const SAMPLE_INDICATORS: &[&str] = &["sample", "trailer", "preview", "rarbg", "proof"];
 
 /// File scanner for discovering media files
 pub struct FileScanner {
@@ -94,7 +92,7 @@ impl FileScanner {
     /// Scan a directory for media files
     pub async fn scan_directory(&self, path: &Path) -> Result<Vec<DetectedFile>, RadarrError> {
         info!("Starting scan of directory: {}", path.display());
-        
+
         if !path.exists() {
             return Err(RadarrError::ValidationError {
                 field: "path".to_string(),
@@ -111,7 +109,7 @@ impl FileScanner {
 
         let mut detected_files = Vec::new();
         self.scan_recursive(path, 0, &mut detected_files).await?;
-        
+
         info!("Scan complete. Found {} media files", detected_files.len());
         Ok(detected_files)
     }
@@ -124,39 +122,47 @@ impl FileScanner {
         detected_files: &'a mut Vec<DetectedFile>,
     ) -> Pin<Box<dyn Future<Output = Result<(), RadarrError>> + 'a>> {
         Box::pin(async move {
-        if current_depth >= self.config.max_depth {
-            debug!("Reached max depth {} at {}", self.config.max_depth, path.display());
-            return Ok(());
-        }
-
-        let mut entries = match fs::read_dir(path).await {
-            Ok(entries) => entries,
-            Err(e) => {
-                warn!("Failed to read directory {}: {}", path.display(), e);
-                return Ok(()); // Continue scanning other directories
+            if current_depth >= self.config.max_depth {
+                debug!(
+                    "Reached max depth {} at {}",
+                    self.config.max_depth,
+                    path.display()
+                );
+                return Ok(());
             }
-        };
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            RadarrError::ExternalServiceError {
-                service: "filesystem".to_string(),
-                error: e.to_string(),
-            }
-        })? {
-            let entry_path = entry.path();
-            
-            if entry_path.is_dir() {
-                // Recursively scan subdirectories
-                self.scan_recursive(&entry_path, current_depth + 1, detected_files).await?;
-            } else if entry_path.is_file() {
-                // Check if this is a video file
-                if let Some(detected) = self.analyze_file(&entry_path).await? {
-                    detected_files.push(detected);
+            let mut entries = match fs::read_dir(path).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    warn!("Failed to read directory {}: {}", path.display(), e);
+                    return Ok(()); // Continue scanning other directories
+                }
+            };
+
+            while let Some(entry) =
+                entries
+                    .next_entry()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "filesystem".to_string(),
+                        error: e.to_string(),
+                    })?
+            {
+                let entry_path = entry.path();
+
+                if entry_path.is_dir() {
+                    // Recursively scan subdirectories
+                    self.scan_recursive(&entry_path, current_depth + 1, detected_files)
+                        .await?;
+                } else if entry_path.is_file() {
+                    // Check if this is a video file
+                    if let Some(detected) = self.analyze_file(&entry_path).await? {
+                        detected_files.push(detected);
+                    }
                 }
             }
-        }
 
-        Ok(())
+            Ok(())
         })
     }
 
@@ -182,12 +188,12 @@ impl FileScanner {
         };
 
         let size = metadata.len();
-        let modified = metadata.modified().map_err(|e| {
-            RadarrError::ExternalServiceError {
+        let modified = metadata
+            .modified()
+            .map_err(|e| RadarrError::ExternalServiceError {
                 service: "filesystem".to_string(),
                 error: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Check file size constraints
         if size < self.config.min_file_size {
@@ -200,20 +206,26 @@ impl FileScanner {
             return Ok(None);
         }
 
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_lowercase();
 
         // Detect if it's a sample file
-        let is_sample = SAMPLE_INDICATORS.iter()
+        let is_sample = SAMPLE_INDICATORS
+            .iter()
             .any(|indicator| filename.contains(indicator));
 
         // Basic media type detection (refined in file_analyzer)
         let media_type = self.detect_media_type(&filename);
 
-        debug!("Detected media file: {} ({} bytes, {})", 
-               path.display(), size, extension);
+        debug!(
+            "Detected media file: {} ({} bytes, {})",
+            path.display(),
+            size,
+            extension
+        );
 
         Ok(Some(DetectedFile {
             path: path.to_path_buf(),
@@ -228,16 +240,24 @@ impl FileScanner {
     /// Basic media type detection based on filename patterns
     fn detect_media_type(&self, filename: &str) -> MediaType {
         // Look for TV show patterns (S01E01, 1x01, etc.)
-        if filename.contains("s01e") || filename.contains("s1e") || 
-           filename.contains("1x01") || filename.contains("episode") {
+        if filename.contains("s01e")
+            || filename.contains("s1e")
+            || filename.contains("1x01")
+            || filename.contains("episode")
+        {
             return MediaType::TvShow;
         }
 
         // Look for movie year patterns
-        if filename.contains("2024") || filename.contains("2023") || 
-           filename.contains("2022") || filename.contains("2021") ||
-           filename.contains("2020") || filename.contains("1080p") ||
-           filename.contains("2160p") || filename.contains("720p") {
+        if filename.contains("2024")
+            || filename.contains("2023")
+            || filename.contains("2022")
+            || filename.contains("2021")
+            || filename.contains("2020")
+            || filename.contains("1080p")
+            || filename.contains("2160p")
+            || filename.contains("720p")
+        {
             return MediaType::Movie;
         }
 
@@ -255,7 +275,7 @@ mod tests {
     async fn test_scan_empty_directory() {
         let temp_dir = TempDir::new().unwrap();
         let scanner = FileScanner::default();
-        
+
         let files = scanner.scan_directory(temp_dir.path()).await.unwrap();
         assert!(files.is_empty());
     }
@@ -264,21 +284,25 @@ mod tests {
     async fn test_scan_with_video_files() {
         let temp_dir = TempDir::new().unwrap();
         let scanner = FileScanner::default();
-        
+
         // Create test video files
         let video_path = temp_dir.path().join("test_movie_2023.mkv");
-        fs::write(&video_path, vec![0u8; 200 * 1024 * 1024]).await.unwrap(); // 200MB
-        
+        fs::write(&video_path, vec![0u8; 200 * 1024 * 1024])
+            .await
+            .unwrap(); // 200MB
+
         let sample_path = temp_dir.path().join("sample.mp4");
-        fs::write(&sample_path, vec![0u8; 150 * 1024 * 1024]).await.unwrap(); // 150MB
-        
+        fs::write(&sample_path, vec![0u8; 150 * 1024 * 1024])
+            .await
+            .unwrap(); // 150MB
+
         let files = scanner.scan_directory(temp_dir.path()).await.unwrap();
         assert_eq!(files.len(), 2);
-        
+
         let movie_file = files.iter().find(|f| f.path == video_path).unwrap();
         assert_eq!(movie_file.media_type, MediaType::Movie);
         assert!(!movie_file.is_sample);
-        
+
         let sample_file = files.iter().find(|f| f.path == sample_path).unwrap();
         assert!(sample_file.is_sample);
     }
@@ -291,11 +315,13 @@ mod tests {
             ..Default::default()
         };
         let scanner = FileScanner::new(config);
-        
+
         // Create small file that should be filtered out
         let small_file = temp_dir.path().join("small.mkv");
-        fs::write(&small_file, vec![0u8; 100 * 1024 * 1024]).await.unwrap(); // 100MB
-        
+        fs::write(&small_file, vec![0u8; 100 * 1024 * 1024])
+            .await
+            .unwrap(); // 100MB
+
         let files = scanner.scan_directory(temp_dir.path()).await.unwrap();
         assert!(files.is_empty());
     }

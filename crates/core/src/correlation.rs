@@ -69,19 +69,19 @@ impl From<CorrelationId> for Uuid {
 pub struct CorrelationContext {
     /// The main correlation ID for this operation
     pub correlation_id: CorrelationId,
-    
+
     /// Parent correlation ID if this is a sub-operation
     pub parent_id: Option<CorrelationId>,
-    
+
     /// Originating service/component name
     pub origin: String,
-    
+
     /// Optional user ID associated with this operation
     pub user_id: Option<String>,
-    
+
     /// Optional session ID
     pub session_id: Option<String>,
-    
+
     /// Operation start timestamp
     pub started_at: chrono::DateTime<chrono::Utc>,
 }
@@ -133,7 +133,9 @@ impl CorrelationContext {
         format!(
             "correlation_id={} parent_id={} origin={} elapsed_ms={}",
             self.correlation_id,
-            self.parent_id.map(|id| id.to_string()).unwrap_or_else(|| "none".to_string()),
+            self.parent_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "none".to_string()),
             self.origin,
             self.elapsed().num_milliseconds()
         )
@@ -194,7 +196,7 @@ mod tests {
         let id1 = CorrelationId::new();
         let id2 = CorrelationId::new();
         assert_ne!(id1, id2);
-        
+
         let uuid = Uuid::new_v4();
         let id3 = CorrelationId::from_uuid(uuid);
         assert_eq!(id3.as_uuid(), uuid);
@@ -213,7 +215,7 @@ mod tests {
         let ctx = CorrelationContext::new("test-service");
         assert_eq!(ctx.origin, "test-service");
         assert!(ctx.parent_id.is_none());
-        
+
         let child = ctx.child("child-service");
         assert_eq!(child.origin, "child-service");
         assert_eq!(child.parent_id, Some(ctx.correlation_id));
@@ -224,7 +226,7 @@ mod tests {
         let ctx = CorrelationContext::new("api")
             .with_user("user123")
             .with_session("session456");
-        
+
         assert_eq!(ctx.user_id, Some("user123".to_string()));
         assert_eq!(ctx.session_id, Some("session456".to_string()));
     }
@@ -233,13 +235,13 @@ mod tests {
     async fn test_thread_local_context() {
         let ctx = CorrelationContext::new("test");
         let id = ctx.correlation_id;
-        
+
         set_current_context(ctx);
         assert_eq!(current_correlation_id(), id);
-        
+
         let retrieved = current_context().unwrap();
         assert_eq!(retrieved.correlation_id, id);
-        
+
         clear_context();
         assert!(current_context().is_none());
     }
@@ -248,11 +250,9 @@ mod tests {
     async fn test_with_context() {
         let ctx = CorrelationContext::new("test");
         let id = ctx.correlation_id;
-        
-        let result = with_context(ctx, || async {
-            current_correlation_id()
-        }).await;
-        
+
+        let result = with_context(ctx, || async { current_correlation_id() }).await;
+
         assert_eq!(result, id);
         assert!(current_context().is_none()); // Should be cleared after
     }

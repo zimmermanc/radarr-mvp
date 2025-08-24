@@ -1,8 +1,6 @@
 use anyhow::Result;
 use std::env;
-use tracing_subscriber::{
-    fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Service information for telemetry
 #[derive(Debug, Clone)]
@@ -64,7 +62,7 @@ impl Default for TelemetryConfig {
 pub fn init_telemetry(config: TelemetryConfig) -> Result<()> {
     // For MVP, use simple JSON logging with structured fields
     let filter = EnvFilter::from_env("RUST_LOG");
-    
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
@@ -73,11 +71,11 @@ pub fn init_telemetry(config: TelemetryConfig) -> Result<()> {
                 .with_level(true)
                 .with_file(true)
                 .with_line_number(true)
-                .json()
+                .json(),
         )
         .with(filter)
         .init();
-    
+
     tracing::info!(
         service.name = config.service.name,
         service.version = config.service.version,

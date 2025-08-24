@@ -7,19 +7,19 @@ use thiserror::Error;
 pub enum NotificationError {
     #[error("Failed to send notification: {0}")]
     SendFailed(String),
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    
+
     #[error("Template error: {0}")]
     TemplateError(String),
-    
+
     #[error("Provider not available: {0}")]
     ProviderUnavailable(String),
-    
+
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
-    
+
     #[error("Email error: {0}")]
     EmailError(String),
 }
@@ -30,13 +30,13 @@ pub type Result<T> = std::result::Result<T, NotificationError>;
 pub trait NotificationProvider: Send + Sync {
     /// Get the name of this provider
     fn name(&self) -> &str;
-    
+
     /// Test the connection/configuration
     async fn test(&self) -> Result<()>;
-    
+
     /// Send a notification
     async fn send(&self, notification: &Notification) -> Result<()>;
-    
+
     /// Check if this provider is enabled
     fn is_enabled(&self) -> bool;
 }
@@ -80,11 +80,11 @@ impl NotificationEventType {
             Self::UpdateAvailable => "🆕",
         }
     }
-    
+
     pub fn color(&self) -> u32 {
         match self {
             Self::MovieAdded | Self::DownloadCompleted | Self::ImportCompleted => 0x00FF00, // Green
-            Self::DownloadStarted | Self::ImportStarted => 0x0099FF, // Blue
+            Self::DownloadStarted | Self::ImportStarted => 0x0099FF,                        // Blue
             Self::MovieDeleted => 0xFFFF00, // Yellow
             Self::DownloadFailed | Self::ImportFailed | Self::HealthCheckFailed => 0xFF0000, // Red
             Self::UpdateAvailable => 0x9933FF, // Purple
@@ -163,7 +163,7 @@ impl Notification {
             timestamp: chrono::Utc::now(),
         }
     }
-    
+
     pub fn movie_added(movie: Movie) -> Self {
         let title = format!("Movie Added: {}", movie.title);
         let message = format!(
@@ -171,7 +171,7 @@ impl Notification {
             movie.title,
             movie.year.unwrap_or(0)
         );
-        
+
         Self::new(
             NotificationEventType::MovieAdded,
             title,
@@ -182,16 +182,14 @@ impl Notification {
             }),
         )
     }
-    
+
     pub fn download_completed(data: DownloadNotificationData) -> Self {
         let title = format!("Download Complete: {}", data.movie_title);
         let message = format!(
             "{} ({}) has finished downloading from {}",
-            data.movie_title,
-            data.quality,
-            data.indexer
+            data.movie_title, data.quality, data.indexer
         );
-        
+
         Self::new(
             NotificationEventType::DownloadCompleted,
             title,

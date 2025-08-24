@@ -5,9 +5,12 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::jobs::enhanced_sync_handler::{
+        ConflictResolver, ConflictStrategy, EnhancedSyncHandler, ListSyncRepository,
+        MovieRepository, PerformanceMetrics, PerformanceTracker, SyncHandlerConfig, SyncMonitoring,
+    };
+    use crate::jobs::list_sync::{ConflictResolution, SyncError, SyncHandler, SyncJob, SyncStatus};
     use crate::models::Movie;
-    use crate::jobs::enhanced_sync_handler::{MovieRepository, ListSyncRepository, SyncMonitoring, ConflictStrategy, PerformanceMetrics, ConflictResolver, EnhancedSyncHandler, SyncHandlerConfig, PerformanceTracker};
-    use crate::jobs::list_sync::{SyncError, SyncStatus, ConflictResolution, SyncJob, SyncHandler};
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -106,7 +109,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ListSyncRepository for MockListSyncRepository {
-        async fn start_sync(&self, list_id: Uuid, _metadata: Option<serde_json::Value>) -> Result<Uuid, SyncError> {
+        async fn start_sync(
+            &self,
+            list_id: Uuid,
+            _metadata: Option<serde_json::Value>,
+        ) -> Result<Uuid, SyncError> {
             let sync_id = Uuid::new_v4();
             let mut history = self.sync_history.write().await;
             history.push(SyncHistoryRecord {
@@ -152,9 +159,9 @@ mod tests {
         }
 
         async fn record_performance_metrics(
-            &self, 
-            metrics: &PerformanceMetrics, 
-            list_id: Uuid
+            &self,
+            metrics: &PerformanceMetrics,
+            list_id: Uuid,
         ) -> Result<(), SyncError> {
             let mut perf_metrics = self.performance_metrics.write().await;
             perf_metrics.push((metrics.clone(), list_id));
@@ -269,7 +276,7 @@ mod tests {
                     }
                 });
                 movie
-            },
+            }
             "medium" => {
                 let mut movie = Movie::new(tmdb_id, "Medium Quality Movie".to_string());
                 movie.year = Some(2023);
@@ -285,13 +292,13 @@ mod tests {
                     }
                 });
                 movie
-            },
+            }
             "low" => {
                 let mut movie = Movie::new(tmdb_id, "Low Quality Movie".to_string());
                 movie.updated_at = Utc::now() - chrono::Duration::days(90);
                 movie
-            },
-            _ => Movie::new(tmdb_id, "Default Movie".to_string())
+            }
+            _ => Movie::new(tmdb_id, "Default Movie".to_string()),
         }
     }
 
@@ -300,7 +307,7 @@ mod tests {
         let movie_repo = Arc::new(MockMovieRepository::new());
         let list_sync_repo = Arc::new(MockListSyncRepository::new());
         let monitoring = Arc::new(MockSyncMonitoring::new());
-        
+
         let config = SyncHandlerConfig {
             enable_performance_tracking: true,
             ..Default::default()
@@ -358,7 +365,7 @@ mod tests {
         let movie_repo = Arc::new(MockMovieRepository::new());
         let list_sync_repo = Arc::new(MockListSyncRepository::new());
         let monitoring = Arc::new(MockSyncMonitoring::new());
-        
+
         let config = SyncHandlerConfig {
             conflict_strategy: ConflictStrategy::Intelligent,
             ..Default::default()
@@ -395,18 +402,13 @@ mod tests {
         let movie_repo = Arc::new(MockMovieRepository::new());
         let list_sync_repo = Arc::new(MockListSyncRepository::new());
         let monitoring = Arc::new(MockSyncMonitoring::new());
-        
+
         let config = SyncHandlerConfig {
             conflict_strategy: ConflictStrategy::RulesBased,
             ..Default::default()
         };
 
-        let handler = EnhancedSyncHandler::new(
-            movie_repo,
-            list_sync_repo,
-            monitoring,
-            config,
-        );
+        let handler = EnhancedSyncHandler::new(movie_repo, list_sync_repo, monitoring, config);
 
         let mut existing_with_images = Movie::new(12345, "Movie with Images".to_string());
         existing_with_images.year = Some(2020);
@@ -426,8 +428,10 @@ mod tests {
             }
         });
 
-        let resolution = handler.resolve_conflict(&existing_with_images, &new_without_images).await;
-        
+        let resolution = handler
+            .resolve_conflict(&existing_with_images, &new_without_images)
+            .await;
+
         // Rules-based should prefer merge to combine best of both
         // (existing has images, new has better metadata)
         assert_eq!(resolution, ConflictResolution::Merge);
@@ -438,19 +442,15 @@ mod tests {
         let movie_repo = Arc::new(MockMovieRepository::new());
         let list_sync_repo = Arc::new(MockListSyncRepository::new());
         let monitoring = Arc::new(MockSyncMonitoring::new());
-        
+
         let config = SyncHandlerConfig {
             enable_performance_tracking: true,
             batch_size: 50,
             ..Default::default()
         };
 
-        let handler = EnhancedSyncHandler::new(
-            movie_repo,
-            list_sync_repo.clone(),
-            monitoring,
-            config,
-        );
+        let handler =
+            EnhancedSyncHandler::new(movie_repo, list_sync_repo.clone(), monitoring, config);
 
         // Simulate performance tracking
         {
@@ -484,7 +484,7 @@ mod tests {
         // Verify performance metrics were recorded
         let perf_records = list_sync_repo.get_performance_records().await;
         assert_eq!(perf_records.len(), 1);
-        
+
         let metrics = &perf_records[0].0;
         assert!(metrics.duration_ms > 0);
         assert_eq!(metrics.network_requests, 2);
@@ -538,12 +538,20 @@ mod tests {
         // Test complete movie scoring
         let complete_movie = create_test_movie(12345, "high");
         let score = resolver.calculate_data_quality_score(&complete_movie);
-        assert!(score > 0.8, "Complete movie should have high score: {}", score);
+        assert!(
+            score > 0.8,
+            "Complete movie should have high score: {}",
+            score
+        );
 
         // Test minimal movie scoring
         let minimal_movie = create_test_movie(67890, "low");
         let minimal_score = resolver.calculate_data_quality_score(&minimal_movie);
-        assert!(minimal_score < 0.3, "Minimal movie should have low score: {}", minimal_score);
+        assert!(
+            minimal_score < 0.3,
+            "Minimal movie should have low score: {}",
+            minimal_score
+        );
 
         // Complete should score higher than minimal
         assert!(score > minimal_score);
@@ -575,7 +583,7 @@ mod tests {
 
         // Start tracking
         tracker.start_sync();
-        
+
         // Record some activity
         tracker.record_batch_processed(50, Duration::from_millis(100));
         tracker.record_batch_processed(30, Duration::from_millis(75));
@@ -597,9 +605,9 @@ mod tests {
         // Verify metrics
         assert!(final_metrics.duration_ms > 0);
         assert_eq!(final_metrics.network_requests, 2);
-        assert_eq!(final_metrics.cache_hit_rate, Some(2.0/3.0)); // 2 hits out of 3 total
+        assert_eq!(final_metrics.cache_hit_rate, Some(2.0 / 3.0)); // 2 hits out of 3 total
         assert_eq!(final_metrics.memory_peak_mb, Some(256.0));
-        assert_eq!(final_metrics.error_rate, 1.0/80.0); // 1 error out of 80 items
+        assert_eq!(final_metrics.error_rate, 1.0 / 80.0); // 1 error out of 80 items
         assert!(final_metrics.items_per_second > 0.0);
         assert_eq!(final_metrics.batch_processing_times.len(), 2);
     }

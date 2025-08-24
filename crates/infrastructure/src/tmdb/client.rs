@@ -1,4 +1,7 @@
-use radarr_core::{Movie, MovieStatus, RadarrError, circuit_breaker::{CircuitBreaker, CircuitBreakerConfig}};
+use radarr_core::{
+    circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
+    Movie, MovieStatus, RadarrError,
+};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -9,13 +12,13 @@ use tracing::{debug, error};
 pub enum TmdbError {
     #[error("HTTP request failed: {0}")]
     HttpError(#[from] reqwest::Error),
-    
+
     #[error("Failed to parse TMDB response: {0}")]
     ParseError(#[from] serde_json::Error),
-    
+
     #[error("TMDB API error: {message}")]
     ApiError { message: String },
-    
+
     #[error("Movie not found")]
     NotFound,
 }
@@ -44,7 +47,7 @@ impl TmdbClient {
             .with_timeout(Duration::from_secs(30))
             .with_request_timeout(Duration::from_secs(10))
             .with_success_threshold(2);
-            
+
         Self {
             client: Client::new(),
             api_key,
@@ -52,8 +55,11 @@ impl TmdbClient {
             circuit_breaker: CircuitBreaker::new(circuit_breaker_config),
         }
     }
-    
-    pub fn new_with_circuit_breaker(api_key: String, circuit_breaker_config: CircuitBreakerConfig) -> Self {
+
+    pub fn new_with_circuit_breaker(
+        api_key: String,
+        circuit_breaker_config: CircuitBreakerConfig,
+    ) -> Self {
         Self {
             client: Client::new(),
             api_key,
@@ -63,65 +69,78 @@ impl TmdbClient {
     }
 
     /// Search for movies by query
-    pub async fn search_movies(&self, query: &str, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
+    pub async fn search_movies(
+        &self,
+        query: &str,
+        page: Option<i32>,
+    ) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
         let query_clone = query.to_string();
         let api_key_clone = self.api_key.clone();
         let base_url_clone = self.base_url.clone();
         let client_clone = self.client.clone();
-        
-        let result = self.circuit_breaker.call(async move {
-            let url = format!("{}/search/movie", base_url_clone);
-            
-            debug!("Searching TMDB for movies: query={}, page={}", query_clone, page);
-            
-            let response = client_clone
-                .get(&url)
-                .query(&[
-                    ("api_key", &api_key_clone),
-                    ("query", &query_clone),
-                    ("page", &page.to_string()),
-                ])
-                .send()
-                .await
-                .map_err(TmdbError::HttpError)?;
 
-            if !response.status().is_success() {
-                let status = response.status();
-                let text = response.text().await.unwrap_or_default();
-                error!("TMDB API error: {} - {}", status, text);
-                return Err(TmdbError::ApiError {
-                    message: format!("HTTP {}: {}", status, text),
-                });
-            }
+        let result = self
+            .circuit_breaker
+            .call(async move {
+                let url = format!("{}/search/movie", base_url_clone);
 
-            let search_response: TmdbSearchResponse = response.json().await
-                .map_err(TmdbError::HttpError)?;
-            
-            debug!("TMDB search returned {} results", search_response.results.len());
-            
-            Ok(search_response)
-        }).await;
-        
+                debug!(
+                    "Searching TMDB for movies: query={}, page={}",
+                    query_clone, page
+                );
+
+                let response = client_clone
+                    .get(&url)
+                    .query(&[
+                        ("api_key", &api_key_clone),
+                        ("query", &query_clone),
+                        ("page", &page.to_string()),
+                    ])
+                    .send()
+                    .await
+                    .map_err(TmdbError::HttpError)?;
+
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let text = response.text().await.unwrap_or_default();
+                    error!("TMDB API error: {} - {}", status, text);
+                    return Err(TmdbError::ApiError {
+                        message: format!("HTTP {}: {}", status, text),
+                    });
+                }
+
+                let search_response: TmdbSearchResponse =
+                    response.json().await.map_err(TmdbError::HttpError)?;
+
+                debug!(
+                    "TMDB search returned {} results",
+                    search_response.results.len()
+                );
+
+                Ok(search_response)
+            })
+            .await;
+
         match result {
             Ok(search_response) => {
                 // Convert TMDB results to our Movie model
-                let movies = search_response.results
+                let movies = search_response
+                    .results
                     .into_iter()
                     .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
                     .collect();
                 Ok(movies)
             }
-            Err(RadarrError::CircuitBreakerOpen { service }) => {
-                Err(TmdbError::ApiError {
-                    message: format!("TMDB service unavailable: circuit breaker open for {}", service),
-                })
-            }
-            Err(RadarrError::Timeout { operation }) => {
-                Err(TmdbError::ApiError {
-                    message: format!("TMDB request timed out: {}", operation),
-                })
-            }
+            Err(RadarrError::CircuitBreakerOpen { service }) => Err(TmdbError::ApiError {
+                message: format!(
+                    "TMDB service unavailable: circuit breaker open for {}",
+                    service
+                ),
+            }),
+            Err(RadarrError::Timeout { operation }) => Err(TmdbError::ApiError {
+                message: format!("TMDB request timed out: {}", operation),
+            }),
             Err(e) => Err(TmdbError::ApiError {
                 message: format!("TMDB service error: {}", e),
             }),
@@ -131,10 +150,11 @@ impl TmdbClient {
     /// Get a specific movie by TMDB ID
     pub async fn get_movie(&self, tmdb_id: i32) -> Result<Movie, TmdbError> {
         let url = format!("{}/movie/{}", self.base_url, tmdb_id);
-        
+
         debug!("Fetching TMDB movie: id={}", tmdb_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .query(&[("api_key", &self.api_key)])
             .send()
@@ -154,9 +174,9 @@ impl TmdbClient {
         }
 
         let tmdb_movie: TmdbMovie = response.json().await?;
-        
+
         debug!("TMDB movie fetched: {}", tmdb_movie.title);
-        
+
         Ok(self.tmdb_movie_to_movie(tmdb_movie))
     }
 
@@ -164,15 +184,13 @@ impl TmdbClient {
     pub async fn get_popular(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
         let url = format!("{}/movie/popular", self.base_url);
-        
+
         debug!("Fetching TMDB popular movies: page={}", page);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -186,11 +204,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB popular returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB popular returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -202,15 +224,13 @@ impl TmdbClient {
     pub async fn get_upcoming(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
         let url = format!("{}/movie/upcoming", self.base_url);
-        
+
         debug!("Fetching TMDB upcoming movies: page={}", page);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -224,11 +244,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB upcoming returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB upcoming returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -240,15 +264,13 @@ impl TmdbClient {
     pub async fn get_now_playing(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
         let url = format!("{}/movie/now_playing", self.base_url);
-        
+
         debug!("Fetching TMDB now playing movies: page={}", page);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -262,11 +284,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB now playing returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB now playing returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -278,15 +304,13 @@ impl TmdbClient {
     pub async fn get_top_rated(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
         let page = page.unwrap_or(1);
         let url = format!("{}/movie/top_rated", self.base_url);
-        
+
         debug!("Fetching TMDB top rated movies: page={}", page);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -300,11 +324,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB top rated returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB top rated returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -315,10 +343,11 @@ impl TmdbClient {
     /// Get movies from a collection
     pub async fn get_collection(&self, collection_id: i32) -> Result<Vec<Movie>, TmdbError> {
         let url = format!("{}/collection/{}", self.base_url, collection_id);
-        
+
         debug!("Fetching TMDB collection: id={}", collection_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .query(&[("api_key", &self.api_key)])
             .send()
@@ -338,11 +367,15 @@ impl TmdbClient {
         }
 
         let collection_response: TmdbCollectionResponse = response.json().await?;
-        
-        debug!("TMDB collection returned {} movies", collection_response.parts.len());
-        
+
+        debug!(
+            "TMDB collection returned {} movies",
+            collection_response.parts.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = collection_response.parts
+        let movies = collection_response
+            .parts
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -353,10 +386,11 @@ impl TmdbClient {
     /// Get movies by person (actor/director)
     pub async fn get_person_movies(&self, person_id: i32) -> Result<Vec<Movie>, TmdbError> {
         let url = format!("{}/person/{}/movie_credits", self.base_url, person_id);
-        
+
         debug!("Fetching movies for person: id={}", person_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .query(&[("api_key", &self.api_key)])
             .send()
@@ -376,22 +410,27 @@ impl TmdbClient {
         }
 
         let credits_response: TmdbPersonCreditsResponse = response.json().await?;
-        
-        debug!("TMDB person credits returned {} movies", credits_response.cast.len());
-        
+
+        debug!(
+            "TMDB person credits returned {} movies",
+            credits_response.cast.len()
+        );
+
         // Convert TMDB results to our Movie model (combine cast and crew)
-        let mut movies = credits_response.cast
+        let mut movies = credits_response
+            .cast
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect::<Vec<_>>();
-            
-        let crew_movies: Vec<Movie> = credits_response.crew
+
+        let crew_movies: Vec<Movie> = credits_response
+            .crew
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
-            
+
         movies.extend(crew_movies);
-        
+
         // Remove duplicates by TMDB ID
         movies.sort_by_key(|m| m.tmdb_id);
         movies.dedup_by_key(|m| m.tmdb_id);
@@ -403,15 +442,13 @@ impl TmdbClient {
     pub async fn get_keyword_movies(&self, keyword_id: i32) -> Result<Vec<Movie>, TmdbError> {
         let page = 1;
         let url = format!("{}/keyword/{}/movies", self.base_url, keyword_id);
-        
+
         debug!("Fetching movies for keyword: id={}", keyword_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -429,11 +466,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB keyword movies returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB keyword movies returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -444,10 +485,11 @@ impl TmdbClient {
     /// Get public list
     pub async fn get_list(&self, list_id: &str) -> Result<Vec<Movie>, TmdbError> {
         let url = format!("{}/list/{}", self.base_url, list_id);
-        
+
         debug!("Fetching TMDB list: id={}", list_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .query(&[("api_key", &self.api_key)])
             .send()
@@ -467,11 +509,12 @@ impl TmdbClient {
         }
 
         let list_response: TmdbListResponse = response.json().await?;
-        
+
         debug!("TMDB list returned {} items", list_response.items.len());
-        
+
         // Convert TMDB results to our Movie model
-        let movies = list_response.items
+        let movies = list_response
+            .items
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -482,14 +525,15 @@ impl TmdbClient {
     /// Convert TMDB movie to our Movie model
     fn tmdb_movie_to_movie(&self, tmdb_movie: TmdbMovie) -> Movie {
         let mut movie = Movie::new(tmdb_movie.id, tmdb_movie.title.clone());
-        
+
         // Set basic fields
         movie.original_title = Some(tmdb_movie.original_title.clone());
-        movie.year = tmdb_movie.release_date
+        movie.year = tmdb_movie
+            .release_date
             .as_ref()
             .and_then(|date| date.split('-').next().and_then(|year| year.parse().ok()));
         movie.runtime = tmdb_movie.runtime;
-        
+
         // Map TMDB status to our status
         movie.status = match tmdb_movie.status.as_deref() {
             Some("Released") => MovieStatus::Released,
@@ -536,15 +580,13 @@ impl TmdbClient {
     pub async fn get_company_movies(&self, company_id: i32) -> Result<Vec<Movie>, TmdbError> {
         let page = 1;
         let url = format!("{}/company/{}/movies", self.base_url, company_id);
-        
+
         debug!("Fetching movies for company: id={}", company_id);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
-            .query(&[
-                ("api_key", &self.api_key),
-                ("page", &page.to_string()),
-            ])
+            .query(&[("api_key", &self.api_key), ("page", &page.to_string())])
             .send()
             .await?;
 
@@ -562,11 +604,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB company movies returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB company movies returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -575,19 +621,18 @@ impl TmdbClient {
     }
 
     /// Get movies using TMDb discover endpoint with filters
-    pub async fn get_discover_movies(&self, params: &[(&str, &str)]) -> Result<Vec<Movie>, TmdbError> {
+    pub async fn get_discover_movies(
+        &self,
+        params: &[(&str, &str)],
+    ) -> Result<Vec<Movie>, TmdbError> {
         let url = format!("{}/discover/movie", self.base_url);
-        
+
         debug!("Fetching movies via discover with {} filters", params.len());
-        
+
         let mut query_params = vec![("api_key", self.api_key.as_str())];
         query_params.extend_from_slice(params);
-        
-        let response = self.client
-            .get(&url)
-            .query(&query_params)
-            .send()
-            .await?;
+
+        let response = self.client.get(&url).query(&query_params).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -599,11 +644,15 @@ impl TmdbClient {
         }
 
         let search_response: TmdbSearchResponse = response.json().await?;
-        
-        debug!("TMDB discover returned {} results", search_response.results.len());
-        
+
+        debug!(
+            "TMDB discover returned {} results",
+            search_response.results.len()
+        );
+
         // Convert TMDB results to our Movie model
-        let movies = search_response.results
+        let movies = search_response
+            .results
             .into_iter()
             .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
             .collect();
@@ -648,7 +697,7 @@ struct TmdbMovie {
     video: Option<bool>,
     genre_ids: Option<Vec<i32>>,
     original_language: Option<String>,
-    
+
     // Fields available in detailed movie response
     runtime: Option<i32>,
     status: Option<String>,

@@ -1,9 +1,9 @@
 //! HDBits Integration Example
-//! 
+//!
 //! Demonstrates how to integrate HDBits indexer into the Radarr API layer.
 //! This shows the complete integration pattern that can be used in production.
 
-use radarr_core::{models::indexer::{Indexer, IndexerImplementation}};
+use radarr_core::models::indexer::{Indexer, IndexerImplementation};
 use radarr_indexers::{HDBitsClient, HDBitsConfig, IndexerClient};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -45,22 +45,18 @@ impl IndexerService {
             }
         };
 
-        Ok(Self {
-            hdbits_client,
-        })
+        Ok(Self { hdbits_client })
     }
 
     /// Get all available indexers
     pub async fn get_indexers(&self) -> Vec<Indexer> {
         let mut indexers = Vec::new();
-        
+
         if let Some(client) = &self.hdbits_client {
             // Create an Indexer domain model for HDBits
-            let mut hdbits_indexer = Indexer::new(
-                "HDBits".to_string(),
-                IndexerImplementation::HDBits,
-            );
-            
+            let mut hdbits_indexer =
+                Indexer::new("HDBits".to_string(), IndexerImplementation::HDBits);
+
             // Configure HDBits-specific settings
             hdbits_indexer.update_settings(json!({
                 "base_url": "https://hdbits.org",
@@ -69,7 +65,7 @@ impl IndexerService {
                 "categories": ["Movies"],
                 "rate_limit_per_hour": 150
             }));
-            
+
             // Check health and update status
             match client.health_check().await {
                 Ok(true) => {
@@ -85,15 +81,19 @@ impl IndexerService {
                     println!("🔴 HDBits error: {} - disabled", e);
                 }
             }
-            
+
             indexers.push(hdbits_indexer);
         }
-        
+
         indexers
     }
 
     /// Search across all available indexers
-    pub async fn search(&self, query: &str, limit: Option<i32>) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn search(
+        &self,
+        query: &str,
+        limit: Option<i32>,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let mut results = Vec::new();
         let mut total_searched = 0;
         let mut errors = Vec::new();
@@ -101,7 +101,7 @@ impl IndexerService {
         // Search HDBits if available
         if let Some(client) = &self.hdbits_client {
             total_searched += 1;
-            
+
             let search_request = radarr_indexers::SearchRequest {
                 query: Some(query.to_string()),
                 imdb_id: None,
@@ -154,7 +154,7 @@ impl IndexerService {
                 }
                 Err(e) => {
                     results.push(json!({
-                        "indexer": "HDBits", 
+                        "indexer": "HDBits",
                         "healthy": false,
                         "response_time_ms": start.elapsed().as_millis(),
                         "error": e.to_string()
@@ -186,11 +186,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("---------------------");
     let indexers = service.get_indexers().await;
     for indexer in &indexers {
-        println!("  🔗 {} ({}) - Enabled: {}", 
-                 indexer.name, 
-                 indexer.implementation, 
-                 indexer.enabled);
-        
+        println!(
+            "  🔗 {} ({}) - Enabled: {}",
+            indexer.name, indexer.implementation, indexer.enabled
+        );
+
         if let Some(base_url) = indexer.base_url() {
             println!("      URL: {}", base_url);
         }
@@ -205,42 +205,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 3: Search for popular movies
     println!("\n🎬 Searching for Movies:");
     println!("-----------------------");
-    
-    let search_queries = vec![
-        "Dune",
-        "The Matrix",
-        "Blade Runner 2049",
-    ];
+
+    let search_queries = vec!["Dune", "The Matrix", "Blade Runner 2049"];
 
     for query in search_queries {
         println!("\n🔍 Searching for: '{}'", query);
-        
+
         match service.search(query, Some(3)).await {
             Ok(results) => {
                 let total = results["total_results"].as_u64().unwrap_or(0);
                 let searched = results["indexers_searched"].as_u64().unwrap_or(0);
                 let errors = results["indexers_with_errors"].as_u64().unwrap_or(0);
-                
-                println!("   📊 Summary: {} results from {} indexers ({} errors)", 
-                         total, searched, errors);
-                
+
+                println!(
+                    "   📊 Summary: {} results from {} indexers ({} errors)",
+                    total, searched, errors
+                );
+
                 if let Some(releases) = results["results"].as_array() {
                     for (i, release) in releases.iter().enumerate() {
-                        if let (Some(title), Some(indexer)) = (
-                            release["title"].as_str(),
-                            release["indexer"].as_str()
-                        ) {
-                            let size = release["size"].as_i64()
+                        if let (Some(title), Some(indexer)) =
+                            (release["title"].as_str(), release["indexer"].as_str())
+                        {
+                            let size = release["size"]
+                                .as_i64()
                                 .map(|s| format_size(s))
                                 .unwrap_or_else(|| "Unknown".to_string());
                             let seeders = release["seeders"].as_i64().unwrap_or(0);
-                            
+
                             println!("   {}. 📦 {} [{}]", i + 1, title, indexer);
                             println!("      💾 Size: {} | 🌱 Seeders: {}", size, seeders);
                         }
                     }
                 }
-                
+
                 if let Some(error_list) = results["errors"].as_array() {
                     if !error_list.is_empty() {
                         println!("   ⚠️ Errors:");
@@ -260,7 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n✅ HDBits Integration Example Complete!");
     println!("========================================");
-    
+
     Ok(())
 }
 
@@ -269,11 +267,11 @@ fn format_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     format!("{:.1} {}", size, UNITS[unit_index])
 }

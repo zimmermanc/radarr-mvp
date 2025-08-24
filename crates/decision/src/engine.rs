@@ -4,7 +4,7 @@
 //! multiple releases and selects the best one based on quality profiles
 //! and various release characteristics.
 
-use crate::quality::{Quality, Source, QualityProfile};
+use crate::quality::{Quality, QualityProfile, Source};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -38,7 +38,7 @@ impl Release {
     pub fn from_title(title: String, download_url: String) -> Self {
         let quality = Quality::from_resolution(&title);
         let source = Source::from_release_name(&title);
-        
+
         Self {
             title,
             download_url,
@@ -52,33 +52,33 @@ impl Release {
             source,
         }
     }
-    
+
     /// Builder methods for setting optional fields
     pub fn with_size(mut self, size: u64) -> Self {
         self.size = Some(size);
         self
     }
-    
+
     pub fn with_seeders(mut self, seeders: u32) -> Self {
         self.seeders = Some(seeders);
         self
     }
-    
+
     pub fn with_leechers(mut self, leechers: u32) -> Self {
         self.leechers = Some(leechers);
         self
     }
-    
+
     pub fn with_release_group(mut self, group: String) -> Self {
         self.release_group = Some(group);
         self
     }
-    
+
     pub fn with_age_hours(mut self, hours: u32) -> Self {
         self.age_hours = Some(hours);
         self
     }
-    
+
     pub fn with_freeleech(mut self, freeleech: bool) -> Self {
         self.freeleech = Some(freeleech);
         self
@@ -132,12 +132,12 @@ impl DecisionEngine {
     pub fn new(quality_profile: QualityProfile) -> Self {
         Self {
             quality_profile,
-            max_size_gb: Some(50), // Default 50GB limit
-            min_seeders: Some(1),  // At least 1 seeder
+            max_size_gb: Some(50),       // Default 50GB limit
+            min_seeders: Some(1),        // At least 1 seeder
             max_age_hours: Some(24 * 7), // Max 1 week old
         }
     }
-    
+
     /// Create decision engine with no constraints
     pub fn permissive(quality_profile: QualityProfile) -> Self {
         Self {
@@ -147,27 +147,29 @@ impl DecisionEngine {
             max_age_hours: None,
         }
     }
-    
+
     /// Evaluate a release and return its score
     pub fn evaluate_release(&self, release: &Release) -> Option<ReleaseScore> {
         // Check hard constraints first
         if !self.meets_constraints(release) {
             return None;
         }
-        
+
         // Calculate component scores
-        let quality_score = self.quality_profile.calculate_quality_score(&release.quality, &release.source);
+        let quality_score = self
+            .quality_profile
+            .calculate_quality_score(&release.quality, &release.source);
         if quality_score < 0 {
             return None; // Quality not allowed
         }
-        
+
         let seeders_score = self.calculate_seeders_score(release);
         let size_score = self.calculate_size_score(release);
         let age_score = self.calculate_age_score(release);
         let bonus_score = self.calculate_bonus_score(release);
-        
+
         let total = quality_score + seeders_score + size_score + age_score + bonus_score;
-        
+
         Some(ReleaseScore {
             total,
             quality_score,
@@ -177,7 +179,7 @@ impl DecisionEngine {
             bonus_score,
         })
     }
-    
+
     /// Select the best release from a list of candidates
     pub fn select_best_release(&self, releases: Vec<Release>) -> Option<Release> {
         let mut scored_releases: Vec<(Release, ReleaseScore)> = releases
@@ -187,14 +189,17 @@ impl DecisionEngine {
                     .map(|score| (release, score))
             })
             .collect();
-        
+
         // Sort by score (highest first)
         scored_releases.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         // Return the best release
-        scored_releases.into_iter().next().map(|(release, _)| release)
+        scored_releases
+            .into_iter()
+            .next()
+            .map(|(release, _)| release)
     }
-    
+
     /// Check if release meets hard constraints
     fn meets_constraints(&self, release: &Release) -> bool {
         // Size constraint
@@ -204,90 +209,93 @@ impl DecisionEngine {
                 return false;
             }
         }
-        
+
         // Seeders constraint
         if let (Some(min_seeders), Some(seeders)) = (self.min_seeders, release.seeders) {
             if seeders < min_seeders {
                 return false;
             }
         }
-        
+
         // Age constraint
         if let (Some(max_hours), Some(age)) = (self.max_age_hours, release.age_hours) {
             if age > max_hours {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Calculate seeders score (more seeders = better)
     fn calculate_seeders_score(&self, release: &Release) -> i32 {
         match release.seeders {
             Some(seeders) => {
                 match seeders {
-                    0 => -10,           // No seeders = bad
-                    1..=5 => 0,         // Few seeders = neutral
-                    6..=20 => 5,        // Good seeders = bonus
-                    21..=50 => 10,      // Great seeders = bigger bonus
-                    _ => 15,            // Excellent seeders = maximum bonus
+                    0 => -10,      // No seeders = bad
+                    1..=5 => 0,    // Few seeders = neutral
+                    6..=20 => 5,   // Good seeders = bonus
+                    21..=50 => 10, // Great seeders = bigger bonus
+                    _ => 15,       // Excellent seeders = maximum bonus
                 }
             }
             None => 0, // Unknown seeders = neutral
         }
     }
-    
+
     /// Calculate size score (prefer reasonable sizes)
     fn calculate_size_score(&self, release: &Release) -> i32 {
         match release.size {
             Some(size) => {
                 let size_gb = size / (1024 * 1024 * 1024);
                 match size_gb {
-                    0..=5 => 5,         // Good size for most movies
-                    6..=15 => 10,       // Ideal size range
-                    16..=30 => 5,       // Large but reasonable
-                    31..=50 => 0,       // Very large = neutral
-                    _ => -5,            // Excessively large = penalty
+                    0..=5 => 5,   // Good size for most movies
+                    6..=15 => 10, // Ideal size range
+                    16..=30 => 5, // Large but reasonable
+                    31..=50 => 0, // Very large = neutral
+                    _ => -5,      // Excessively large = penalty
                 }
             }
             None => 0, // Unknown size = neutral
         }
     }
-    
+
     /// Calculate age score (newer is generally better)
     fn calculate_age_score(&self, release: &Release) -> i32 {
         match release.age_hours {
             Some(hours) => {
                 match hours {
-                    0..=24 => 10,       // Very fresh = bonus
-                    25..=72 => 5,       // Recent = small bonus
-                    73..=168 => 0,      // This week = neutral
-                    169..=720 => -2,    // This month = small penalty
-                    _ => -5,            // Old = penalty
+                    0..=24 => 10,    // Very fresh = bonus
+                    25..=72 => 5,    // Recent = small bonus
+                    73..=168 => 0,   // This week = neutral
+                    169..=720 => -2, // This month = small penalty
+                    _ => -5,         // Old = penalty
                 }
             }
             None => 0, // Unknown age = neutral
         }
     }
-    
+
     /// Calculate bonus score for special features
     fn calculate_bonus_score(&self, release: &Release) -> i32 {
         let mut bonus = 0;
-        
+
         // Freeleech bonus
         if release.freeleech == Some(true) {
             bonus += 20;
         }
-        
+
         // Known good release groups
         if let Some(ref group) = release.release_group {
             let group_lower = group.to_lowercase();
-            if ["yify", "rarbg", "sparks", "blow"].iter().any(|&g| group_lower.contains(g)) {
+            if ["yify", "rarbg", "sparks", "blow"]
+                .iter()
+                .any(|&g| group_lower.contains(g))
+            {
                 bonus += 10;
             }
         }
-        
+
         bonus
     }
 }
@@ -313,21 +321,20 @@ mod tests {
         let mut engine = DecisionEngine::new(profile);
         engine.min_seeders = Some(5);
         engine.max_size_gb = Some(10);
-        
+
         // Release with enough seeders and small size should pass
         let good_release = create_test_release("Movie.2023.1080p.BluRay.x264")
             .with_seeders(10)
             .with_size(5 * 1024 * 1024 * 1024); // 5GB
         assert!(engine.meets_constraints(&good_release));
-        
+
         // Release with too few seeders should fail
-        let bad_seeders = create_test_release("Movie.2023.1080p.BluRay.x264")
-            .with_seeders(2);
+        let bad_seeders = create_test_release("Movie.2023.1080p.BluRay.x264").with_seeders(2);
         assert!(!engine.meets_constraints(&bad_seeders));
-        
+
         // Release too large should fail
-        let too_large = create_test_release("Movie.2023.1080p.BluRay.x264")
-            .with_size(15 * 1024 * 1024 * 1024); // 15GB
+        let too_large =
+            create_test_release("Movie.2023.1080p.BluRay.x264").with_size(15 * 1024 * 1024 * 1024); // 15GB
         assert!(!engine.meets_constraints(&too_large));
     }
 
@@ -335,17 +342,17 @@ mod tests {
     fn test_release_scoring() {
         let profile = QualityProfile::default();
         let engine = DecisionEngine::permissive(profile);
-        
+
         let release = create_test_release("Movie.2023.1080p.BluRay.x264-YIFY")
             .with_seeders(25)
             .with_size(8 * 1024 * 1024 * 1024) // 8GB
             .with_age_hours(12)
             .with_freeleech(true)
             .with_release_group("YIFY".to_string());
-        
+
         let score = engine.evaluate_release(&release).unwrap();
-        
-        // Quality: 1080p BluRay = 35, Seeders: 25 = 10, Size: 8GB = 10, Age: 12h = 10, 
+
+        // Quality: 1080p BluRay = 35, Seeders: 25 = 10, Size: 8GB = 10, Age: 12h = 10,
         // Bonus: freeleech(20) + good group(10) = 30
         // Total should be 35 + 10 + 10 + 10 + 30 = 95
         assert_eq!(score.total, 95);
@@ -360,20 +367,18 @@ mod tests {
     fn test_best_release_selection() {
         let profile = QualityProfile::default();
         let engine = DecisionEngine::permissive(profile);
-        
+
         let releases = vec![
             // Lower quality but good stats
             create_test_release("Movie.2023.720p.BluRay.x264")
                 .with_seeders(50)
                 .with_freeleech(true),
             // Higher quality, fewer seeders
-            create_test_release("Movie.2023.1080p.BluRay.x264")
-                .with_seeders(10),
+            create_test_release("Movie.2023.1080p.BluRay.x264").with_seeders(10),
             // Highest quality (should win despite fewer seeders)
-            create_test_release("Movie.2023.2160p.BluRay.x264")
-                .with_seeders(5),
+            create_test_release("Movie.2023.2160p.BluRay.x264").with_seeders(5),
         ];
-        
+
         let best = engine.select_best_release(releases).unwrap();
         assert!(best.title.contains("2160p")); // 4K should win
     }
@@ -382,13 +387,13 @@ mod tests {
     fn test_no_suitable_releases() {
         let profile = QualityProfile::default();
         let engine = DecisionEngine::new(profile);
-        
+
         // All SD releases should be rejected by default profile
         let releases = vec![
             create_test_release("Movie.2023.480p.DVD.x264"),
             create_test_release("Movie.2023.SD.HDTV.x264"),
         ];
-        
+
         let result = engine.select_best_release(releases);
         assert!(result.is_none()); // No suitable releases
     }
@@ -398,16 +403,14 @@ mod tests {
         let profile = QualityProfile::default();
         let mut engine = DecisionEngine::new(profile);
         engine.min_seeders = Some(10);
-        
+
         let releases = vec![
             // Good quality but no seeders - should be filtered out
-            create_test_release("Movie.2023.1080p.BluRay.x264")
-                .with_seeders(2),
+            create_test_release("Movie.2023.1080p.BluRay.x264").with_seeders(2),
             // Lower quality but good seeders - should be selected
-            create_test_release("Movie.2023.720p.BluRay.x264")
-                .with_seeders(25),
+            create_test_release("Movie.2023.720p.BluRay.x264").with_seeders(25),
         ];
-        
+
         let best = engine.select_best_release(releases).unwrap();
         assert!(best.title.contains("720p")); // Only viable option
     }

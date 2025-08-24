@@ -12,22 +12,22 @@ use uuid::Uuid;
 pub trait CustomFormatsRepository: Send + Sync {
     /// Find custom format by ID
     async fn find_by_id(&self, id: &Uuid) -> Result<Option<CustomFormat>>;
-    
+
     /// Find custom format by name
     async fn find_by_name(&self, name: &str) -> Result<Option<CustomFormat>>;
-    
+
     /// Create a new custom format
     async fn create(&self, format: &CustomFormat) -> Result<CustomFormat>;
-    
+
     /// Update an existing custom format
     async fn update(&self, format: &CustomFormat) -> Result<CustomFormat>;
-    
+
     /// Delete a custom format
     async fn delete(&self, id: &Uuid) -> Result<()>;
-    
+
     /// List all custom formats
     async fn list(&self) -> Result<Vec<CustomFormat>>;
-    
+
     /// List only enabled custom formats
     async fn list_enabled(&self) -> Result<Vec<CustomFormat>>;
 }
@@ -42,7 +42,7 @@ impl PostgresCustomFormatsRepository {
     pub fn new(pool: DatabasePool) -> Self {
         Self { pool }
     }
-    
+
     /// Convert database row to CustomFormat
     fn row_to_custom_format(&self, row: &sqlx::postgres::PgRow) -> Result<CustomFormat> {
         let id: Uuid = row.try_get("id")?;
@@ -50,11 +50,13 @@ impl PostgresCustomFormatsRepository {
         let specifications_json: serde_json::Value = row.try_get("specifications")?;
         let score: i32 = row.try_get("score")?;
         let enabled: bool = row.try_get("enabled")?;
-        
+
         // Parse specifications from JSON
         let specifications: Vec<FormatSpecification> = serde_json::from_value(specifications_json)
-            .map_err(|e| RadarrError::SerializationError(format!("Failed to parse specifications: {}", e)))?;
-        
+            .map_err(|e| {
+                RadarrError::SerializationError(format!("Failed to parse specifications: {}", e))
+            })?;
+
         Ok(CustomFormat {
             id,
             name,
@@ -70,7 +72,7 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
     async fn find_by_id(&self, id: &Uuid) -> Result<Option<CustomFormat>> {
         let row = sqlx::query(
             "SELECT id, name, specifications, score, enabled, created_at, updated_at 
-             FROM custom_formats WHERE id = $1"
+             FROM custom_formats WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -81,11 +83,11 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
             None => Ok(None),
         }
     }
-    
+
     async fn find_by_name(&self, name: &str) -> Result<Option<CustomFormat>> {
         let row = sqlx::query(
             "SELECT id, name, specifications, score, enabled, created_at, updated_at 
-             FROM custom_formats WHERE name = $1"
+             FROM custom_formats WHERE name = $1",
         )
         .bind(name)
         .fetch_optional(&self.pool)
@@ -96,11 +98,12 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
             None => Ok(None),
         }
     }
-    
+
     async fn create(&self, format: &CustomFormat) -> Result<CustomFormat> {
-        let specifications_json = serde_json::to_value(&format.specifications)
-            .map_err(|e| RadarrError::SerializationError(format!("Failed to serialize specifications: {}", e)))?;
-        
+        let specifications_json = serde_json::to_value(&format.specifications).map_err(|e| {
+            RadarrError::SerializationError(format!("Failed to serialize specifications: {}", e))
+        })?;
+
         sqlx::query(
             "INSERT INTO custom_formats (id, name, specifications, score, enabled, created_at, updated_at) 
              VALUES ($1, $2, $3, $4, $5, NOW(), NOW())"
@@ -115,15 +118,16 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
 
         Ok(format.clone())
     }
-    
+
     async fn update(&self, format: &CustomFormat) -> Result<CustomFormat> {
-        let specifications_json = serde_json::to_value(&format.specifications)
-            .map_err(|e| RadarrError::SerializationError(format!("Failed to serialize specifications: {}", e)))?;
-        
+        let specifications_json = serde_json::to_value(&format.specifications).map_err(|e| {
+            RadarrError::SerializationError(format!("Failed to serialize specifications: {}", e))
+        })?;
+
         sqlx::query(
             "UPDATE custom_formats 
              SET name = $2, specifications = $3, score = $4, enabled = $5, updated_at = NOW()
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(&format.id)
         .bind(&format.name)
@@ -135,7 +139,7 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
 
         Ok(format.clone())
     }
-    
+
     async fn delete(&self, id: &Uuid) -> Result<()> {
         sqlx::query("DELETE FROM custom_formats WHERE id = $1")
             .bind(id)
@@ -143,11 +147,11 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
             .await?;
         Ok(())
     }
-    
+
     async fn list(&self) -> Result<Vec<CustomFormat>> {
         let rows = sqlx::query(
             "SELECT id, name, specifications, score, enabled, created_at, updated_at 
-             FROM custom_formats ORDER BY name ASC"
+             FROM custom_formats ORDER BY name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -158,11 +162,11 @@ impl CustomFormatsRepository for PostgresCustomFormatsRepository {
         }
         Ok(formats)
     }
-    
+
     async fn list_enabled(&self) -> Result<Vec<CustomFormat>> {
         let rows = sqlx::query(
             "SELECT id, name, specifications, score, enabled, created_at, updated_at 
-             FROM custom_formats WHERE enabled = true ORDER BY name ASC"
+             FROM custom_formats WHERE enabled = true ORDER BY name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -184,11 +188,11 @@ mod tests {
     async fn test_custom_format_serialization() {
         let spec = FormatSpecification::new("release_title", "x265|HEVC");
         let format = CustomFormat::new("x265 Format", 5).add_spec(spec);
-        
+
         // Test that we can serialize/deserialize specifications
         let json = serde_json::to_value(&format.specifications).unwrap();
         let deserialized: Vec<FormatSpecification> = serde_json::from_value(json).unwrap();
-        
+
         assert_eq!(deserialized.len(), 1);
         assert_eq!(deserialized[0].spec_type, "release_title");
         assert_eq!(deserialized[0].value, "x265|HEVC");

@@ -1,8 +1,8 @@
 use radarr_core::streaming::{
     aggregator::TrendingAggregator,
     traits::{
-        StreamingAggregator, StreamingCacheRepository, TrendingRepository,
-        AvailabilityRepository, OAuthTokenRepository, StreamingConfig,
+        AvailabilityRepository, OAuthTokenRepository, StreamingAggregator,
+        StreamingCacheRepository, StreamingConfig, TrendingRepository,
     },
 };
 use sqlx::PgPool;
@@ -11,9 +11,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    repositories::PostgresStreamingCache,
-    tmdb::TmdbStreamingClient,
-    trakt::TraktClient,
+    repositories::PostgresStreamingCache, tmdb::TmdbStreamingClient, trakt::TraktClient,
     watchmode::WatchmodeClient,
 };
 
@@ -64,13 +62,15 @@ impl StreamingServiceFactory {
         let token_repo = cache_repo.clone() as Arc<dyn OAuthTokenRepository>;
 
         // Create TMDB client (required)
-        let tmdb_client: Arc<dyn radarr_core::streaming::traits::TmdbAdapter> = 
+        let tmdb_client: Arc<dyn radarr_core::streaming::traits::TmdbAdapter> =
             Arc::new(TmdbStreamingClient::new(self.tmdb_api_key.clone()));
 
         // Create Trakt client (optional)
-        let trakt_client: Arc<dyn radarr_core::streaming::traits::TraktAdapter> = 
-            if let (Some(client_id), Some(client_secret)) = 
-                (self.trakt_client_id.clone(), self.trakt_client_secret.clone()) {
+        let trakt_client: Arc<dyn radarr_core::streaming::traits::TraktAdapter> =
+            if let (Some(client_id), Some(client_secret)) = (
+                self.trakt_client_id.clone(),
+                self.trakt_client_secret.clone(),
+            ) {
                 info!("Trakt integration enabled");
                 Arc::new(TraktClient::new(client_id, client_secret, token_repo))
             } else {
@@ -84,7 +84,7 @@ impl StreamingServiceFactory {
             };
 
         // Create Watchmode client (optional)
-        let watchmode_client: Option<Arc<dyn radarr_core::streaming::traits::WatchmodeAdapter>> = 
+        let watchmode_client: Option<Arc<dyn radarr_core::streaming::traits::WatchmodeAdapter>> =
             if let Some(api_key) = self.watchmode_api_key.clone() {
                 info!("Watchmode integration enabled");
                 Some(Arc::new(WatchmodeClient::new(
@@ -121,14 +121,14 @@ impl StreamingServiceFactory {
     /// Build streaming configuration with cache TTLs
     fn build_config(&self) -> StreamingConfig {
         let mut cache_ttl = HashMap::new();
-        
+
         // Configure cache TTLs (in hours)
-        cache_ttl.insert("tmdb_trending".to_string(), 3);      // 3 hours for TMDB trending
-        cache_ttl.insert("tmdb_providers".to_string(), 24);    // 24 hours for watch providers
-        cache_ttl.insert("trakt_trending".to_string(), 1);     // 1 hour for Trakt trending
+        cache_ttl.insert("tmdb_trending".to_string(), 3); // 3 hours for TMDB trending
+        cache_ttl.insert("tmdb_providers".to_string(), 24); // 24 hours for watch providers
+        cache_ttl.insert("trakt_trending".to_string(), 1); // 1 hour for Trakt trending
         cache_ttl.insert("watchmode_availability".to_string(), 12); // 12 hours for Watchmode
         cache_ttl.insert("aggregated_trending".to_string(), 1); // 1 hour for aggregated data
-        cache_ttl.insert("coming_soon".to_string(), 24);       // 24 hours for upcoming releases
+        cache_ttl.insert("coming_soon".to_string(), 24); // 24 hours for upcoming releases
 
         StreamingConfig {
             tmdb_api_key: self.tmdb_api_key.clone(),
@@ -145,15 +145,14 @@ impl StreamingServiceFactory {
 pub fn create_default_aggregator(pool: PgPool) -> Arc<dyn StreamingAggregator> {
     use std::env;
 
-    let tmdb_api_key = env::var("TMDB_API_KEY")
-        .expect("TMDB_API_KEY environment variable must be set");
+    let tmdb_api_key =
+        env::var("TMDB_API_KEY").expect("TMDB_API_KEY environment variable must be set");
 
     let trakt_client_id = env::var("TRAKT_CLIENT_ID").ok();
     let trakt_client_secret = env::var("TRAKT_CLIENT_SECRET").ok();
     let watchmode_api_key = env::var("WATCHMODE_API_KEY").ok();
 
-    let mut factory = StreamingServiceFactory::new(pool)
-        .with_tmdb(tmdb_api_key);
+    let mut factory = StreamingServiceFactory::new(pool).with_tmdb(tmdb_api_key);
 
     if let (Some(id), Some(secret)) = (trakt_client_id, trakt_client_secret) {
         factory = factory.with_trakt(id, secret);

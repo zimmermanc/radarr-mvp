@@ -16,10 +16,10 @@ mod tests {
     async fn test_trending_movies() {
         let api_key = std::env::var("TMDB_API_KEY").unwrap_or_else(|_| "test_key".to_string());
         let client = TmdbStreamingClient::new(api_key);
-        
+
         // This would fail without a real API key, but shows the interface works
         let result = client.trending_movies(TimeWindow::Day).await;
-        
+
         // With a real API key, this should succeed
         if result.is_ok() {
             let entries = result.unwrap();

@@ -3,13 +3,16 @@ use chrono::NaiveDate;
 use radarr_core::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
     streaming::{
-        traits::{TraktAdapter, OAuthTokenRepository},
+        traits::{OAuthTokenRepository, TraktAdapter},
         MediaType, OAuthToken, TimeWindow, TraktDeviceCode, TraktTokenResponse, TrendingEntry,
         TrendingSource,
     },
     RadarrError,
 };
-use reqwest::{Client, header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT}};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT},
+    Client,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,13 +38,13 @@ impl TraktClient {
     ) -> Self {
         let config = TraktOAuthConfig::new(client_id.clone(), client_secret);
         let oauth = TraktOAuth::new(config);
-        
+
         let circuit_breaker_config = CircuitBreakerConfig::new("Trakt")
             .with_failure_threshold(5)
             .with_timeout(Duration::from_secs(30))
             .with_request_timeout(Duration::from_secs(10))
             .with_success_threshold(2);
-        
+
         Self {
             client: Client::new(),
             oauth,
@@ -56,7 +59,7 @@ impl TraktClient {
     async fn get_valid_token(&self) -> Result<String, RadarrError> {
         // Get stored token
         let stored_token = self.token_repo.get_token("trakt").await?;
-        
+
         match stored_token {
             Some(token) if !token.needs_refresh() => {
                 // Token is still valid
@@ -66,12 +69,14 @@ impl TraktClient {
                 // Token needs refresh
                 info!("Trakt token expired or expiring, refreshing...");
                 let refresh_token = token.refresh_token.unwrap();
-                
+
                 match self.oauth.refresh_token(&refresh_token).await {
                     Ok(new_token_response) => {
                         // Convert and store new token
                         let new_token = self.oauth.token_to_oauth(new_token_response);
-                        self.token_repo.update_token("trakt", new_token.clone()).await?;
+                        self.token_repo
+                            .update_token("trakt", new_token.clone())
+                            .await?;
                         Ok(new_token.access_token)
                     }
                     Err(e) => {
@@ -93,21 +98,24 @@ impl TraktClient {
     /// Build headers for Trakt API requests
     fn build_headers(&self, access_token: Option<&str>) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        
+
         // Required headers for all requests
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
         headers.insert("trakt-api-version", HeaderValue::from_static("2"));
-        headers.insert("trakt-api-key", HeaderValue::from_str(&self.client_id).unwrap());
+        headers.insert(
+            "trakt-api-key",
+            HeaderValue::from_str(&self.client_id).unwrap(),
+        );
         headers.insert(USER_AGENT, HeaderValue::from_static("Radarr-MVP/1.0"));
-        
+
         // Add authorization header if token provided
         if let Some(token) = access_token {
             headers.insert(
                 AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {}", token)).unwrap()
+                HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
             );
         }
-        
+
         headers
     }
 
@@ -118,16 +126,17 @@ impl TraktClient {
         require_auth: bool,
     ) -> Result<T, RadarrError> {
         let url = format!("{}{}", self.base_url, endpoint);
-        
+
         let access_token = if require_auth {
             Some(self.get_valid_token().await?)
         } else {
             None
         };
-        
+
         let headers = self.build_headers(access_token.as_deref());
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .headers(headers)
             .send()
@@ -147,7 +156,9 @@ impl TraktClient {
             });
         }
 
-        response.json().await
+        response
+            .json()
+            .await
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "trakt".to_string(),
                 error: e.to_string(),
@@ -174,15 +185,18 @@ impl TraktAdapter for TraktClient {
             TimeWindow::Day => "daily",
             TimeWindow::Week => "weekly",
         };
-        
-        let endpoint = format!("/movies/trending?page=1&limit=20&extended=full&period={}", period);
-        
+
+        let endpoint = format!(
+            "/movies/trending?page=1&limit=20&extended=full&period={}",
+            period
+        );
+
         info!("Fetching Trakt trending movies for period: {}", period);
-        
+
         let trakt_movies: Vec<TraktTrendingMovie> = self.make_request(&endpoint, false).await?;
-        
+
         debug!("Trakt returned {} trending movies", trakt_movies.len());
-        
+
         // Convert to TrendingEntry
         let entries: Vec<TrendingEntry> = trakt_movies
             .into_iter()
@@ -195,14 +209,17 @@ impl TraktAdapter for TraktClient {
                     TrendingSource::Trakt,
                     window.clone(),
                 );
-                
+
                 entry.rank = Some((index + 1) as i32);
                 entry.score = Some(item.watchers as f32);
-                entry.release_date = item.movie.released.and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
+                entry.release_date = item
+                    .movie
+                    .released
+                    .and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
                 entry.overview = item.movie.overview;
                 entry.vote_average = item.movie.rating.map(|r| r as f32);
                 entry.vote_count = item.movie.votes;
-                
+
                 entry
             })
             .collect();
@@ -215,15 +232,18 @@ impl TraktAdapter for TraktClient {
             TimeWindow::Day => "daily",
             TimeWindow::Week => "weekly",
         };
-        
-        let endpoint = format!("/shows/trending?page=1&limit=20&extended=full&period={}", period);
-        
+
+        let endpoint = format!(
+            "/shows/trending?page=1&limit=20&extended=full&period={}",
+            period
+        );
+
         info!("Fetching Trakt trending shows for period: {}", period);
-        
+
         let trakt_shows: Vec<TraktTrendingShow> = self.make_request(&endpoint, false).await?;
-        
+
         debug!("Trakt returned {} trending shows", trakt_shows.len());
-        
+
         // Convert to TrendingEntry
         let entries: Vec<TrendingEntry> = trakt_shows
             .into_iter()
@@ -236,19 +256,19 @@ impl TraktAdapter for TraktClient {
                     TrendingSource::Trakt,
                     window.clone(),
                 );
-                
+
                 entry.rank = Some((index + 1) as i32);
                 entry.score = Some(item.watchers as f32);
                 entry.release_date = item.show.first_aired.and_then(|d| {
                     // Parse ISO 8601 datetime and extract date
-                    d.split('T').next().and_then(|date_str| {
-                        NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
-                    })
+                    d.split('T')
+                        .next()
+                        .and_then(|date_str| NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok())
                 });
                 entry.overview = item.show.overview;
                 entry.vote_average = item.show.rating.map(|r| r as f32);
                 entry.vote_count = item.show.votes;
-                
+
                 entry
             })
             .collect();

@@ -4,17 +4,17 @@
 //! that span multiple services and components, as well as event handlers for
 //! basic download→import workflows.
 
-use std::sync::Arc;
-use std::collections::HashMap;
-use radarr_core::{RadarrError, Result, EventHandler, SystemEvent, EventEnvelope, EventBus};
-use radarr_core::domain::repositories::MovieRepository;
-use radarr_import::ImportPipeline;
-use radarr_infrastructure::{DatabasePool, repositories::movie::PostgresMovieRepository};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use tokio::sync::RwLock;
-use tracing::{info, debug, warn, error, instrument};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use radarr_core::domain::repositories::MovieRepository;
+use radarr_core::{EventBus, EventEnvelope, EventHandler, RadarrError, Result, SystemEvent};
+use radarr_import::ImportPipeline;
+use radarr_infrastructure::{repositories::movie::PostgresMovieRepository, DatabasePool};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, instrument, warn};
+use uuid::Uuid;
 
 /// Workflow step definition
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ impl WorkflowManager {
             executions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Start a new workflow execution
     #[instrument(skip(self))]
     pub async fn start_workflow(
@@ -120,7 +120,7 @@ impl WorkflowManager {
     ) -> Result<Uuid> {
         let workflow_id = Uuid::new_v4();
         let now = Utc::now();
-        
+
         let execution = WorkflowExecution {
             id: workflow_id,
             name: name.clone(),
@@ -136,14 +136,14 @@ impl WorkflowManager {
             completed_at: None,
             updated_at: now,
         };
-        
+
         let mut executions = self.executions.write().await;
         executions.insert(workflow_id, execution);
-        
+
         info!("Started workflow '{}' with ID {}", name, workflow_id);
         Ok(workflow_id)
     }
-    
+
     /// Update workflow status
     #[instrument(skip(self))]
     pub async fn update_workflow_status(
@@ -153,12 +153,12 @@ impl WorkflowManager {
         error_message: Option<String>,
     ) -> Result<()> {
         let mut executions = self.executions.write().await;
-        
+
         if let Some(execution) = executions.get_mut(&workflow_id) {
             execution.status = status;
             execution.error_message = error_message;
             execution.updated_at = Utc::now();
-            
+
             // Set completion time if workflow is finished
             match execution.status {
                 WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled => {
@@ -167,8 +167,11 @@ impl WorkflowManager {
                 }
                 _ => {}
             }
-            
-            debug!("Updated workflow {} status to {:?}", workflow_id, execution.status);
+
+            debug!(
+                "Updated workflow {} status to {:?}",
+                workflow_id, execution.status
+            );
             Ok(())
         } else {
             Err(RadarrError::NotFoundError {
@@ -177,43 +180,45 @@ impl WorkflowManager {
             })
         }
     }
-    
+
     /// Complete a workflow step
     #[instrument(skip(self))]
-    pub async fn complete_step(
-        &self,
-        workflow_id: Uuid,
-        step_result: StepResult,
-    ) -> Result<()> {
+    pub async fn complete_step(&self, workflow_id: Uuid, step_result: StepResult) -> Result<()> {
         let mut executions = self.executions.write().await;
-        
+
         if let Some(execution) = executions.get_mut(&workflow_id) {
             execution.step_results.push(step_result.clone());
-            
+
             // Update progress
             execution.progress = execution.step_results.len() as f32 / execution.steps.len() as f32;
             execution.updated_at = Utc::now();
-            
+
             // Move to next step if this one succeeded
             if step_result.success {
                 execution.current_step += 1;
-                
+
                 // Check if workflow is complete
                 if execution.current_step >= execution.steps.len() {
                     execution.status = WorkflowStatus::Completed;
                     execution.completed_at = Some(Utc::now());
                     info!("Workflow {} completed successfully", workflow_id);
                 } else {
-                    debug!("Workflow {} advanced to step {}", workflow_id, execution.current_step);
+                    debug!(
+                        "Workflow {} advanced to step {}",
+                        workflow_id, execution.current_step
+                    );
                 }
             } else {
                 // Step failed
                 execution.status = WorkflowStatus::Failed;
                 execution.error_message = step_result.error.clone();
                 execution.completed_at = Some(Utc::now());
-                warn!("Workflow {} failed at step {}: {:?}", workflow_id, step_result.step_id, step_result.error);
+                warn!(
+                    "Workflow {} failed at step {}: {:?}",
+                    workflow_id, step_result.step_id, step_result.error
+                );
             }
-            
+
             Ok(())
         } else {
             Err(RadarrError::NotFoundError {
@@ -222,28 +227,32 @@ impl WorkflowManager {
             })
         }
     }
-    
+
     /// Get workflow execution by ID
     pub async fn get_workflow(&self, workflow_id: Uuid) -> Result<Option<WorkflowExecution>> {
         let executions = self.executions.read().await;
         Ok(executions.get(&workflow_id).cloned())
     }
-    
+
     /// Get all workflow executions
     pub async fn get_all_workflows(&self) -> Result<Vec<WorkflowExecution>> {
         let executions = self.executions.read().await;
         Ok(executions.values().cloned().collect())
     }
-    
+
     /// Get workflows by status
-    pub async fn get_workflows_by_status(&self, status: WorkflowStatus) -> Result<Vec<WorkflowExecution>> {
+    pub async fn get_workflows_by_status(
+        &self,
+        status: WorkflowStatus,
+    ) -> Result<Vec<WorkflowExecution>> {
         let executions = self.executions.read().await;
-        Ok(executions.values()
+        Ok(executions
+            .values()
             .filter(|e| std::mem::discriminant(&e.status) == std::mem::discriminant(&status))
             .cloned()
             .collect())
     }
-    
+
     /// Cancel a workflow
     #[instrument(skip(self))]
     pub async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<()> {
@@ -251,47 +260,49 @@ impl WorkflowManager {
             workflow_id,
             WorkflowStatus::Cancelled,
             Some("Workflow cancelled by user".to_string()),
-        ).await
+        )
+        .await
     }
-    
+
     /// Clean up completed workflows older than specified duration
     #[instrument(skip(self))]
     pub async fn cleanup_old_workflows(&self, max_age_hours: i64) -> Result<usize> {
         let cutoff_time = Utc::now() - chrono::Duration::hours(max_age_hours);
         let mut executions = self.executions.write().await;
-        
+
         let initial_count = executions.len();
-        
+
         // Remove workflows that are completed and older than cutoff
         executions.retain(|_, execution| {
             match (&execution.status, &execution.completed_at) {
-                (WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled, Some(completed_at)) => {
-                    completed_at > &cutoff_time
-                }
+                (
+                    WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled,
+                    Some(completed_at),
+                ) => completed_at > &cutoff_time,
                 _ => true, // Keep running or pending workflows
             }
         });
-        
+
         let removed_count = initial_count - executions.len();
-        
+
         if removed_count > 0 {
             info!("Cleaned up {} old workflow executions", removed_count);
         }
-        
+
         Ok(removed_count)
     }
-    
+
     /// Get workflow statistics
     pub async fn get_statistics(&self) -> Result<WorkflowStatistics> {
         let executions = self.executions.read().await;
-        
+
         let total_workflows = executions.len();
         let mut completed = 0;
         let mut failed = 0;
         let mut running = 0;
         let mut pending = 0;
         let mut cancelled = 0;
-        
+
         for execution in executions.values() {
             match execution.status {
                 WorkflowStatus::Completed => completed += 1,
@@ -302,7 +313,7 @@ impl WorkflowManager {
                 WorkflowStatus::AwaitingInput => running += 1, // Count as running
             }
         }
-        
+
         Ok(WorkflowStatistics {
             total_workflows,
             completed,
@@ -340,7 +351,7 @@ impl Default for WorkflowManager {
 /// Movie workflow helper functions
 pub mod movie_workflows {
     use super::*;
-    
+
     /// Create a standard movie search workflow
     pub fn create_movie_search_workflow() -> Vec<WorkflowStep> {
         vec![
@@ -374,7 +385,7 @@ pub mod movie_workflows {
             },
         ]
     }
-    
+
     /// Create a download workflow
     pub fn create_download_workflow() -> Vec<WorkflowStep> {
         vec![
@@ -401,7 +412,7 @@ pub mod movie_workflows {
             },
         ]
     }
-    
+
     /// Create an import workflow
     pub fn create_import_workflow() -> Vec<WorkflowStep> {
         vec![
@@ -454,9 +465,9 @@ pub struct DownloadImportHandler {
 
 impl DownloadImportHandler {
     pub fn new(
-        import_pipeline: Arc<ImportPipeline>, 
+        import_pipeline: Arc<ImportPipeline>,
         database_pool: DatabasePool,
-        event_bus: Arc<EventBus>
+        event_bus: Arc<EventBus>,
     ) -> Self {
         let movie_repository = Arc::new(PostgresMovieRepository::new(database_pool.clone()));
         Self {
@@ -472,13 +483,24 @@ impl DownloadImportHandler {
 impl EventHandler for DownloadImportHandler {
     async fn handle_event(&self, envelope: &EventEnvelope) -> Result<()> {
         match &envelope.event {
-            SystemEvent::DownloadComplete { movie_id, file_path, .. } => {
-                info!("Download completed for movie {}, triggering import from {}", movie_id, file_path);
-                
+            SystemEvent::DownloadComplete {
+                movie_id,
+                file_path,
+                ..
+            } => {
+                info!(
+                    "Download completed for movie {}, triggering import from {}",
+                    movie_id, file_path
+                );
+
                 // Get movie information from database
                 let movie_info = match self.movie_repository.find_by_id(*movie_id).await {
                     Ok(Some(movie)) => {
-                        debug!("Found movie information: {} ({})", movie.title, movie.year.map_or("unknown".to_string(), |y| y.to_string()));
+                        debug!(
+                            "Found movie information: {} ({})",
+                            movie.title,
+                            movie.year.map_or("unknown".to_string(), |y| y.to_string())
+                        );
                         Some(movie)
                     }
                     Ok(None) => {
@@ -490,21 +512,30 @@ impl EventHandler for DownloadImportHandler {
                         None
                     }
                 };
-                
+
                 use std::path::Path;
-                
+
                 let source_path = Path::new(file_path);
                 // Use parent directory as destination for now (normally would be media library path)
-                let dest_dir = source_path.parent().unwrap_or_else(|| Path::new("/downloads"));
-                
-                match self.import_pipeline.import_file(source_path, dest_dir).await {
+                let dest_dir = source_path
+                    .parent()
+                    .unwrap_or_else(|| Path::new("/downloads"));
+
+                match self
+                    .import_pipeline
+                    .import_file(source_path, dest_dir)
+                    .await
+                {
                     Ok(import_result) => {
-                        info!("Import triggered successfully for {}: success={}", 
-                              file_path, import_result.success);
-                        
+                        info!(
+                            "Import triggered successfully for {}: success={}",
+                            file_path, import_result.success
+                        );
+
                         if import_result.success {
                             // Publish ImportComplete event
-                            let destination_path = import_result.hardlink_result
+                            let destination_path = import_result
+                                .hardlink_result
                                 .as_ref()
                                 .map(|hr| hr.destination.to_string_lossy().to_string())
                                 .unwrap_or_else(|| dest_dir.to_string_lossy().to_string());
@@ -513,23 +544,31 @@ impl EventHandler for DownloadImportHandler {
                                 destination_path,
                                 file_count: 1, // Import pipeline currently handles single files
                             };
-                            
+
                             if let Err(e) = self.event_bus.publish(import_complete_event).await {
-                                error!("Failed to publish ImportComplete event for movie {}: {}", movie_id, e);
+                                error!(
+                                    "Failed to publish ImportComplete event for movie {}: {}",
+                                    movie_id, e
+                                );
                             } else {
                                 debug!("Published ImportComplete event for movie {}", movie_id);
                             }
                         } else {
                             // Publish ImportFailed event for unsuccessful import
-                            let error_message = import_result.error.clone().unwrap_or_else(|| "Import completed but marked as unsuccessful".to_string());
+                            let error_message = import_result.error.clone().unwrap_or_else(|| {
+                                "Import completed but marked as unsuccessful".to_string()
+                            });
                             let import_failed_event = SystemEvent::ImportFailed {
                                 movie_id: *movie_id,
                                 source_path: file_path.clone(),
                                 error: error_message,
                             };
-                            
+
                             if let Err(e) = self.event_bus.publish(import_failed_event).await {
-                                error!("Failed to publish ImportFailed event for movie {}: {}", movie_id, e);
+                                error!(
+                                    "Failed to publish ImportFailed event for movie {}: {}",
+                                    movie_id, e
+                                );
                             } else {
                                 debug!("Published ImportFailed event for movie {}", movie_id);
                             }
@@ -537,20 +576,23 @@ impl EventHandler for DownloadImportHandler {
                     }
                     Err(e) => {
                         error!("Failed to trigger import for {}: {}", file_path, e);
-                        
+
                         // Publish ImportFailed event
                         let import_failed_event = SystemEvent::ImportFailed {
                             movie_id: *movie_id,
                             source_path: file_path.clone(),
                             error: format!("Import pipeline error: {}", e),
                         };
-                        
+
                         if let Err(event_err) = self.event_bus.publish(import_failed_event).await {
-                            error!("Failed to publish ImportFailed event for movie {}: {}", movie_id, event_err);
+                            error!(
+                                "Failed to publish ImportFailed event for movie {}: {}",
+                                movie_id, event_err
+                            );
                         } else {
                             debug!("Published ImportFailed event for movie {}", movie_id);
                         }
-                        
+
                         return Err(RadarrError::ExternalServiceError {
                             service: "import_pipeline".to_string(),
                             error: format!("Import failed: {}", e),
@@ -582,19 +624,39 @@ impl LoggingEventHandler {
 #[async_trait]
 impl EventHandler for LoggingEventHandler {
     async fn handle_event(&self, envelope: &EventEnvelope) -> Result<()> {
-        debug!("Event processed: {} [correlation_id={}]", envelope.event.description(), envelope.correlation_id);
-        
+        debug!(
+            "Event processed: {} [correlation_id={}]",
+            envelope.event.description(),
+            envelope.correlation_id
+        );
+
         // Log additional details for certain events
         match &envelope.event {
-            SystemEvent::DownloadProgress { progress, speed, eta_seconds, .. } => {
+            SystemEvent::DownloadProgress {
+                progress,
+                speed,
+                eta_seconds,
+                ..
+            } => {
                 if let (Some(speed), Some(eta)) = (speed, eta_seconds) {
                     debug!("Download speed: {} bytes/s, ETA: {} seconds", speed, eta);
                 }
             }
-            SystemEvent::ImportComplete { file_count, destination_path, .. } => {
-                info!("Import completed: {} files imported to {}", file_count, destination_path);
+            SystemEvent::ImportComplete {
+                file_count,
+                destination_path,
+                ..
+            } => {
+                info!(
+                    "Import completed: {} files imported to {}",
+                    file_count, destination_path
+                );
             }
-            SystemEvent::SystemHealth { component, status, message } => {
+            SystemEvent::SystemHealth {
+                component,
+                status,
+                message,
+            } => {
                 let log_msg = format!("Health check: {} is {}", component, status);
                 if let Some(msg) = message {
                     info!("{} - {}", log_msg, msg);
@@ -604,7 +666,7 @@ impl EventHandler for LoggingEventHandler {
             }
             _ => {}
         }
-        
+
         Ok(())
     }
 
@@ -615,45 +677,41 @@ impl EventHandler for LoggingEventHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::movie_workflows::*;
-    
+    use super::*;
+
     #[tokio::test]
     async fn test_workflow_manager() {
         let manager = WorkflowManager::new();
         let steps = create_movie_search_workflow();
         let input = serde_json::json!({"title": "The Matrix", "year": 1999});
-        
-        let workflow_id = manager.start_workflow(
-            "Movie Search".to_string(),
-            steps,
-            input,
-        ).await.unwrap();
-        
+
+        let workflow_id = manager
+            .start_workflow("Movie Search".to_string(), steps, input)
+            .await
+            .unwrap();
+
         let workflow = manager.get_workflow(workflow_id).await.unwrap().unwrap();
         assert_eq!(workflow.name, "Movie Search");
         assert!(matches!(workflow.status, WorkflowStatus::Pending));
     }
-    
+
     #[tokio::test]
     async fn test_workflow_step_completion() {
         let manager = WorkflowManager::new();
-        let steps = vec![
-            WorkflowStep {
-                id: "test_step".to_string(),
-                name: "Test Step".to_string(),
-                description: "A test step".to_string(),
-                required: true,
-                estimated_duration: 10,
-            },
-        ];
-        
-        let workflow_id = manager.start_workflow(
-            "Test Workflow".to_string(),
-            steps,
-            serde_json::json!({}),
-        ).await.unwrap();
-        
+        let steps = vec![WorkflowStep {
+            id: "test_step".to_string(),
+            name: "Test Step".to_string(),
+            description: "A test step".to_string(),
+            required: true,
+            estimated_duration: 10,
+        }];
+
+        let workflow_id = manager
+            .start_workflow("Test Workflow".to_string(), steps, serde_json::json!({}))
+            .await
+            .unwrap();
+
         let step_result = StepResult {
             step_id: "test_step".to_string(),
             success: true,
@@ -662,18 +720,21 @@ mod tests {
             duration_ms: 100,
             completed_at: Utc::now(),
         };
-        
-        manager.complete_step(workflow_id, step_result).await.unwrap();
-        
+
+        manager
+            .complete_step(workflow_id, step_result)
+            .await
+            .unwrap();
+
         let workflow = manager.get_workflow(workflow_id).await.unwrap().unwrap();
         assert!(matches!(workflow.status, WorkflowStatus::Completed));
         assert_eq!(workflow.step_results.len(), 1);
     }
-    
+
     #[tokio::test]
     async fn test_workflow_statistics() {
         let manager = WorkflowManager::new();
-        
+
         // Start a few workflows
         for i in 0..3 {
             let steps = vec![WorkflowStep {
@@ -683,14 +744,13 @@ mod tests {
                 required: true,
                 estimated_duration: 10,
             }];
-            
-            manager.start_workflow(
-                format!("Workflow {}", i),
-                steps,
-                serde_json::json!({}),
-            ).await.unwrap();
+
+            manager
+                .start_workflow(format!("Workflow {}", i), steps, serde_json::json!({}))
+                .await
+                .unwrap();
         }
-        
+
         let stats = manager.get_statistics().await.unwrap();
         assert_eq!(stats.total_workflows, 3);
         assert_eq!(stats.pending, 3);

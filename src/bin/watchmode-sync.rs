@@ -1,7 +1,5 @@
 use radarr_infrastructure::{
-    database::create_pool,
-    repositories::PostgresStreamingCache,
-    watchmode::WatchmodeCsvSync,
+    database::create_pool, repositories::PostgresStreamingCache, watchmode::WatchmodeCsvSync,
 };
 use std::env;
 use std::sync::Arc;
@@ -37,31 +35,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Watchmode ID Mapping Sync Complete");
             println!("===========================================");
             println!("\n✅ Successfully synced {} ID mappings", mappings.len());
-            
+
             // Show some statistics
-            let movie_count = mappings.iter()
+            let movie_count = mappings
+                .iter()
                 .filter(|m| matches!(m.media_type, radarr_core::streaming::MediaType::Movie))
                 .count();
-            let tv_count = mappings.iter()
+            let tv_count = mappings
+                .iter()
                 .filter(|m| matches!(m.media_type, radarr_core::streaming::MediaType::Tv))
                 .count();
-            
+
             println!("\nBreakdown:");
             println!("  Movies: {}", movie_count);
             println!("  TV Shows: {}", tv_count);
-            
+
             // Show a few sample mappings
             println!("\nSample mappings:");
             for mapping in mappings.iter().take(5) {
                 if let Some(wm_id) = mapping.watchmode_id {
-                    println!("  TMDB {} ({}) -> Watchmode {}", 
-                        mapping.tmdb_id, 
-                        mapping.media_type, 
-                        wm_id
+                    println!(
+                        "  TMDB {} ({}) -> Watchmode {}",
+                        mapping.tmdb_id, mapping.media_type, wm_id
                     );
                 }
             }
-            
+
             println!("\n💡 Tip: This sync should be run weekly to keep mappings up to date");
             println!("   Consider setting up a cron job or scheduled task");
         }

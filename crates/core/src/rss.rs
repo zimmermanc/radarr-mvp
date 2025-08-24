@@ -1,10 +1,10 @@
 //! RSS feed monitoring and calendar-based automation
 
+use crate::{RadarrError, Result};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::{Result, RadarrError};
 
 /// RSS feed configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,13 +46,13 @@ impl RssFeed {
             tags: Vec::new(),
         }
     }
-    
+
     /// Check if the feed is due for checking
     pub fn is_due(&self) -> bool {
         if !self.enabled {
             return false;
         }
-        
+
         match self.last_check {
             None => true,
             Some(last) => {
@@ -115,52 +115,50 @@ impl CalendarEntry {
         if !self.monitored {
             return false;
         }
-        
+
         let now = Utc::now();
         let offset = Duration::days(self.search_offset_days as i64);
-        
+
         // Check each release date
         if let Some(digital) = self.digital_release {
             if now >= digital - offset {
                 return true;
             }
         }
-        
+
         if let Some(physical) = self.physical_release {
             if now >= physical - offset {
                 return true;
             }
         }
-        
+
         // Fall back to main release date
         now >= self.release_date - offset
     }
-    
+
     /// Get the next search date
     pub fn next_search_date(&self) -> Option<DateTime<Utc>> {
         if !self.monitored {
             return None;
         }
-        
+
         let offset = Duration::days(self.search_offset_days as i64);
         let mut dates = Vec::new();
-        
+
         // Collect all potential search dates
         dates.push(self.release_date - offset);
-        
+
         if let Some(digital) = self.digital_release {
             dates.push(digital - offset);
         }
-        
+
         if let Some(physical) = self.physical_release {
             dates.push(physical - offset);
         }
-        
+
         // Find the next future date
         let now = Utc::now();
-        dates.into_iter()
-            .filter(|&date| date > now)
-            .min()
+        dates.into_iter().filter(|&date| date > now).min()
     }
 }
 
@@ -178,31 +176,29 @@ impl RssMonitor {
             calendar: Vec::new(),
         }
     }
-    
+
     /// Add a new RSS feed
     pub fn add_feed(&mut self, feed: RssFeed) {
         self.feeds.push(feed);
     }
-    
+
     /// Remove a feed by ID
     pub fn remove_feed(&mut self, id: Uuid) {
         self.feeds.retain(|f| f.id != id);
     }
-    
+
     /// Get all feeds that are due for checking
     pub fn get_due_feeds(&self) -> Vec<&RssFeed> {
-        self.feeds.iter()
-            .filter(|f| f.is_due())
-            .collect()
+        self.feeds.iter().filter(|f| f.is_due()).collect()
     }
-    
+
     /// Mark a feed as checked
     pub fn mark_feed_checked(&mut self, id: Uuid) {
         if let Some(feed) = self.feeds.iter_mut().find(|f| f.id == id) {
             feed.last_check = Some(Utc::now());
         }
     }
-    
+
     /// Mark a feed as successfully synced
     pub fn mark_feed_synced(&mut self, id: Uuid) {
         if let Some(feed) = self.feeds.iter_mut().find(|f| f.id == id) {
@@ -211,29 +207,28 @@ impl RssMonitor {
             feed.last_sync = Some(now);
         }
     }
-    
+
     /// Get all RSS feeds
     pub fn get_feeds(&self) -> Vec<&RssFeed> {
         self.feeds.iter().collect()
     }
-    
+
     /// Add a calendar entry
     pub fn add_calendar_entry(&mut self, entry: CalendarEntry) {
         self.calendar.push(entry);
     }
-    
+
     /// Get calendar entries that should trigger searches
     pub fn get_searchable_entries(&self) -> Vec<&CalendarEntry> {
-        self.calendar.iter()
-            .filter(|e| e.should_search())
-            .collect()
+        self.calendar.iter().filter(|e| e.should_search()).collect()
     }
-    
+
     /// Get upcoming calendar entries
     pub fn get_upcoming_entries(&self, days: i64) -> Vec<&CalendarEntry> {
         let cutoff = Utc::now() + Duration::days(days);
-        
-        self.calendar.iter()
+
+        self.calendar
+            .iter()
             .filter(|e| {
                 if let Some(next) = e.next_search_date() {
                     next <= cutoff
@@ -259,16 +254,17 @@ impl RssParser {
     pub fn parse_feed(content: &str) -> Result<Vec<RssItem>> {
         // This is a simplified parser - in production you'd use a proper RSS library
         let mut items = Vec::new();
-        
+
         // Basic XML parsing (would use quick-xml or similar in production)
         if content.contains("<rss") || content.contains("<feed") {
             // Extract items between <item> tags (with multiline support)
-            let item_regex = regex::Regex::new(r"(?s)<item>(.*?)</item>")
-                .map_err(|e| RadarrError::ValidationError {
+            let item_regex = regex::Regex::new(r"(?s)<item>(.*?)</item>").map_err(|e| {
+                RadarrError::ValidationError {
                     field: "regex".to_string(),
                     message: e.to_string(),
-                })?;
-            
+                }
+            })?;
+
             for cap in item_regex.captures_iter(content) {
                 if let Some(item_content) = cap.get(1) {
                     if let Ok(item) = Self::parse_item(item_content.as_str()) {
@@ -277,42 +273,41 @@ impl RssParser {
                 }
             }
         }
-        
+
         Ok(items)
     }
-    
+
     /// Parse a single RSS item
     fn parse_item(content: &str) -> Result<RssItem> {
         // Extract basic fields
-        let title = Self::extract_tag(content, "title")
-            .ok_or_else(|| RadarrError::ValidationError {
+        let title =
+            Self::extract_tag(content, "title").ok_or_else(|| RadarrError::ValidationError {
                 field: "title".to_string(),
                 message: "Missing title in RSS item".to_string(),
             })?;
-        
-        let guid = Self::extract_tag(content, "guid")
-            .unwrap_or_else(|| title.clone());
-        
+
+        let guid = Self::extract_tag(content, "guid").unwrap_or_else(|| title.clone());
+
         let url = Self::extract_tag(content, "link")
             .or_else(|| Self::extract_tag(content, "enclosure url"))
             .ok_or_else(|| RadarrError::ValidationError {
                 field: "url".to_string(),
                 message: "Missing URL in RSS item".to_string(),
             })?;
-        
+
         let description = Self::extract_tag(content, "description");
         let category = Self::extract_tag(content, "category");
-        
+
         // Parse size from enclosure
         let size = Self::extract_attribute(content, "enclosure", "length")
             .and_then(|s| s.parse::<u64>().ok());
-        
+
         // Parse date
         let pub_date = Self::extract_tag(content, "pubDate")
             .and_then(|s| DateTime::parse_from_rfc2822(&s).ok())
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(Utc::now);
-        
+
         Ok(RssItem {
             guid,
             title,
@@ -327,20 +322,26 @@ impl RssParser {
             attributes: HashMap::new(),
         })
     }
-    
+
     /// Extract tag content
     fn extract_tag(content: &str, tag: &str) -> Option<String> {
         let pattern = format!("<{tag}>(.*?)</{tag}>", tag = regex::escape(tag));
-        regex::Regex::new(&pattern).ok()
+        regex::Regex::new(&pattern)
+            .ok()
             .and_then(|re| re.captures(content))
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string())
     }
-    
+
     /// Extract attribute value
     fn extract_attribute(content: &str, tag: &str, attr: &str) -> Option<String> {
-        let pattern = format!(r#"<{tag}[^>]*{attr}="([^"]+)"#, tag = regex::escape(tag), attr = regex::escape(attr));
-        regex::Regex::new(&pattern).ok()
+        let pattern = format!(
+            r#"<{tag}[^>]*{attr}="([^"]+)"#,
+            tag = regex::escape(tag),
+            attr = regex::escape(attr)
+        );
+        regex::Regex::new(&pattern)
+            .ok()
             .and_then(|re| re.captures(content))
             .and_then(|cap| cap.get(1))
             .map(|m| m.as_str().to_string())
@@ -350,27 +351,27 @@ impl RssParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_rss_feed_is_due() {
         let mut feed = RssFeed::new("Test Feed", "http://example.com/rss");
-        
+
         // New feed should be due
         assert!(feed.is_due());
-        
+
         // Recently checked feed should not be due
         feed.last_check = Some(Utc::now());
         assert!(!feed.is_due());
-        
+
         // Old check should be due
         feed.last_check = Some(Utc::now() - Duration::hours(1));
         assert!(feed.is_due());
-        
+
         // Disabled feed should never be due
         feed.enabled = false;
         assert!(!feed.is_due());
     }
-    
+
     #[test]
     fn test_calendar_entry_should_search() {
         let mut entry = CalendarEntry {
@@ -382,15 +383,15 @@ mod tests {
             monitored: true,
             search_offset_days: 0,
         };
-        
+
         // Should search because digital release is in the past
         assert!(entry.should_search());
-        
+
         // Unmonitored should not search
         entry.monitored = false;
         assert!(!entry.should_search());
     }
-    
+
     #[test]
     fn test_rss_parser_basic() {
         let rss_content = r#"
@@ -407,44 +408,44 @@ mod tests {
                 </channel>
             </rss>
         "#;
-        
+
         let items = RssParser::parse_feed(rss_content).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Test Movie 2024 1080p");
         assert_eq!(items[0].guid, "12345");
     }
-    
+
     #[test]
     fn test_rss_monitor_get_feeds() {
         let mut monitor = RssMonitor::new();
-        
+
         // Initially empty
         let feeds = monitor.get_feeds();
         assert_eq!(feeds.len(), 0);
-        
+
         // Add a feed
         let feed1 = RssFeed::new("Test Feed 1", "http://example.com/rss1");
         let feed1_id = feed1.id;
         monitor.add_feed(feed1);
-        
+
         // Should have one feed
         let feeds = monitor.get_feeds();
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0].id, feed1_id);
         assert_eq!(feeds[0].name, "Test Feed 1");
-        
+
         // Add another feed
         let feed2 = RssFeed::new("Test Feed 2", "http://example.com/rss2");
         let feed2_id = feed2.id;
         monitor.add_feed(feed2);
-        
+
         // Should have two feeds
         let feeds = monitor.get_feeds();
         assert_eq!(feeds.len(), 2);
-        
+
         // Remove a feed
         monitor.remove_feed(feed1_id);
-        
+
         // Should have one feed remaining
         let feeds = monitor.get_feeds();
         assert_eq!(feeds.len(), 1);

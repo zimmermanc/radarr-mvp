@@ -13,7 +13,7 @@ pub struct NotificationService {
 impl NotificationService {
     pub fn new() -> Self {
         let (sender, _) = broadcast::channel(1000);
-        
+
         Self {
             providers: Vec::new(),
             sender,
@@ -60,11 +60,7 @@ impl NotificationService {
                     sent_count += 1;
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to send notification via {}: {}",
-                        provider.name(),
-                        e
-                    );
+                    error!("Failed to send notification via {}: {}", provider.name(), e);
                     errors.push(format!("{}: {}", provider.name(), e));
                 }
             }

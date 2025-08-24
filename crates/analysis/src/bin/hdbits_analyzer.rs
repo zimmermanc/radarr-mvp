@@ -24,7 +24,11 @@ struct Cli {
     username: String,
 
     /// HDBits passkey
-    #[arg(short, long, default_value = "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863")]
+    #[arg(
+        short,
+        long,
+        default_value = "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863"
+    )]
     passkey: String,
 
     /// API endpoint URL
@@ -49,7 +53,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize logging
-    let log_level = if cli.verbose { Level::DEBUG } else { Level::INFO };
+    let log_level = if cli.verbose {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
     tracing_subscriber::fmt()
         .with_max_level(log_level)
         .with_target(false)
@@ -75,7 +83,11 @@ async fn main() -> Result<()> {
     // Display configuration (masking sensitive data)
     info!("Configuration:");
     info!("  Username: {}", cli.username);
-    info!("  Passkey: {}...{}", &cli.passkey[..8], &cli.passkey[cli.passkey.len()-8..]);
+    info!(
+        "  Passkey: {}...{}",
+        &cli.passkey[..8],
+        &cli.passkey[cli.passkey.len() - 8..]
+    );
     info!("  API URL: {}", cli.api_url);
     info!("  Rate Limit: {} requests/hour", cli.rate_limit);
     info!("  Output Directory: {}", cli.output.display());
@@ -91,10 +103,10 @@ async fn main() -> Result<()> {
     println!("This will collect data from HDBits and analyze scene group reputation.");
     println!("The process may take 1-2 hours depending on rate limits.");
     println!("Continue? (y/N): ");
-    
+
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
-    
+
     if !input.trim().to_lowercase().starts_with('y') {
         info!("Operation cancelled by user");
         return Ok(());
@@ -123,27 +135,46 @@ async fn main() -> Result<()> {
             info!("");
             info!("RESULTS SUMMARY:");
             info!("================");
-            info!("Total Torrents Analyzed: {}", report.total_torrents_analyzed);
+            info!(
+                "Total Torrents Analyzed: {}",
+                report.total_torrents_analyzed
+            );
             info!("Unique Scene Groups: {}", report.unique_scene_groups);
             info!("Internal Releases: {}", report.internal_releases);
             info!("External Releases: {}", report.external_releases);
-            info!("Collection Duration: {} seconds", report.collection_duration_seconds);
+            info!(
+                "Collection Duration: {} seconds",
+                report.collection_duration_seconds
+            );
             info!("");
-            
+
             info!("QUALITY DISTRIBUTION:");
-            info!("  Premium Groups (80-100): {}", report.quality_distribution.premium_groups);
-            info!("  High Quality (60-80): {}", report.quality_distribution.high_quality_groups);
-            info!("  Standard (40-60): {}", report.quality_distribution.standard_groups);
-            info!("  Low Quality (20-40): {}", report.quality_distribution.low_quality_groups);
+            info!(
+                "  Premium Groups (80-100): {}",
+                report.quality_distribution.premium_groups
+            );
+            info!(
+                "  High Quality (60-80): {}",
+                report.quality_distribution.high_quality_groups
+            );
+            info!(
+                "  Standard (40-60): {}",
+                report.quality_distribution.standard_groups
+            );
+            info!(
+                "  Low Quality (20-40): {}",
+                report.quality_distribution.low_quality_groups
+            );
             info!("  Poor (0-20): {}", report.quality_distribution.poor_groups);
             info!("");
 
             info!("TOP 10 SCENE GROUPS BY REPUTATION:");
             for (i, group) in report.top_groups_by_reputation.iter().take(10).enumerate() {
-                info!("  {}. {} - {:.1} ({}, {} releases)", 
-                    i + 1, 
-                    group.group_name, 
-                    group.reputation_score, 
+                info!(
+                    "  {}. {} - {:.1} ({}, {} releases)",
+                    i + 1,
+                    group.group_name,
+                    group.reputation_score,
                     group.quality_tier,
                     group.total_releases
                 );
@@ -151,17 +182,20 @@ async fn main() -> Result<()> {
             info!("");
 
             info!("STATISTICAL SUMMARY:");
-            info!("  Reputation Score Range: {:.1} - {:.1} (avg: {:.1})", 
+            info!(
+                "  Reputation Score Range: {:.1} - {:.1} (avg: {:.1})",
                 report.statistical_summary.reputation_scores.min,
                 report.statistical_summary.reputation_scores.max,
                 report.statistical_summary.reputation_scores.mean
             );
-            info!("  Average Seeders Range: {:.1} - {:.1} (avg: {:.1})", 
+            info!(
+                "  Average Seeders Range: {:.1} - {:.1} (avg: {:.1})",
                 report.statistical_summary.seeder_counts.min,
                 report.statistical_summary.seeder_counts.max,
                 report.statistical_summary.seeder_counts.mean
             );
-            info!("  File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB)", 
+            info!(
+                "  File Size Range: {:.1} - {:.1} GB (avg: {:.1} GB)",
                 report.statistical_summary.file_sizes_gb.min,
                 report.statistical_summary.file_sizes_gb.max,
                 report.statistical_summary.file_sizes_gb.mean
@@ -169,14 +203,29 @@ async fn main() -> Result<()> {
             info!("");
 
             info!("TEMPORAL ANALYSIS:");
-            info!("  Active Groups (last 30 days): {}", report.temporal_analysis.active_groups_last_30_days);
-            info!("  Active Groups (last 90 days): {}", report.temporal_analysis.active_groups_last_90_days);
-            info!("  Established Groups (2+ years): {}", report.temporal_analysis.established_groups_over_2_years);
-            info!("  Dormant Groups (1+ year): {}", report.temporal_analysis.dormant_groups);
+            info!(
+                "  Active Groups (last 30 days): {}",
+                report.temporal_analysis.active_groups_last_30_days
+            );
+            info!(
+                "  Active Groups (last 90 days): {}",
+                report.temporal_analysis.active_groups_last_90_days
+            );
+            info!(
+                "  Established Groups (2+ years): {}",
+                report.temporal_analysis.established_groups_over_2_years
+            );
+            info!(
+                "  Dormant Groups (1+ year): {}",
+                report.temporal_analysis.dormant_groups
+            );
             info!("");
 
             info!("🎯 NEXT STEPS:");
-            info!("1. Review the generated reports in: {}", cli.output.display());
+            info!(
+                "1. Review the generated reports in: {}",
+                cli.output.display()
+            );
             info!("2. Use reputation_system_*.json for integration with automation");
             info!("3. Analyze scene_groups_data_*.csv for detailed insights");
             info!("4. Update your automation system with evidence-based reputation scores");
@@ -202,7 +251,7 @@ async fn main() -> Result<()> {
             eprintln!("  2. Check your internet connection");
             eprintln!("  3. Run with --verbose for detailed logging");
             eprintln!("  4. Try --dry-run to test configuration");
-            
+
             std::process::exit(1);
         }
     }

@@ -1,3 +1,3 @@
 pub mod aggregator_factory;
 
-pub use aggregator_factory::{StreamingServiceFactory, create_default_aggregator};
+pub use aggregator_factory::{create_default_aggregator, StreamingServiceFactory};

@@ -1,16 +1,16 @@
 //! Rename engine for generating organized file names
-//! 
+//!
 //! This module provides functionality to rename imported media files
 //! according to configurable templates and naming conventions.
 
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
+use crate::file_analyzer::AnalyzedFile;
+use once_cell::sync::Lazy;
 use radarr_core::RadarrError;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tracing::{debug, warn};
-use crate::file_analyzer::AnalyzedFile;
 
 /// Configuration for file renaming operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,9 +83,7 @@ pub struct TemplateVariables {
 }
 
 /// Regular expressions for template parsing
-static TEMPLATE_VAR_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\{([^}]+)\}").unwrap()
-});
+static TEMPLATE_VAR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
 /// File rename engine
 pub struct RenameEngine {
@@ -120,18 +118,18 @@ impl RenameEngine {
 
         // Generate full folder path
         let mut folder_path = base_path.to_path_buf();
-        
+
         // Add year-based subfolder if enabled
         if self.config.year_folders && !variables.year.is_empty() {
             folder_path.push(&variables.year);
         }
-        
+
         folder_path.push(folder_name);
 
         // Generate the new filename
         let new_filename = self.apply_template(&self.config.movie_template, &variables)?;
         let new_filename = self.sanitize_filename(&new_filename)?;
-        
+
         // Add file extension
         let final_filename = format!("{}.{}", new_filename, variables.extension);
         let new_path = folder_path.join(final_filename);
@@ -139,8 +137,11 @@ impl RenameEngine {
         // Check if file already exists
         let file_existed = new_path.exists();
 
-        debug!("Generated path: {} -> {}", 
-               analyzed_file.path.display(), new_path.display());
+        debug!(
+            "Generated path: {} -> {}",
+            analyzed_file.path.display(),
+            new_path.display()
+        );
 
         Ok(RenameResult {
             original_path: analyzed_file.path.clone(),
@@ -152,7 +153,10 @@ impl RenameEngine {
     }
 
     /// Execute the rename operation
-    pub async fn execute_rename(&self, rename_result: &mut RenameResult) -> Result<(), RadarrError> {
+    pub async fn execute_rename(
+        &self,
+        rename_result: &mut RenameResult,
+    ) -> Result<(), RadarrError> {
         if rename_result.executed {
             return Ok(());
         }
@@ -176,16 +180,19 @@ impl RenameEngine {
         }
 
         // Perform the rename
-        tokio::fs::rename(&rename_result.original_path, &rename_result.new_path).await.map_err(|e| {
-            RadarrError::ExternalServiceError {
+        tokio::fs::rename(&rename_result.original_path, &rename_result.new_path)
+            .await
+            .map_err(|e| RadarrError::ExternalServiceError {
                 service: "filesystem".to_string(),
                 error: format!("Failed to rename file: {}", e),
-            }
-        })?;
+            })?;
 
         rename_result.executed = true;
-        debug!("Successfully renamed file: {}", rename_result.new_path.display());
-        
+        debug!(
+            "Successfully renamed file: {}",
+            rename_result.new_path.display()
+        );
+
         Ok(())
     }
 
@@ -196,18 +203,21 @@ impl RenameEngine {
         base_path: &Path,
     ) -> Result<Vec<RenameResult>, RadarrError> {
         let mut results = Vec::with_capacity(analyzed_files.len());
-        
+
         for analyzed_file in analyzed_files {
             match self.generate_filename(analyzed_file, base_path) {
                 Ok(result) => results.push(result),
                 Err(e) => {
-                    warn!("Failed to generate filename for {}: {}", 
-                          analyzed_file.path.display(), e);
+                    warn!(
+                        "Failed to generate filename for {}: {}",
+                        analyzed_file.path.display(),
+                        e
+                    );
                     // Continue with other files
                 }
             }
         }
-        
+
         Ok(results)
     }
 
@@ -217,7 +227,7 @@ impl RenameEngine {
         rename_results: &mut [RenameResult],
     ) -> Result<usize, RadarrError> {
         let mut success_count = 0;
-        
+
         for result in rename_results.iter_mut() {
             match self.execute_rename(result).await {
                 Ok(()) => success_count += 1,
@@ -227,24 +237,37 @@ impl RenameEngine {
                 }
             }
         }
-        
+
         Ok(success_count)
     }
 
     /// Extract template variables from analyzed file
-    fn extract_template_variables(&self, analyzed_file: &AnalyzedFile) -> Result<TemplateVariables, RadarrError> {
-        let title = analyzed_file.title.clone().unwrap_or_else(|| "Unknown Movie".to_string());
-        let year = analyzed_file.year.map(|y| y.to_string()).unwrap_or_default();
-        
+    fn extract_template_variables(
+        &self,
+        analyzed_file: &AnalyzedFile,
+    ) -> Result<TemplateVariables, RadarrError> {
+        let title = analyzed_file
+            .title
+            .clone()
+            .unwrap_or_else(|| "Unknown Movie".to_string());
+        let year = analyzed_file
+            .year
+            .map(|y| y.to_string())
+            .unwrap_or_default();
+
         let quality = self.format_quality_string(&analyzed_file.quality)?;
         let codec = analyzed_file.quality.codec.clone().unwrap_or_default();
         let source = analyzed_file.quality.source.clone().unwrap_or_default();
         let resolution = analyzed_file.quality.resolution.clone().unwrap_or_default();
         let audio = analyzed_file.quality.audio.clone().unwrap_or_default();
-        
-        let release_group = analyzed_file.release_group.clone().unwrap_or_else(|| "Unknown".to_string());
-        
-        let extension = analyzed_file.path
+
+        let release_group = analyzed_file
+            .release_group
+            .clone()
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let extension = analyzed_file
+            .path
             .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("mkv")
@@ -264,25 +287,28 @@ impl RenameEngine {
     }
 
     /// Format quality information into a readable string
-    fn format_quality_string(&self, quality: &crate::file_analyzer::QualityInfo) -> Result<String, RadarrError> {
+    fn format_quality_string(
+        &self,
+        quality: &crate::file_analyzer::QualityInfo,
+    ) -> Result<String, RadarrError> {
         let mut parts = Vec::new();
-        
+
         if let Some(ref resolution) = quality.resolution {
             parts.push(resolution.clone());
         }
-        
+
         if let Some(ref source) = quality.source {
             parts.push(source.clone());
         }
-        
+
         if let Some(ref codec) = quality.codec {
             parts.push(codec.clone());
         }
-        
+
         if let Some(ref hdr) = quality.hdr {
             parts.push(hdr.clone());
         }
-        
+
         if parts.is_empty() {
             Ok("Unknown Quality".to_string())
         } else {
@@ -291,29 +317,35 @@ impl RenameEngine {
     }
 
     /// Apply template variables to a template string
-    fn apply_template(&self, template: &str, variables: &TemplateVariables) -> Result<String, RadarrError> {
+    fn apply_template(
+        &self,
+        template: &str,
+        variables: &TemplateVariables,
+    ) -> Result<String, RadarrError> {
         let mut result = template.to_string();
-        
+
         // Replace all template variables
-        result = TEMPLATE_VAR_REGEX.replace_all(&result, |caps: &regex::Captures| {
-            let var_name = &caps[1];
-            match var_name {
-                "title" => &variables.title,
-                "year" => &variables.year,
-                "quality" => &variables.quality,
-                "codec" => &variables.codec,
-                "source" => &variables.source,
-                "release_group" => &variables.release_group,
-                "resolution" => &variables.resolution,
-                "audio" => &variables.audio,
-                "extension" => &variables.extension,
-                _ => {
-                    warn!("Unknown template variable: {}", var_name);
-                    ""
+        result = TEMPLATE_VAR_REGEX
+            .replace_all(&result, |caps: &regex::Captures| {
+                let var_name = &caps[1];
+                match var_name {
+                    "title" => &variables.title,
+                    "year" => &variables.year,
+                    "quality" => &variables.quality,
+                    "codec" => &variables.codec,
+                    "source" => &variables.source,
+                    "release_group" => &variables.release_group,
+                    "resolution" => &variables.resolution,
+                    "audio" => &variables.audio,
+                    "extension" => &variables.extension,
+                    _ => {
+                        warn!("Unknown template variable: {}", var_name);
+                        ""
+                    }
                 }
-            }
-        }).to_string();
-        
+            })
+            .to_string();
+
         // Clean up extra spaces and brackets with empty content
         result = result
             .replace("[]", "")
@@ -321,33 +353,33 @@ impl RenameEngine {
             .replace("  ", " ")
             .trim()
             .to_string();
-        
+
         Ok(result)
     }
 
     /// Sanitize filename by replacing invalid characters
     fn sanitize_filename(&self, filename: &str) -> Result<String, RadarrError> {
         let mut sanitized = filename.to_string();
-        
+
         // Replace invalid characters
         for (invalid_char, replacement) in &self.config.invalid_chars {
             sanitized = sanitized.replace(*invalid_char, replacement);
         }
-        
+
         // Remove leading/trailing dots and spaces (problematic on Windows)
         sanitized = sanitized.trim_matches(|c| c == '.' || c == ' ').to_string();
-        
+
         // Ensure filename isn't too long
         if sanitized.len() > self.config.max_filename_length {
             let truncate_at = self.config.max_filename_length.saturating_sub(3);
             sanitized = format!("{}...", &sanitized[..truncate_at]);
         }
-        
+
         // Ensure filename isn't empty
         if sanitized.is_empty() {
             sanitized = "Unknown".to_string();
         }
-        
+
         Ok(sanitized)
     }
 
@@ -380,23 +412,33 @@ impl RenameEngine {
                 _ => {}
             }
         }
-        
+
         if brace_count != 0 {
             return Err(RadarrError::ValidationError {
                 field: "template".to_string(),
                 message: "Unmatched opening brace".to_string(),
             });
         }
-        
+
         // Check for valid variable names
         for caps in TEMPLATE_VAR_REGEX.captures_iter(template) {
             let var_name = &caps[1];
-            if !matches!(var_name, "title" | "year" | "quality" | "codec" | "source" | 
-                                   "release_group" | "resolution" | "audio" | "extension") {
+            if !matches!(
+                var_name,
+                "title"
+                    | "year"
+                    | "quality"
+                    | "codec"
+                    | "source"
+                    | "release_group"
+                    | "resolution"
+                    | "audio"
+                    | "extension"
+            ) {
                 warn!("Unknown template variable: {}", var_name);
             }
         }
-        
+
         Ok(())
     }
 }
@@ -410,8 +452,8 @@ impl Default for RenameEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use crate::file_analyzer::{AnalyzedFile, QualityInfo};
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_analyzed_file() -> AnalyzedFile {
@@ -438,25 +480,30 @@ mod tests {
         let engine = RenameEngine::default();
         let analyzed_file = create_test_analyzed_file();
         let base_path = Path::new("/movies");
-        
+
         let result = engine.generate_filename(&analyzed_file, base_path).unwrap();
-        
+
         assert!(result.new_path.to_string_lossy().contains("The Matrix"));
         assert!(result.new_path.to_string_lossy().contains("1999"));
         assert!(result.folder_path.to_string_lossy().contains("1999")); // Year folder
-        assert!(result.folder_path.to_string_lossy().contains("The Matrix (1999)"));
+        assert!(result
+            .folder_path
+            .to_string_lossy()
+            .contains("The Matrix (1999)"));
     }
 
     #[test]
     fn test_sanitize_filename() {
         let engine = RenameEngine::default();
-        
-        let result = engine.sanitize_filename("Movie: The Sequel <2023>").unwrap();
+
+        let result = engine
+            .sanitize_filename("Movie: The Sequel <2023>")
+            .unwrap();
         assert_eq!(result, "Movie - The Sequel 2023");
-        
+
         let result = engine.sanitize_filename("...Movie...").unwrap();
         assert_eq!(result, "Movie");
-        
+
         let result = engine.sanitize_filename("").unwrap();
         assert_eq!(result, "Unknown");
     }
@@ -464,7 +511,7 @@ mod tests {
     #[test]
     fn test_template_validation() {
         let engine = RenameEngine::default();
-        
+
         assert!(engine.validate_template("{title} ({year})").is_ok());
         assert!(engine.validate_template("{title} {year").is_err()); // Unmatched brace
         assert!(engine.validate_template("title} ({year})").is_err()); // Unmatched brace
@@ -475,8 +522,10 @@ mod tests {
         let engine = RenameEngine::default();
         let analyzed_file = create_test_analyzed_file();
         let variables = engine.extract_template_variables(&analyzed_file).unwrap();
-        
-        let result = engine.apply_template("{title} ({year}) [{quality}]", &variables).unwrap();
+
+        let result = engine
+            .apply_template("{title} ({year}) [{quality}]", &variables)
+            .unwrap();
         assert!(result.contains("The Matrix"));
         assert!(result.contains("1999"));
         assert!(result.contains("1080P"));
@@ -485,7 +534,7 @@ mod tests {
     #[test]
     fn test_format_quality_string() {
         let engine = RenameEngine::default();
-        
+
         let quality = QualityInfo {
             resolution: Some("1080P".to_string()),
             codec: Some("X264".to_string()),
@@ -493,7 +542,7 @@ mod tests {
             hdr: Some("HDR10".to_string()),
             audio: None,
         };
-        
+
         let result = engine.format_quality_string(&quality).unwrap();
         assert!(result.contains("1080P"));
         assert!(result.contains("BLURAY"));
@@ -506,8 +555,10 @@ mod tests {
         let engine = RenameEngine::default();
         let analyzed_files = vec![create_test_analyzed_file()];
         let temp_dir = TempDir::new().unwrap();
-        
-        let results = engine.plan_batch_rename(&analyzed_files, temp_dir.path()).unwrap();
+
+        let results = engine
+            .plan_batch_rename(&analyzed_files, temp_dir.path())
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert!(!results[0].executed);
     }
@@ -517,8 +568,10 @@ mod tests {
         let engine = RenameEngine::default();
         let analyzed_file = create_test_analyzed_file();
         let temp_dir = TempDir::new().unwrap();
-        
-        let preview = engine.preview_rename(&analyzed_file, temp_dir.path()).unwrap();
+
+        let preview = engine
+            .preview_rename(&analyzed_file, temp_dir.path())
+            .unwrap();
         assert!(preview.contains("The Matrix"));
         assert!(preview.contains("1999"));
     }

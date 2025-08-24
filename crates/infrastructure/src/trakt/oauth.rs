@@ -45,10 +45,11 @@ impl TraktOAuth {
     /// Initiate device flow authentication
     pub async fn initiate_device_flow(&self) -> Result<TraktDeviceCode, RadarrError> {
         let url = format!("{}/oauth/device/code", self.base_url);
-        
+
         info!("Initiating Trakt device flow authentication");
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .json(&serde_json::json!({
                 "client_id": self.config.client_id
@@ -70,17 +71,20 @@ impl TraktOAuth {
             });
         }
 
-        let device_response: DeviceCodeResponse = response.json().await
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "trakt".to_string(),
-                error: e.to_string(),
-            })?;
-        
+        let device_response: DeviceCodeResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "trakt".to_string(),
+                    error: e.to_string(),
+                })?;
+
         info!(
             "Device flow initiated. User code: {}, Verification URL: {}",
             device_response.user_code, device_response.verification_url
         );
-        
+
         Ok(TraktDeviceCode {
             device_code: device_response.device_code,
             user_code: device_response.user_code,
@@ -91,12 +95,16 @@ impl TraktOAuth {
     }
 
     /// Poll for token after user has authorized the device
-    pub async fn poll_for_token(&self, device_code: &str) -> Result<TraktTokenResponse, RadarrError> {
+    pub async fn poll_for_token(
+        &self,
+        device_code: &str,
+    ) -> Result<TraktTokenResponse, RadarrError> {
         let url = format!("{}/oauth/device/token", self.base_url);
-        
+
         debug!("Polling for Trakt token");
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .json(&serde_json::json!({
                 "code": device_code,
@@ -112,14 +120,17 @@ impl TraktOAuth {
 
         match response.status().as_u16() {
             200 => {
-                let token_response: TokenResponse = response.json().await
-                    .map_err(|e| RadarrError::ExternalServiceError {
-                        service: "trakt".to_string(),
-                        error: e.to_string(),
-                    })?;
-                
+                let token_response: TokenResponse =
+                    response
+                        .json()
+                        .await
+                        .map_err(|e| RadarrError::ExternalServiceError {
+                            service: "trakt".to_string(),
+                            error: e.to_string(),
+                        })?;
+
                 info!("Successfully obtained Trakt access token");
-                
+
                 Ok(TraktTokenResponse {
                     access_token: token_response.access_token,
                     token_type: token_response.token_type,
@@ -198,13 +209,18 @@ impl TraktOAuth {
     ) -> Result<TraktTokenResponse, RadarrError> {
         let expiry_time = Utc::now() + chrono::Duration::seconds(expires_in as i64);
         let poll_interval = Duration::from_secs(interval as u64);
-        
-        info!("Starting token polling with {}s interval, expires in {}s", interval, expires_in);
-        
+
+        info!(
+            "Starting token polling with {}s interval, expires in {}s",
+            interval, expires_in
+        );
+
         while Utc::now() < expiry_time {
             match self.poll_for_token(device_code).await {
                 Ok(token) => return Ok(token),
-                Err(RadarrError::ExternalServiceError { error, .. }) if error.contains("Authorization pending") => {
+                Err(RadarrError::ExternalServiceError { error, .. })
+                    if error.contains("Authorization pending") =>
+                {
                     debug!("Still waiting for user authorization...");
                     sleep(poll_interval).await;
                     continue;
@@ -218,7 +234,7 @@ impl TraktOAuth {
                 Err(e) => return Err(e),
             }
         }
-        
+
         Err(RadarrError::ExternalServiceError {
             service: "trakt".to_string(),
             error: "Device code expired before user authorization".to_string(),
@@ -226,12 +242,16 @@ impl TraktOAuth {
     }
 
     /// Refresh an expired or expiring token
-    pub async fn refresh_token(&self, refresh_token: &str) -> Result<TraktTokenResponse, RadarrError> {
+    pub async fn refresh_token(
+        &self,
+        refresh_token: &str,
+    ) -> Result<TraktTokenResponse, RadarrError> {
         let url = format!("{}/oauth/token", self.base_url);
-        
+
         info!("Refreshing Trakt access token");
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .json(&serde_json::json!({
                 "refresh_token": refresh_token,
@@ -257,14 +277,17 @@ impl TraktOAuth {
             });
         }
 
-        let token_response: TokenResponse = response.json().await
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "trakt".to_string(),
-                error: e.to_string(),
-            })?;
-        
+        let token_response: TokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "trakt".to_string(),
+                    error: e.to_string(),
+                })?;
+
         info!("Successfully refreshed Trakt access token");
-        
+
         Ok(TraktTokenResponse {
             access_token: token_response.access_token,
             token_type: token_response.token_type,
@@ -280,7 +303,7 @@ impl TraktOAuth {
         let expires_at = DateTime::<Utc>::from_timestamp(token.created_at, 0)
             .unwrap_or_else(Utc::now)
             + chrono::Duration::seconds(token.expires_in as i64);
-        
+
         OAuthToken {
             id: None,
             service: "trakt".to_string(),
@@ -321,11 +344,8 @@ mod tests {
 
     #[test]
     fn test_oauth_config_creation() {
-        let config = TraktOAuthConfig::new(
-            "client_id".to_string(),
-            "client_secret".to_string(),
-        );
-        
+        let config = TraktOAuthConfig::new("client_id".to_string(), "client_secret".to_string());
+
         assert_eq!(config.client_id, "client_id");
         assert_eq!(config.client_secret, "client_secret");
         assert_eq!(config.redirect_uri, "urn:ietf:wg:oauth:2.0:oob");
@@ -333,12 +353,9 @@ mod tests {
 
     #[test]
     fn test_token_to_oauth_conversion() {
-        let config = TraktOAuthConfig::new(
-            "client_id".to_string(),
-            "client_secret".to_string(),
-        );
+        let config = TraktOAuthConfig::new("client_id".to_string(), "client_secret".to_string());
         let oauth = TraktOAuth::new(config);
-        
+
         let token_response = TraktTokenResponse {
             access_token: "access_token".to_string(),
             token_type: "Bearer".to_string(),
@@ -347,9 +364,9 @@ mod tests {
             scope: "public".to_string(),
             created_at: Utc::now().timestamp(),
         };
-        
+
         let oauth_token = oauth.token_to_oauth(token_response);
-        
+
         assert_eq!(oauth_token.service, "trakt");
         assert_eq!(oauth_token.access_token, "access_token");
         assert_eq!(oauth_token.refresh_token, Some("refresh_token".to_string()));

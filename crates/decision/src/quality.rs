@@ -4,8 +4,8 @@
 //! for movie releases, including resolution, source, and format preferences.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::cmp::Ordering;
+use uuid::Uuid;
 
 /// Video quality levels
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ impl Quality {
             Quality::Unknown => 0,
         }
     }
-    
+
     /// Parse quality from resolution string
     pub fn from_resolution(resolution: &str) -> Self {
         let res = resolution.to_lowercase();
@@ -80,7 +80,7 @@ impl Source {
             Source::Unknown => 0,
         }
     }
-    
+
     /// Parse source from release name
     pub fn from_release_name(name: &str) -> Self {
         let name_lower = name.to_lowercase();
@@ -113,7 +113,11 @@ pub struct QualityItem {
 
 impl QualityItem {
     pub fn new(quality: Quality, allowed: bool, preferred: bool) -> Self {
-        Self { quality, allowed, preferred }
+        Self {
+            quality,
+            allowed,
+            preferred,
+        }
     }
 }
 
@@ -146,7 +150,7 @@ impl QualityProfile {
             upgrade_allowed: true,
         }
     }
-    
+
     /// Default quality items for new profiles
     fn default_quality_items() -> Vec<QualityItem> {
         vec![
@@ -156,45 +160,47 @@ impl QualityProfile {
             QualityItem::new(Quality::SD, false, false),
         ]
     }
-    
+
     /// Check if a quality is allowed by this profile
     pub fn is_quality_allowed(&self, quality: &Quality) -> bool {
-        self.items.iter()
+        self.items
+            .iter()
             .find(|item| item.quality == *quality)
             .map(|item| item.allowed)
             .unwrap_or(false)
     }
-    
+
     /// Check if a quality is preferred by this profile
     pub fn is_quality_preferred(&self, quality: &Quality) -> bool {
-        self.items.iter()
+        self.items
+            .iter()
             .find(|item| item.quality == *quality)
             .map(|item| item.preferred)
             .unwrap_or(false)
     }
-    
+
     /// Calculate quality score for a release
     pub fn calculate_quality_score(&self, quality: &Quality, source: &Source) -> i32 {
         if !self.is_quality_allowed(quality) {
             return -1; // Not allowed
         }
-        
+
         let mut score = quality.score() * 10 + source.score();
-        
+
         // Bonus for preferred quality
         if self.is_quality_preferred(quality) {
             score += 50;
         }
-        
+
         score
     }
-    
+
     /// Check if an upgrade is warranted
     pub fn should_upgrade(&self, current_quality: &Quality, new_quality: &Quality) -> bool {
         if !self.upgrade_allowed {
             return false;
         }
-        
+
         // Only upgrade if new quality is better and allowed
         self.is_quality_allowed(new_quality) && new_quality.score() > current_quality.score()
     }
@@ -240,9 +246,18 @@ mod tests {
 
     #[test]
     fn test_source_parsing() {
-        assert_eq!(Source::from_release_name("Movie.2023.1080p.BluRay.x264"), Source::BluRay);
-        assert_eq!(Source::from_release_name("Movie.2023.1080p.WEB-DL.x264"), Source::WebDL);
-        assert_eq!(Source::from_release_name("Movie.2023.720p.HDTV.x264"), Source::HDTV);
+        assert_eq!(
+            Source::from_release_name("Movie.2023.1080p.BluRay.x264"),
+            Source::BluRay
+        );
+        assert_eq!(
+            Source::from_release_name("Movie.2023.1080p.WEB-DL.x264"),
+            Source::WebDL
+        );
+        assert_eq!(
+            Source::from_release_name("Movie.2023.720p.HDTV.x264"),
+            Source::HDTV
+        );
     }
 
     #[test]
@@ -251,13 +266,13 @@ mod tests {
         assert_eq!(profile.name, "Default");
         assert_eq!(profile.cutoff, Quality::HD1080p);
         assert!(profile.upgrade_allowed);
-        
+
         // Should allow 4K, 1080p, 720p but not SD
         assert!(profile.is_quality_allowed(&Quality::UHD4K));
         assert!(profile.is_quality_allowed(&Quality::HD1080p));
         assert!(profile.is_quality_allowed(&Quality::HD720p));
         assert!(!profile.is_quality_allowed(&Quality::SD));
-        
+
         // Should prefer 4K only
         assert!(profile.is_quality_preferred(&Quality::UHD4K));
         assert!(!profile.is_quality_preferred(&Quality::HD1080p));
@@ -266,15 +281,16 @@ mod tests {
     #[test]
     fn test_profile_quality_scoring() {
         let profile = QualityProfile::default();
-        
+
         // 4K BluRay should score highest (4*10 + 5 + 50 = 95)
         let score_4k_bluray = profile.calculate_quality_score(&Quality::UHD4K, &Source::BluRay);
         assert_eq!(score_4k_bluray, 95);
-        
+
         // 1080p BluRay should score lower (3*10 + 5 = 35)
-        let score_1080p_bluray = profile.calculate_quality_score(&Quality::HD1080p, &Source::BluRay);
+        let score_1080p_bluray =
+            profile.calculate_quality_score(&Quality::HD1080p, &Source::BluRay);
         assert_eq!(score_1080p_bluray, 35);
-        
+
         // SD should not be allowed (-1)
         let score_sd = profile.calculate_quality_score(&Quality::SD, &Source::BluRay);
         assert_eq!(score_sd, -1);
@@ -283,16 +299,16 @@ mod tests {
     #[test]
     fn test_upgrade_logic() {
         let profile = QualityProfile::default();
-        
+
         // Should upgrade from 720p to 1080p
         assert!(profile.should_upgrade(&Quality::HD720p, &Quality::HD1080p));
-        
+
         // Should upgrade from 1080p to 4K
         assert!(profile.should_upgrade(&Quality::HD1080p, &Quality::UHD4K));
-        
+
         // Should not downgrade from 1080p to 720p
         assert!(!profile.should_upgrade(&Quality::HD1080p, &Quality::HD720p));
-        
+
         // Should not upgrade to disallowed quality
         assert!(!profile.should_upgrade(&Quality::HD720p, &Quality::SD));
     }

@@ -1,9 +1,11 @@
 //! Queue repository implementation for PostgreSQL
 
 use async_trait::async_trait;
+use radarr_core::{
+    QueueItem, QueuePriority, QueueRepository, QueueStats, QueueStatus, RadarrError, Result,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use radarr_core::{Result, RadarrError, QueueItem, QueueStatus, QueuePriority, QueueStats, QueueRepository};
 
 /// PostgreSQL implementation of QueueRepository
 pub struct PostgresQueueRepository {
@@ -14,12 +16,12 @@ impl PostgresQueueRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
-    
+
     /// Convert database row to QueueItem
     fn row_to_queue_item(&self, row: &sqlx::postgres::PgRow) -> Result<QueueItem> {
         let status_str: String = row.try_get("status")?;
         let priority_str: String = row.try_get("priority")?;
-        
+
         let status = match status_str.as_str() {
             "queued" => QueueStatus::Queued,
             "downloading" => QueueStatus::Downloading,
@@ -29,28 +31,35 @@ impl PostgresQueueRepository {
             "paused" => QueueStatus::Paused,
             "stalled" => QueueStatus::Stalled,
             "seeding" => QueueStatus::Seeding,
-            _ => return Err(RadarrError::DatabaseError {
-                message: format!("Invalid queue status: {}", status_str),
-            }),
+            _ => {
+                return Err(RadarrError::DatabaseError {
+                    message: format!("Invalid queue status: {}", status_str),
+                })
+            }
         };
-        
+
         let priority = match priority_str.as_str() {
             "low" => QueuePriority::Low,
             "normal" => QueuePriority::Normal,
             "high" => QueuePriority::High,
             "very_high" => QueuePriority::VeryHigh,
-            _ => return Err(RadarrError::DatabaseError {
-                message: format!("Invalid queue priority: {}", priority_str),
-            }),
+            _ => {
+                return Err(RadarrError::DatabaseError {
+                    message: format!("Invalid queue priority: {}", priority_str),
+                })
+            }
         };
-        
+
         // Convert NUMERIC to f64
         let progress: rust_decimal::Decimal = row.try_get("progress")?;
-        let progress_f64 = progress.to_string().parse::<f64>()
-            .map_err(|_| RadarrError::DatabaseError {
-                message: "Failed to parse progress value".to_string(),
-            })?;
-        
+        let progress_f64 =
+            progress
+                .to_string()
+                .parse::<f64>()
+                .map_err(|_| RadarrError::DatabaseError {
+                    message: "Failed to parse progress value".to_string(),
+                })?;
+
         Ok(QueueItem {
             id: row.try_get("id")?,
             movie_id: row.try_get("movie_id")?,
@@ -67,8 +76,12 @@ impl PostgresQueueRepository {
             category: row.try_get("category")?,
             downloaded_bytes: row.try_get("downloaded_bytes")?,
             upload_bytes: row.try_get("upload_bytes")?,
-            download_speed: row.try_get::<Option<i64>, _>("download_speed")?.map(|v| v as u64),
-            upload_speed: row.try_get::<Option<i64>, _>("upload_speed")?.map(|v| v as u64),
+            download_speed: row
+                .try_get::<Option<i64>, _>("download_speed")?
+                .map(|v| v as u64),
+            upload_speed: row
+                .try_get::<Option<i64>, _>("upload_speed")?
+                .map(|v| v as u64),
             eta_seconds: row.try_get("eta_seconds")?,
             seeders: row.try_get("seeders")?,
             leechers: row.try_get("leechers")?,
@@ -98,7 +111,7 @@ impl QueueRepository for PostgresQueueRepository {
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                 $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27
             )
-            "#
+            "#,
         )
         .bind(item.id)
         .bind(item.movie_id)
@@ -132,93 +145,81 @@ impl QueueRepository for PostgresQueueRepository {
         .map_err(|e| RadarrError::DatabaseError {
             message: format!("Failed to insert queue item: {}", e),
         })?;
-        
+
         Ok(())
     }
-    
+
     async fn get_queue_item(&self, id: Uuid) -> Result<Option<QueueItem>> {
-        let row = sqlx::query(
-            "SELECT * FROM queue WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to fetch queue item: {}", e),
-        })?;
-        
+        let row = sqlx::query("SELECT * FROM queue WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to fetch queue item: {}", e),
+            })?;
+
         match row {
             Some(row) => Ok(Some(self.row_to_queue_item(&row)?)),
             None => Ok(None),
         }
     }
-    
+
     async fn get_queue_item_by_client_id(&self, client_id: &str) -> Result<Option<QueueItem>> {
-        let row = sqlx::query(
-            "SELECT * FROM queue WHERE download_client_id = $1"
-        )
-        .bind(client_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to fetch queue item by client ID: {}", e),
-        })?;
-        
+        let row = sqlx::query("SELECT * FROM queue WHERE download_client_id = $1")
+            .bind(client_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to fetch queue item by client ID: {}", e),
+            })?;
+
         match row {
             Some(row) => Ok(Some(self.row_to_queue_item(&row)?)),
             None => Ok(None),
         }
     }
-    
+
     async fn get_queue_items(&self, status_filter: Option<QueueStatus>) -> Result<Vec<QueueItem>> {
         let query = match status_filter {
-            Some(status) => {
-                sqlx::query(
-                    "SELECT * FROM queue WHERE status = $1 ORDER BY priority DESC, created_at ASC"
-                )
-                .bind(status.to_string())
-            }
-            None => {
-                sqlx::query(
-                    "SELECT * FROM queue ORDER BY priority DESC, created_at ASC"
-                )
-            }
+            Some(status) => sqlx::query(
+                "SELECT * FROM queue WHERE status = $1 ORDER BY priority DESC, created_at ASC",
+            )
+            .bind(status.to_string()),
+            None => sqlx::query("SELECT * FROM queue ORDER BY priority DESC, created_at ASC"),
         };
-        
+
         let rows = query
             .fetch_all(&self.pool)
             .await
             .map_err(|e| RadarrError::DatabaseError {
                 message: format!("Failed to fetch queue items: {}", e),
             })?;
-        
+
         let mut items = Vec::new();
         for row in rows {
             items.push(self.row_to_queue_item(&row)?);
         }
-        
+
         Ok(items)
     }
-    
+
     async fn get_queue_items_for_movie(&self, movie_id: Uuid) -> Result<Vec<QueueItem>> {
-        let rows = sqlx::query(
-            "SELECT * FROM queue WHERE movie_id = $1 ORDER BY created_at DESC"
-        )
-        .bind(movie_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to fetch queue items for movie: {}", e),
-        })?;
-        
+        let rows = sqlx::query("SELECT * FROM queue WHERE movie_id = $1 ORDER BY created_at DESC")
+            .bind(movie_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to fetch queue items for movie: {}", e),
+            })?;
+
         let mut items = Vec::new();
         for row in rows {
             items.push(self.row_to_queue_item(&row)?);
         }
-        
+
         Ok(items)
     }
-    
+
     async fn update_queue_item(&self, item: &QueueItem) -> Result<()> {
         let affected = sqlx::query(
             r#"
@@ -231,7 +232,7 @@ impl QueueRepository for PostgresQueueRepository {
                 retry_count = $20, max_retries = $21, updated_at = $22,
                 started_at = $23, completed_at = $24
             WHERE id = $1
-            "#
+            "#,
         )
         .bind(item.id)
         .bind(&item.title)
@@ -262,38 +263,36 @@ impl QueueRepository for PostgresQueueRepository {
         .map_err(|e| RadarrError::DatabaseError {
             message: format!("Failed to update queue item: {}", e),
         })?;
-        
+
         if affected.rows_affected() == 0 {
             return Err(RadarrError::NotFoundError {
                 entity: "queue_item".to_string(),
                 id: item.id.to_string(),
             });
         }
-        
+
         Ok(())
     }
-    
+
     async fn delete_queue_item(&self, id: Uuid) -> Result<()> {
-        let affected = sqlx::query(
-            "DELETE FROM queue WHERE id = $1"
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to delete queue item: {}", e),
-        })?;
-        
+        let affected = sqlx::query("DELETE FROM queue WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to delete queue item: {}", e),
+            })?;
+
         if affected.rows_affected() == 0 {
             return Err(RadarrError::NotFoundError {
                 entity: "queue_item".to_string(),
                 id: id.to_string(),
             });
         }
-        
+
         Ok(())
     }
-    
+
     async fn get_queue_stats(&self) -> Result<QueueStats> {
         let stats_row = sqlx::query(
             r#"
@@ -316,21 +315,48 @@ impl QueueRepository for PostgresQueueRepository {
         .map_err(|e| RadarrError::DatabaseError {
             message: format!("Failed to fetch queue stats: {}", e),
         })?;
-        
+
         Ok(QueueStats {
             total_count: stats_row.try_get::<i64, _>("total_count").unwrap_or(0),
-            downloading_count: stats_row.try_get::<Option<i64>, _>("downloading_count").unwrap_or(None).unwrap_or(0),
-            queued_count: stats_row.try_get::<Option<i64>, _>("queued_count").unwrap_or(None).unwrap_or(0),
-            completed_count: stats_row.try_get::<Option<i64>, _>("completed_count").unwrap_or(None).unwrap_or(0),
-            failed_count: stats_row.try_get::<Option<i64>, _>("failed_count").unwrap_or(None).unwrap_or(0),
-            paused_count: stats_row.try_get::<Option<i64>, _>("paused_count").unwrap_or(None).unwrap_or(0),
-            total_download_speed: stats_row.try_get::<Option<i64>, _>("total_download_speed").unwrap_or(None).unwrap_or(0) as u64,
-            total_upload_speed: stats_row.try_get::<Option<i64>, _>("total_upload_speed").unwrap_or(None).unwrap_or(0) as u64,
-            total_size_bytes: stats_row.try_get::<Option<i64>, _>("total_size_bytes").unwrap_or(None).unwrap_or(0),
-            total_downloaded_bytes: stats_row.try_get::<Option<i64>, _>("total_downloaded_bytes").unwrap_or(None).unwrap_or(0),
+            downloading_count: stats_row
+                .try_get::<Option<i64>, _>("downloading_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            queued_count: stats_row
+                .try_get::<Option<i64>, _>("queued_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            completed_count: stats_row
+                .try_get::<Option<i64>, _>("completed_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            failed_count: stats_row
+                .try_get::<Option<i64>, _>("failed_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            paused_count: stats_row
+                .try_get::<Option<i64>, _>("paused_count")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            total_download_speed: stats_row
+                .try_get::<Option<i64>, _>("total_download_speed")
+                .unwrap_or(None)
+                .unwrap_or(0) as u64,
+            total_upload_speed: stats_row
+                .try_get::<Option<i64>, _>("total_upload_speed")
+                .unwrap_or(None)
+                .unwrap_or(0) as u64,
+            total_size_bytes: stats_row
+                .try_get::<Option<i64>, _>("total_size_bytes")
+                .unwrap_or(None)
+                .unwrap_or(0),
+            total_downloaded_bytes: stats_row
+                .try_get::<Option<i64>, _>("total_downloaded_bytes")
+                .unwrap_or(None)
+                .unwrap_or(0),
         })
     }
-    
+
     async fn get_retry_items(&self) -> Result<Vec<QueueItem>> {
         let rows = sqlx::query(
             "SELECT * FROM queue WHERE status = 'failed' AND retry_count < max_retries ORDER BY updated_at ASC"
@@ -340,12 +366,12 @@ impl QueueRepository for PostgresQueueRepository {
         .map_err(|e| RadarrError::DatabaseError {
             message: format!("Failed to fetch retry items: {}", e),
         })?;
-        
+
         let mut items = Vec::new();
         for row in rows {
             items.push(self.row_to_queue_item(&row)?);
         }
-        
+
         Ok(items)
     }
 }

@@ -30,13 +30,13 @@ pub async fn health_check() -> ApiResult<Json<serde_json::Value>> {
 pub async fn detailed_health_check() -> ApiResult<Json<HealthResponse>> {
     debug!("Starting comprehensive health check");
     let check_start = Instant::now();
-    
+
     let mut services = Vec::new();
     let mut overall_healthy = true;
 
     // For now, create placeholder service health entries
     // These will be populated with actual circuit breaker data when the services are properly wired
-    
+
     // TMDB service placeholder
     services.push(ServiceHealth {
         name: "TMDB".to_string(),
@@ -86,10 +86,17 @@ pub async fn detailed_health_check() -> ApiResult<Json<HealthResponse>> {
         .get()
         .map(|start| start.elapsed().as_secs())
         .unwrap_or(0);
-    
-    let overall_status = if overall_healthy { "healthy" } else { "degraded" };
 
-    debug!("Health check completed in {}ms", check_start.elapsed().as_millis());
+    let overall_status = if overall_healthy {
+        "healthy"
+    } else {
+        "degraded"
+    };
+
+    debug!(
+        "Health check completed in {}ms",
+        check_start.elapsed().as_millis()
+    );
 
     let health_response = HealthResponse {
         status: overall_status.to_string(),
@@ -103,57 +110,47 @@ pub async fn detailed_health_check() -> ApiResult<Json<HealthResponse>> {
 
 /// GET /health/services/{service} - Individual service health check
 pub async fn service_health_check(
-    axum::extract::Path(service_name): axum::extract::Path<String>
+    axum::extract::Path(service_name): axum::extract::Path<String>,
 ) -> ApiResult<Json<ServiceHealth>> {
     let service_health = match service_name.to_lowercase().as_str() {
-        "tmdb" => {
-            ServiceHealth {
-                name: "TMDB".to_string(),
-                status: "healthy".to_string(),
-                response_time_ms: Some(50),
-                last_check: Utc::now(),
-                error: None,
-            }
-        }
-        "hdbits" => {
-            ServiceHealth {
-                name: "HDBits".to_string(),
-                status: "healthy".to_string(),
-                response_time_ms: Some(200),
-                last_check: Utc::now(),
-                error: None,
-            }
-        }
-        "qbittorrent" => {
-            ServiceHealth {
-                name: "qBittorrent".to_string(),
-                status: "healthy".to_string(),
-                response_time_ms: Some(75),
-                last_check: Utc::now(),
-                error: None,
-            }
-        }
-        "database" | "postgresql" => {
-            ServiceHealth {
-                name: "PostgreSQL".to_string(),
-                status: "healthy".to_string(),
-                response_time_ms: Some(10),
-                last_check: Utc::now(),
-                error: None,
-            }
-        }
-        "queue" => {
-            ServiceHealth {
-                name: "Queue Processor".to_string(),
-                status: "healthy".to_string(),
-                response_time_ms: Some(0),
-                last_check: Utc::now(),
-                error: None,
-            }
-        }
+        "tmdb" => ServiceHealth {
+            name: "TMDB".to_string(),
+            status: "healthy".to_string(),
+            response_time_ms: Some(50),
+            last_check: Utc::now(),
+            error: None,
+        },
+        "hdbits" => ServiceHealth {
+            name: "HDBits".to_string(),
+            status: "healthy".to_string(),
+            response_time_ms: Some(200),
+            last_check: Utc::now(),
+            error: None,
+        },
+        "qbittorrent" => ServiceHealth {
+            name: "qBittorrent".to_string(),
+            status: "healthy".to_string(),
+            response_time_ms: Some(75),
+            last_check: Utc::now(),
+            error: None,
+        },
+        "database" | "postgresql" => ServiceHealth {
+            name: "PostgreSQL".to_string(),
+            status: "healthy".to_string(),
+            response_time_ms: Some(10),
+            last_check: Utc::now(),
+            error: None,
+        },
+        "queue" => ServiceHealth {
+            name: "Queue Processor".to_string(),
+            status: "healthy".to_string(),
+            response_time_ms: Some(0),
+            last_check: Utc::now(),
+            error: None,
+        },
         _ => {
-            return Err(crate::error::ApiError::NotFound { 
-                resource: format!("service '{}'", service_name)
+            return Err(crate::error::ApiError::NotFound {
+                resource: format!("service '{}'", service_name),
             });
         }
     };

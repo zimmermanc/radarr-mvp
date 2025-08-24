@@ -1,19 +1,19 @@
 //! Import pipeline orchestrator
-//! 
+//!
 //! This module provides the main ImportPipeline that coordinates all import
 //! operations including scanning, analysis, hardlinking, and renaming.
 
-use std::path::Path;
-use std::time::{Duration, Instant};
 use radarr_core::RadarrError;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug, instrument};
+use std::path::Path;
+use std::time::{Duration, Instant};
+use tracing::{debug, info, instrument, warn};
 
 use crate::{
-    file_scanner::{FileScanner, ScanConfig, DetectedFile},
-    file_analyzer::{FileAnalyzer, AnalyzedFile},
-    hardlink_manager::{HardlinkManager, HardlinkConfig, HardlinkResult},
-    rename_engine::{RenameEngine, RenameConfig, RenameResult},
+    file_analyzer::{AnalyzedFile, FileAnalyzer},
+    file_scanner::{DetectedFile, FileScanner, ScanConfig},
+    hardlink_manager::{HardlinkConfig, HardlinkManager, HardlinkResult},
+    rename_engine::{RenameConfig, RenameEngine, RenameResult},
 };
 
 /// Complete configuration for the import pipeline
@@ -133,24 +133,39 @@ impl ImportPipeline {
         dest_dir: &Path,
     ) -> Result<ImportStats, RadarrError> {
         let start_time = Instant::now();
-        info!("Starting import from {} to {}", source_dir.display(), dest_dir.display());
+        info!(
+            "Starting import from {} to {}",
+            source_dir.display(),
+            dest_dir.display()
+        );
 
         // Phase 1: Scan for media files
         let detected_files = self.scan_phase(source_dir).await?;
-        info!("Scan phase complete: {} files detected", detected_files.len());
+        info!(
+            "Scan phase complete: {} files detected",
+            detected_files.len()
+        );
 
         // Phase 2: Analyze detected files
         let analyzed_files = self.analyze_phase(&detected_files).await?;
-        info!("Analysis phase complete: {} files analyzed", analyzed_files.len());
+        info!(
+            "Analysis phase complete: {} files analyzed",
+            analyzed_files.len()
+        );
 
         // Phase 3: Import files (hardlink + rename)
         let import_results = self.import_phase(&analyzed_files, dest_dir).await?;
-        info!("Import phase complete: {} files processed", import_results.len());
+        info!(
+            "Import phase complete: {} files processed",
+            import_results.len()
+        );
 
         // Generate statistics
         let stats = self.generate_stats(&detected_files, &import_results, start_time.elapsed());
-        info!("Import operation complete: {} successful, {} failed, {} skipped", 
-              stats.successful_imports, stats.failed_imports, stats.skipped_files);
+        info!(
+            "Import operation complete: {} successful, {} failed, {} skipped",
+            stats.successful_imports, stats.failed_imports, stats.skipped_files
+        );
 
         Ok(stats)
     }
@@ -163,24 +178,39 @@ impl ImportPipeline {
         dest_dir: &Path,
     ) -> Result<(ImportStats, Vec<ImportResult>), RadarrError> {
         let start_time = Instant::now();
-        info!("Starting import from {} to {}", source_dir.display(), dest_dir.display());
+        info!(
+            "Starting import from {} to {}",
+            source_dir.display(),
+            dest_dir.display()
+        );
 
         // Phase 1: Scan for media files
         let detected_files = self.scan_phase(source_dir).await?;
-        info!("Scan phase complete: {} files detected", detected_files.len());
+        info!(
+            "Scan phase complete: {} files detected",
+            detected_files.len()
+        );
 
         // Phase 2: Analyze detected files
         let analyzed_files = self.analyze_phase(&detected_files).await?;
-        info!("Analysis phase complete: {} files analyzed", analyzed_files.len());
+        info!(
+            "Analysis phase complete: {} files analyzed",
+            analyzed_files.len()
+        );
 
         // Phase 3: Import files (hardlink + rename)
         let import_results = self.import_phase(&analyzed_files, dest_dir).await?;
-        info!("Import phase complete: {} files processed", import_results.len());
+        info!(
+            "Import phase complete: {} files processed",
+            import_results.len()
+        );
 
         // Generate statistics
         let stats = self.generate_stats(&detected_files, &import_results, start_time.elapsed());
-        info!("Import operation complete: {} successful, {} failed, {} skipped", 
-              stats.successful_imports, stats.failed_imports, stats.skipped_files);
+        info!(
+            "Import operation complete: {} successful, {} failed, {} skipped",
+            stats.successful_imports, stats.failed_imports, stats.skipped_files
+        );
 
         Ok((stats, import_results))
     }
@@ -239,7 +269,9 @@ impl ImportPipeline {
         };
 
         // Execute the import
-        Ok(self.import_single_file(&analyzed_file, dest_dir, start_time).await)
+        Ok(self
+            .import_single_file(&analyzed_file, dest_dir, start_time)
+            .await)
     }
 
     /// Scan phase: discover all media files
@@ -249,11 +281,14 @@ impl ImportPipeline {
     }
 
     /// Analysis phase: analyze all detected files
-    async fn analyze_phase(&self, detected_files: &[DetectedFile]) -> Result<Vec<AnalyzedFile>, RadarrError> {
+    async fn analyze_phase(
+        &self,
+        detected_files: &[DetectedFile],
+    ) -> Result<Vec<AnalyzedFile>, RadarrError> {
         debug!("Starting analysis phase for {} files", detected_files.len());
-        
+
         let mut analyzed_files = Vec::new();
-        
+
         for detected_file in detected_files {
             // Skip samples if configured
             if self.config.skip_samples && detected_file.is_sample {
@@ -266,8 +301,11 @@ impl ImportPipeline {
                     if analyzed.confidence >= self.config.min_confidence {
                         analyzed_files.push(analyzed);
                     } else {
-                        debug!("Skipping file with low confidence {}: {}", 
-                               analyzed.confidence, detected_file.path.display());
+                        debug!(
+                            "Skipping file with low confidence {}: {}",
+                            analyzed.confidence,
+                            detected_file.path.display()
+                        );
                     }
                 }
                 Err(e) => {
@@ -279,7 +317,7 @@ impl ImportPipeline {
                 }
             }
         }
-        
+
         Ok(analyzed_files)
     }
 
@@ -290,23 +328,23 @@ impl ImportPipeline {
         dest_dir: &Path,
     ) -> Result<Vec<ImportResult>, RadarrError> {
         debug!("Starting import phase for {} files", analyzed_files.len());
-        
+
         let mut results = Vec::new();
-        
+
         // Process files in batches to control parallelism
         for chunk in analyzed_files.chunks(self.config.max_parallel) {
             let mut batch_futures = Vec::new();
-            
+
             for analyzed_file in chunk {
                 let future = self.import_single_file(analyzed_file, dest_dir, Instant::now());
                 batch_futures.push(future);
             }
-            
+
             // Wait for all files in this batch to complete
             let batch_results = futures::future::join_all(batch_futures).await;
             results.extend(batch_results);
         }
-        
+
         Ok(results)
     }
 
@@ -322,7 +360,9 @@ impl ImportPipeline {
         let detected_file = DetectedFile {
             path: analyzed_file.path.clone(),
             size: 0, // Would need to get from filesystem
-            extension: analyzed_file.path.extension()
+            extension: analyzed_file
+                .path
+                .extension()
                 .and_then(|ext| ext.to_str())
                 .unwrap_or("unknown")
                 .to_string(),
@@ -332,7 +372,10 @@ impl ImportPipeline {
         };
 
         // Step 1: Generate rename plan
-        let mut rename_result = match self.rename_engine.generate_filename(analyzed_file, dest_dir) {
+        let mut rename_result = match self
+            .rename_engine
+            .generate_filename(analyzed_file, dest_dir)
+        {
             Ok(result) => result,
             Err(e) => {
                 return ImportResult {
@@ -349,7 +392,11 @@ impl ImportPipeline {
 
         // Step 2: Create hardlink/copy to new location
         let hardlink_result = if !self.config.dry_run {
-            match self.hardlink_manager.create_hardlink(&analyzed_file.path, &rename_result.new_path).await {
+            match self
+                .hardlink_manager
+                .create_hardlink(&analyzed_file.path, &rename_result.new_path)
+                .await
+            {
                 Ok(result) => Some(result),
                 Err(e) => {
                     return ImportResult {
@@ -364,8 +411,11 @@ impl ImportPipeline {
                 }
             }
         } else {
-            info!("DRY RUN: Would create hardlink {} -> {}", 
-                  analyzed_file.path.display(), rename_result.new_path.display());
+            info!(
+                "DRY RUN: Would create hardlink {} -> {}",
+                analyzed_file.path.display(),
+                rename_result.new_path.display()
+            );
             None
         };
 
@@ -393,22 +443,28 @@ impl ImportPipeline {
         total_duration: Duration,
     ) -> ImportStats {
         let files_scanned = detected_files.len();
-        let files_analyzed = import_results.iter().filter(|r| r.analyzed_file.is_some()).count();
+        let files_analyzed = import_results
+            .iter()
+            .filter(|r| r.analyzed_file.is_some())
+            .count();
         let successful_imports = import_results.iter().filter(|r| r.success).count();
         let failed_imports = import_results.iter().filter(|r| !r.success).count();
         let skipped_files = files_scanned - import_results.len();
 
-        let total_size = import_results.iter()
+        let total_size = import_results
+            .iter()
             .filter_map(|r| r.hardlink_result.as_ref())
             .map(|hr| hr.file_size)
             .sum();
 
-        let hardlinks_created = import_results.iter()
+        let hardlinks_created = import_results
+            .iter()
             .filter_map(|r| r.hardlink_result.as_ref())
             .filter(|hr| hr.is_hardlink)
             .count();
 
-        let files_copied = import_results.iter()
+        let files_copied = import_results
+            .iter()
             .filter_map(|r| r.hardlink_result.as_ref())
             .filter(|hr| !hr.is_hardlink)
             .count();
@@ -442,8 +498,10 @@ impl ImportPipeline {
     /// Validate that the pipeline is properly configured
     pub fn validate_config(&self) -> Result<(), RadarrError> {
         // Validate rename template
-        self.rename_engine.validate_template(&self.config.rename_config.movie_template)?;
-        self.rename_engine.validate_template(&self.config.rename_config.folder_template)?;
+        self.rename_engine
+            .validate_template(&self.config.rename_config.movie_template)?;
+        self.rename_engine
+            .validate_template(&self.config.rename_config.folder_template)?;
 
         // Validate confidence threshold
         if self.config.min_confidence < 0.0 || self.config.min_confidence > 1.0 {
@@ -474,8 +532,8 @@ impl Default for ImportPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_pipeline_creation() {
@@ -489,22 +547,25 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let source_dir = temp_dir.path().join("source");
         let dest_dir = temp_dir.path().join("dest");
-        
+
         fs::create_dir_all(&source_dir).unwrap();
         fs::create_dir_all(&dest_dir).unwrap();
-        
+
         // Create test movie file
         let movie_file = source_dir.join("The.Matrix.1999.1080p.BluRay.x264-GROUP.mkv");
         fs::write(&movie_file, vec![0u8; 200 * 1024 * 1024]).unwrap(); // 200MB
-        
+
         let mut config = ImportConfig::default();
         config.dry_run = true;
         config.min_confidence = 0.1; // Lower threshold for testing
-        
+
         let pipeline = ImportPipeline::new(config);
-        
-        let stats = pipeline.import_directory(&source_dir, &dest_dir).await.unwrap();
-        
+
+        let stats = pipeline
+            .import_directory(&source_dir, &dest_dir)
+            .await
+            .unwrap();
+
         assert_eq!(stats.files_scanned, 1);
         // In dry run, no actual files should be moved
     }
@@ -513,7 +574,7 @@ mod tests {
     fn test_config_validation() {
         let mut config = ImportConfig::default();
         config.min_confidence = 1.5; // Invalid confidence
-        
+
         let pipeline = ImportPipeline::new(config);
         assert!(pipeline.validate_config().is_err());
     }
@@ -524,9 +585,9 @@ mod tests {
         let detected_files = vec![];
         let import_results = vec![];
         let duration = Duration::from_secs(10);
-        
+
         let stats = pipeline.generate_stats(&detected_files, &import_results, duration);
-        
+
         assert_eq!(stats.files_scanned, 0);
         assert_eq!(stats.successful_imports, 0);
         assert_eq!(stats.total_duration, duration);

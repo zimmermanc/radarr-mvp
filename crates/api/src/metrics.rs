@@ -24,7 +24,7 @@ pub struct MetricsCollector {
     prom_db_queries: CounterVec,
     prom_business_events: CounterVec,
     prom_system_gauges: GaugeVec,
-    
+
     // Radarr-specific business metrics
     search_total: CounterVec,
     grab_total: CounterVec,
@@ -42,31 +42,28 @@ impl MetricsCollector {
             "Total number of HTTP requests",
             &["method", "route", "status"]
         )?;
-        
+
         let prom_http_duration = register_histogram_vec!(
             "radarr_http_request_duration_seconds",
             "HTTP request duration in seconds",
             &["method", "route", "status"],
             vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
         )?;
-        
+
         let prom_db_queries = register_counter_vec!(
             "radarr_db_queries_total",
             "Total number of database queries",
             &["operation", "table", "status"]
         )?;
-        
+
         let prom_business_events = register_counter_vec!(
             "radarr_business_events_total",
             "Total number of business events",
             &["event_type", "status"]
         )?;
-        
-        let prom_system_gauges = register_gauge_vec!(
-            "radarr_system_metrics",
-            "System metrics",
-            &["metric_type"]
-        )?;
+
+        let prom_system_gauges =
+            register_gauge_vec!("radarr_system_metrics", "System metrics", &["metric_type"])?;
 
         // Radarr-specific business metrics
         let search_total = register_counter_vec!(
@@ -76,7 +73,7 @@ impl MetricsCollector {
         )?;
 
         let grab_total = register_counter_vec!(
-            "radarr_grab_total", 
+            "radarr_grab_total",
             "Total number of releases grabbed",
             &["indexer", "quality", "status"]
         )?;
@@ -88,7 +85,7 @@ impl MetricsCollector {
         )?;
 
         let import_failure_total = register_counter_vec!(
-            "radarr_import_failure_total", 
+            "radarr_import_failure_total",
             "Total number of failed imports",
             &["reason", "source"]
         )?;
@@ -120,7 +117,7 @@ impl MetricsCollector {
             search_duration_seconds,
         })
     }
-    
+
     /// Record HTTP request metrics
     pub fn record_http_request(
         &self,
@@ -132,44 +129,50 @@ impl MetricsCollector {
     ) {
         let status_str = status.to_string();
         let duration_secs = duration.as_secs_f64();
-        
+
         // Prometheus metrics
         self.prom_http_requests
             .with_label_values(&[method, route, &status_str])
             .inc();
-            
+
         self.prom_http_duration
             .with_label_values(&[method, route, &status_str])
             .observe(duration_secs);
     }
-    
+
     /// Record database query metrics
-    pub fn record_db_query(&self, operation: &str, table: &str, _duration: Duration, success: bool) {
+    pub fn record_db_query(
+        &self,
+        operation: &str,
+        table: &str,
+        _duration: Duration,
+        success: bool,
+    ) {
         let status = if success { "success" } else { "error" };
-        
+
         // Prometheus metrics
         self.prom_db_queries
             .with_label_values(&[operation, table, status])
             .inc();
     }
-    
+
     /// Record business event metrics
     pub fn record_business_event(&self, event_type: &str, success: bool) {
         let status = if success { "success" } else { "error" };
-        
+
         // Prometheus business events
         self.prom_business_events
             .with_label_values(&[event_type, status])
             .inc();
     }
-    
+
     /// Record error
     pub fn record_error(&self, error_type: &str, _context: &str) {
         self.prom_business_events
             .with_label_values(&["error", error_type])
             .inc();
     }
-    
+
     /// Update database connection metrics
     pub fn update_db_connections(&self, active: i64, pool_size: u64) {
         self.prom_system_gauges
@@ -179,7 +182,7 @@ impl MetricsCollector {
             .with_label_values(&["db_pool_size"])
             .set(pool_size as f64);
     }
-    
+
     /// Update system metrics
     pub fn update_system_metrics(&self, memory_bytes: u64, cpu_percent: f64, active_tasks: i64) {
         self.prom_system_gauges
@@ -198,11 +201,11 @@ impl MetricsCollector {
     /// Record a search operation
     pub fn record_search(&self, indexer: &str, duration: Duration, success: bool) {
         let status = if success { "success" } else { "error" };
-        
+
         self.search_total
             .with_label_values(&[indexer, status])
             .inc();
-            
+
         self.search_duration_seconds
             .with_label_values(&[indexer])
             .observe(duration.as_secs_f64());
@@ -211,7 +214,7 @@ impl MetricsCollector {
     /// Record a release grab
     pub fn record_grab(&self, indexer: &str, quality: &str, success: bool) {
         let status = if success { "success" } else { "error" };
-        
+
         self.grab_total
             .with_label_values(&[indexer, quality, status])
             .inc();
@@ -246,7 +249,7 @@ impl MetricsCollector {
             .with_label_values(&["total"])
             .set((queued + downloading + paused) as f64);
     }
-    
+
     /// Export Prometheus metrics
     pub fn export_prometheus(&self) -> Result<String> {
         let encoder = TextEncoder::new();
@@ -256,10 +259,7 @@ impl MetricsCollector {
 }
 
 /// Middleware for automatic HTTP metrics collection
-pub async fn metrics_middleware(
-    req: Request<Body>,
-    next: Next,
-) -> Result<Response, Response> {
+pub async fn metrics_middleware(req: Request<Body>, next: Next) -> Result<Response, Response> {
     let start = Instant::now();
     let method = req.method().to_string();
     let path = req
@@ -267,7 +267,7 @@ pub async fn metrics_middleware(
         .get::<MatchedPath>()
         .map(|matched_path| matched_path.as_str().to_string())
         .unwrap_or_else(|| req.uri().path().to_string());
-    
+
     // Add trace information to request
     let span = tracing::info_span!(
         "http_request",
@@ -277,11 +277,11 @@ pub async fn metrics_middleware(
         http.method = %method,
         http.route = %path,
     );
-    
+
     let response = next.run(req).await;
     let duration = start.elapsed();
     let status = response.status().as_u16();
-    
+
     // Record metrics if collector is available
     if let Some(metrics) = response.extensions().get::<Arc<MetricsCollector>>() {
         let response_size = response
@@ -290,18 +290,22 @@ pub async fn metrics_middleware(
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
-            
+
         metrics.record_http_request(&method, &path, status, duration, response_size);
     }
-    
+
     // Add metrics to span
     span.record("http.status_code", status);
-    span.record("http.response_size", response.headers()
-        .get("content-length")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("0"));
+    span.record(
+        "http.response_size",
+        response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("0"),
+    );
     span.record("duration_ms", duration.as_millis() as u64);
-    
+
     Ok(response)
 }
 
@@ -311,17 +315,17 @@ pub async fn health_with_metrics(
 ) -> impl IntoResponse {
     use axum::Json;
     use serde_json::json;
-    
+
     // Update system metrics
     let memory_info = sys_info::mem_info().unwrap_or_default();
     let memory_bytes = memory_info.total * 1024; // Convert KB to bytes
-    
+
     let cpu_percent = sys_info::loadavg()
         .map(|load| load.one * 100.0)
         .unwrap_or(0.0);
-    
+
     metrics.update_system_metrics(memory_bytes, cpu_percent, 0);
-    
+
     Json(json!({
         "status": "healthy",
         "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -338,13 +342,11 @@ pub async fn prometheus_metrics(
     metrics: axum::extract::Extension<Arc<MetricsCollector>>,
 ) -> impl IntoResponse {
     match metrics.export_prometheus() {
-        Ok(metrics_text) => {
-            (
-                axum::http::StatusCode::OK,
-                [("content-type", "text/plain; version=0.0.4")],
-                metrics_text,
-            )
-        }
+        Ok(metrics_text) => (
+            axum::http::StatusCode::OK,
+            [("content-type", "text/plain; version=0.0.4")],
+            metrics_text,
+        ),
         Err(e) => {
             tracing::error!("Failed to export Prometheus metrics: {}", e);
             (
@@ -364,7 +366,7 @@ pub mod sys_info {
         pub free: u64,
         pub avail: u64,
     }
-    
+
     impl Default for MemInfo {
         fn default() -> Self {
             Self {
@@ -374,18 +376,18 @@ pub mod sys_info {
             }
         }
     }
-    
+
     pub struct LoadAvg {
         pub one: f64,
         pub five: f64,
         pub fifteen: f64,
     }
-    
+
     pub fn mem_info() -> anyhow::Result<MemInfo> {
         // Placeholder - would use actual sys-info crate
         Ok(MemInfo::default())
     }
-    
+
     pub fn loadavg() -> anyhow::Result<LoadAvg> {
         // Placeholder - would use actual sys-info crate
         Ok(LoadAvg {

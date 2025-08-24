@@ -5,12 +5,16 @@
 //! integration for the List Sync system.
 
 use crate::monitoring::{
-    alert_manager::{AlertManager, AlertRule, create_default_alert_rules},
-    health_checks::{HealthChecker, HealthCheckConfig, ServiceHealthChecker, HttpHealthChecker, HealthStatus},
-    metrics::{PrometheusMetrics, MetricsConfig, SyncMetrics},
+    alert_manager::{create_default_alert_rules, AlertManager, AlertRule},
+    health_checks::{
+        HealthCheckConfig, HealthChecker, HealthStatus, HttpHealthChecker, ServiceHealthChecker,
+    },
+    metrics::{MetricsConfig, PrometheusMetrics, SyncMetrics},
 };
-use radarr_core::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitBreakerState};
 use chrono::{DateTime, Utc};
+use radarr_core::circuit_breaker::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics, CircuitBreakerState,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,34 +46,46 @@ pub struct ListSyncMonitorConfig {
 impl Default for ListSyncMonitorConfig {
     fn default() -> Self {
         let mut cb_configs = HashMap::new();
-        
+
         // Default circuit breaker configs for each list service
-        cb_configs.insert("imdb".to_string(), CircuitBreakerConfig::new("imdb")
-            .with_failure_threshold(5)
-            .with_timeout(Duration::from_secs(60))
-            .with_request_timeout(Duration::from_secs(30)));
-            
-        cb_configs.insert("tmdb".to_string(), CircuitBreakerConfig::new("tmdb")
-            .with_failure_threshold(3)
-            .with_timeout(Duration::from_secs(30))
-            .with_request_timeout(Duration::from_secs(10)));
-            
-        cb_configs.insert("trakt".to_string(), CircuitBreakerConfig::new("trakt")
-            .with_failure_threshold(3)
-            .with_timeout(Duration::from_secs(45))
-            .with_request_timeout(Duration::from_secs(15)));
-            
-        cb_configs.insert("plex".to_string(), CircuitBreakerConfig::new("plex")
-            .with_failure_threshold(2)
-            .with_timeout(Duration::from_secs(30))
-            .with_request_timeout(Duration::from_secs(20)));
-        
+        cb_configs.insert(
+            "imdb".to_string(),
+            CircuitBreakerConfig::new("imdb")
+                .with_failure_threshold(5)
+                .with_timeout(Duration::from_secs(60))
+                .with_request_timeout(Duration::from_secs(30)),
+        );
+
+        cb_configs.insert(
+            "tmdb".to_string(),
+            CircuitBreakerConfig::new("tmdb")
+                .with_failure_threshold(3)
+                .with_timeout(Duration::from_secs(30))
+                .with_request_timeout(Duration::from_secs(10)),
+        );
+
+        cb_configs.insert(
+            "trakt".to_string(),
+            CircuitBreakerConfig::new("trakt")
+                .with_failure_threshold(3)
+                .with_timeout(Duration::from_secs(45))
+                .with_request_timeout(Duration::from_secs(15)),
+        );
+
+        cb_configs.insert(
+            "plex".to_string(),
+            CircuitBreakerConfig::new("plex")
+                .with_failure_threshold(2)
+                .with_timeout(Duration::from_secs(30))
+                .with_request_timeout(Duration::from_secs(20)),
+        );
+
         Self {
             metrics: MetricsConfig::default(),
             health_checks: HealthCheckConfig::default(),
             enable_default_alerts: true,
             alert_evaluation_interval: TokioDuration::from_secs(60), // 1 minute
-            alert_cleanup_interval: TokioDuration::from_secs(3600), // 1 hour
+            alert_cleanup_interval: TokioDuration::from_secs(3600),  // 1 hour
             alert_retention_days: 30,
             circuit_breaker_configs: cb_configs,
         }
@@ -115,9 +131,11 @@ impl ListSyncMonitor {
     pub async fn new(config: ListSyncMonitorConfig) -> Result<Self, MonitoringError> {
         let metrics = Arc::new(PrometheusMetrics::new(config.metrics.clone()));
         let alert_manager = Arc::new(AlertManager::new());
-        let health_checker = Arc::new(RwLock::new(HealthChecker::new(config.health_checks.clone())));
+        let health_checker = Arc::new(RwLock::new(HealthChecker::new(
+            config.health_checks.clone(),
+        )));
         let circuit_breakers = Arc::new(RwLock::new(HashMap::new()));
-        
+
         // Initialize circuit breakers
         {
             let mut cb_map = circuit_breakers.write().await;
@@ -127,7 +145,7 @@ impl ListSyncMonitor {
                 info!("Initialized circuit breaker for service: {}", service);
             }
         }
-        
+
         let monitor = Self {
             config,
             metrics,
@@ -136,12 +154,12 @@ impl ListSyncMonitor {
             circuit_breakers,
             monitoring_stats: Arc::new(RwLock::new(MonitoringStats::default())),
         };
-        
+
         // Setup default alert rules if enabled
         if monitor.config.enable_default_alerts {
             monitor.setup_default_alert_rules().await?;
         }
-        
+
         info!("List Sync Monitor initialized successfully");
         Ok(monitor)
     }
@@ -149,13 +167,18 @@ impl ListSyncMonitor {
     /// Setup default alert rules for common scenarios
     async fn setup_default_alert_rules(&self) -> Result<(), MonitoringError> {
         let rules = create_default_alert_rules();
-        
+
         for rule in rules {
-            self.alert_manager.add_rule(rule).await
+            self.alert_manager
+                .add_rule(rule)
+                .await
                 .map_err(|e| MonitoringError::AlertSetupError(e.to_string()))?;
         }
-        
-        info!("Setup {} default alert rules", create_default_alert_rules().len());
+
+        info!(
+            "Setup {} default alert rules",
+            create_default_alert_rules().len()
+        );
         Ok(())
     }
 
@@ -170,7 +193,7 @@ impl ListSyncMonitor {
     /// Add health checkers for common list services
     pub async fn setup_default_health_checkers(&self) -> Result<(), MonitoringError> {
         let mut health_checker = self.health_checker.write().await;
-        
+
         // IMDb health check (check if their API is responding)
         let imdb_checker = Box::new(HttpHealthChecker::new(
             "imdb",
@@ -179,7 +202,7 @@ impl ListSyncMonitor {
             Duration::from_secs(10),
         ));
         health_checker.add_checker(imdb_checker);
-        
+
         // TMDb health check
         let tmdb_checker = Box::new(HttpHealthChecker::new(
             "tmdb",
@@ -188,7 +211,7 @@ impl ListSyncMonitor {
             Duration::from_secs(10),
         ));
         health_checker.add_checker(tmdb_checker);
-        
+
         // Trakt health check
         let trakt_checker = Box::new(HttpHealthChecker::new(
             "trakt",
@@ -197,7 +220,7 @@ impl ListSyncMonitor {
             Duration::from_secs(10),
         ));
         health_checker.add_checker(trakt_checker);
-        
+
         info!("Setup default health checkers for IMDb, TMDb, and Trakt");
         Ok(())
     }
@@ -205,21 +228,21 @@ impl ListSyncMonitor {
     /// Start all monitoring components
     pub async fn start_monitoring(&self) -> Result<(), MonitoringError> {
         info!("Starting List Sync monitoring components");
-        
+
         // Start health check loop
         let health_checker = self.health_checker.clone();
         tokio::spawn(async move {
             let health_checker = health_checker.read().await;
             health_checker.start().await;
         });
-        
+
         // Start alert evaluation loop
         let alert_manager = self.alert_manager.clone();
         let metrics = self.metrics.clone();
         let health_checker_clone = self.health_checker.clone();
         let circuit_breakers = self.circuit_breakers.clone();
         let alert_interval = self.config.alert_evaluation_interval;
-        
+
         tokio::spawn(async move {
             let mut interval = interval(alert_interval);
             loop {
@@ -229,23 +252,26 @@ impl ListSyncMonitor {
                     &metrics,
                     &health_checker_clone,
                     &circuit_breakers,
-                ).await;
+                )
+                .await;
             }
         });
-        
+
         // Start alert cleanup loop
         let alert_manager_cleanup = self.alert_manager.clone();
         let cleanup_interval = self.config.alert_cleanup_interval;
         let retention_days = self.config.alert_retention_days;
-        
+
         tokio::spawn(async move {
             let mut interval = interval(cleanup_interval);
             loop {
                 interval.tick().await;
-                alert_manager_cleanup.cleanup_old_alerts(retention_days).await;
+                alert_manager_cleanup
+                    .cleanup_old_alerts(retention_days)
+                    .await;
             }
         });
-        
+
         info!("All monitoring components started successfully");
         Ok(())
     }
@@ -261,25 +287,34 @@ impl ListSyncMonitor {
         items_total: u64,
     ) {
         // Update metrics
-        self.metrics.record_sync_operation(source, success, duration).await;
-        self.metrics.record_sync_items(source, items_added, items_updated, items_total).await;
-        
+        self.metrics
+            .record_sync_operation(source, success, duration)
+            .await;
+        self.metrics
+            .record_sync_items(source, items_added, items_updated, items_total)
+            .await;
+
         // Update monitoring stats
         {
             let mut stats = self.monitoring_stats.write().await;
             stats.total_sync_operations_monitored += 1;
         }
-        
+
         // Check for alerts
         if !success {
             // This will be handled by the alert evaluation loop which checks circuit breaker failures
-            self.alert_manager.check_consecutive_failures(source, 1).await;
+            self.alert_manager
+                .check_consecutive_failures(source, 1)
+                .await;
         }
-        
-        if duration.as_secs_f64() > 300.0 { // 5 minutes threshold
-            self.alert_manager.check_slow_sync(source, duration.as_secs_f64()).await;
+
+        if duration.as_secs_f64() > 300.0 {
+            // 5 minutes threshold
+            self.alert_manager
+                .check_slow_sync(source, duration.as_secs_f64())
+                .await;
         }
-        
+
         debug!(
             source = source,
             success = success,
@@ -293,8 +328,10 @@ impl ListSyncMonitor {
 
     /// Record an API request for monitoring
     pub async fn record_api_request(&self, service: &str, duration: Duration, rate_limited: bool) {
-        self.metrics.record_api_request(service, duration, rate_limited).await;
-        
+        self.metrics
+            .record_api_request(service, duration, rate_limited)
+            .await;
+
         if rate_limited {
             // Could trigger rate limit alert
             self.alert_manager.check_rate_limit_hits(service, 1).await;
@@ -326,31 +363,34 @@ impl ListSyncMonitor {
         E: Into<radarr_core::RadarrError>,
     {
         let circuit_breakers = self.circuit_breakers.read().await;
-        
+
         if let Some(circuit_breaker) = circuit_breakers.get(service) {
             let start_time = Instant::now();
-            
+
             let result = circuit_breaker.call(operation).await;
             let duration = start_time.elapsed();
-            
+
             // Record metrics
             let success = result.is_ok();
-            self.metrics.record_api_request(service, duration, false).await;
-            
+            self.metrics
+                .record_api_request(service, duration, false)
+                .await;
+
             // Update circuit breaker metrics in our monitoring system
             let cb_metrics = circuit_breaker.get_metrics().await;
-            self.metrics.record_circuit_breaker_state(
-                service,
-                cb_metrics.state.as_str(),
-                cb_metrics.consecutive_failures as u64,
-            ).await;
-            
+            self.metrics
+                .record_circuit_breaker_state(
+                    service,
+                    cb_metrics.state.as_str(),
+                    cb_metrics.consecutive_failures as u64,
+                )
+                .await;
+
             // Check for circuit breaker alerts
-            self.alert_manager.check_circuit_breaker_state(
-                service,
-                cb_metrics.state == CircuitBreakerState::Open,
-            ).await;
-            
+            self.alert_manager
+                .check_circuit_breaker_state(service, cb_metrics.state == CircuitBreakerState::Open)
+                .await;
+
             match result {
                 Ok(value) => Ok(value),
                 Err(e) => Err(MonitoringError::CircuitBreakerError(e.to_string())),
@@ -365,34 +405,38 @@ impl ListSyncMonitor {
         let sync_metrics = self.metrics.get_metrics_summary().await;
         let alert_stats = self.alert_manager.get_alert_stats().await;
         let active_alerts = self.alert_manager.get_active_alerts().await;
-        
+
         let health_checker = self.health_checker.read().await;
         let health_summary = health_checker.get_health_summary().await;
-        
+
         let circuit_breakers = self.circuit_breakers.read().await;
         let mut circuit_breaker_status = HashMap::new();
-        
+
         for (service, cb) in circuit_breakers.iter() {
             let metrics = cb.get_metrics().await;
-            circuit_breaker_status.insert(service.clone(), CircuitBreakerStatus {
-                state: metrics.state.as_str().to_string(),
-                consecutive_failures: metrics.consecutive_failures,
-                success_rate: if metrics.total_requests > 0 {
-                    (metrics.successful_requests as f64 / metrics.total_requests as f64) * 100.0
-                } else {
-                    0.0
+            circuit_breaker_status.insert(
+                service.clone(),
+                CircuitBreakerStatus {
+                    state: metrics.state.as_str().to_string(),
+                    consecutive_failures: metrics.consecutive_failures,
+                    success_rate: if metrics.total_requests > 0 {
+                        (metrics.successful_requests as f64 / metrics.total_requests as f64) * 100.0
+                    } else {
+                        0.0
+                    },
+                    is_healthy: cb.is_healthy().await,
                 },
-                is_healthy: cb.is_healthy().await,
-            });
+            );
         }
-        
+
         let stats = self.monitoring_stats.read().await;
-        
+
         MonitoringStatus {
             started_at: stats.started_at,
             sync_metrics,
             alert_stats,
-            active_critical_alerts: active_alerts.iter()
+            active_critical_alerts: active_alerts
+                .iter()
                 .filter(|a| a.level == crate::monitoring::alert_manager::AlertLevel::Critical)
                 .count() as u32,
             health_summary,
@@ -409,7 +453,7 @@ impl ListSyncMonitor {
             let mut stats = self.monitoring_stats.write().await;
             stats.last_prometheus_scrape = Some(Utc::now());
         }
-        
+
         self.metrics.generate_prometheus_output().await
     }
 
@@ -424,29 +468,35 @@ impl ListSyncMonitor {
         {
             let health_checker = health_checker.read().await;
             let all_health = health_checker.get_all_health_status().await;
-            
+
             for (service, health) in all_health {
-                alert_manager.check_service_health(&service, health.status == HealthStatus::Healthy).await;
+                alert_manager
+                    .check_service_health(&service, health.status == HealthStatus::Healthy)
+                    .await;
             }
         }
-        
+
         // Check circuit breaker states
         {
             let circuit_breakers = circuit_breakers.read().await;
             for (service, cb) in circuit_breakers.iter() {
                 let metrics = cb.get_metrics().await;
-                alert_manager.check_circuit_breaker_state(
-                    service,
-                    metrics.state == CircuitBreakerState::Open,
-                ).await;
-                
+                alert_manager
+                    .check_circuit_breaker_state(
+                        service,
+                        metrics.state == CircuitBreakerState::Open,
+                    )
+                    .await;
+
                 // Also check for consecutive failures
                 if metrics.consecutive_failures > 0 {
-                    alert_manager.check_consecutive_failures(service, metrics.consecutive_failures).await;
+                    alert_manager
+                        .check_consecutive_failures(service, metrics.consecutive_failures)
+                        .await;
                 }
             }
         }
-        
+
         debug!("Completed alert condition evaluation cycle");
     }
 }
@@ -456,16 +506,16 @@ impl ListSyncMonitor {
 pub enum MonitoringError {
     #[error("Alert setup error: {0}")]
     AlertSetupError(String),
-    
+
     #[error("Service not found: {0}")]
     ServiceNotFound(String),
-    
+
     #[error("Circuit breaker error: {0}")]
     CircuitBreakerError(String),
-    
+
     #[error("Health check error: {0}")]
     HealthCheckError(String),
-    
+
     #[error("Metrics error: {0}")]
     MetricsError(String),
 }
@@ -496,12 +546,12 @@ pub struct CircuitBreakerStatus {
 mod tests {
     use super::*;
     use tokio::time::sleep;
-    
+
     #[tokio::test]
     async fn test_list_sync_monitor_creation() {
         let config = ListSyncMonitorConfig::default();
         let monitor = ListSyncMonitor::new(config).await.unwrap();
-        
+
         // Check that circuit breakers were initialized
         let cb_map = monitor.circuit_breakers.read().await;
         assert!(cb_map.contains_key("imdb"));
@@ -509,41 +559,40 @@ mod tests {
         assert!(cb_map.contains_key("trakt"));
         assert!(cb_map.contains_key("plex"));
     }
-    
+
     #[tokio::test]
     async fn test_sync_operation_recording() {
         let config = ListSyncMonitorConfig::default();
         let monitor = ListSyncMonitor::new(config).await.unwrap();
-        
+
         // Record a sync operation
-        monitor.record_sync_operation(
-            "imdb",
-            true,
-            Duration::from_millis(1500),
-            5,
-            2,
-            10,
-        ).await;
-        
+        monitor
+            .record_sync_operation("imdb", true, Duration::from_millis(1500), 5, 2, 10)
+            .await;
+
         let metrics = monitor.metrics.get_metrics_summary().await;
         assert_eq!(metrics.total_sync_operations, 1);
         assert_eq!(metrics.successful_sync_operations, 1);
-        
+
         let status = monitor.get_monitoring_status().await;
         assert_eq!(status.total_operations_monitored, 1);
     }
-    
+
     #[tokio::test]
     async fn test_prometheus_metrics_generation() {
         let config = ListSyncMonitorConfig::default();
         let monitor = ListSyncMonitor::new(config).await.unwrap();
-        
+
         // Record some data
-        monitor.record_sync_operation("imdb", true, Duration::from_millis(1000), 1, 0, 1).await;
-        monitor.record_api_request("tmdb", Duration::from_millis(200), false).await;
-        
+        monitor
+            .record_sync_operation("imdb", true, Duration::from_millis(1000), 1, 0, 1)
+            .await;
+        monitor
+            .record_api_request("tmdb", Duration::from_millis(200), false)
+            .await;
+
         let prometheus_output = monitor.get_prometheus_metrics().await;
-        
+
         // Should contain expected metric names
         assert!(prometheus_output.contains("radarr_list_sync_sync_operations_total"));
         assert!(prometheus_output.contains("radarr_list_sync_api_requests_total"));

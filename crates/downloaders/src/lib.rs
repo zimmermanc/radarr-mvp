@@ -10,10 +10,6 @@ mod tests;
 
 // Re-export public types
 pub use qbittorrent::{
-    QBittorrentClient,
-    QBittorrentConfig,
+    AddTorrentParams, AppPreferences, QBittorrentClient, QBittorrentConfig, TorrentData,
     TorrentInfo,
-    TorrentData,
-    AddTorrentParams,
-    AppPreferences,
 };

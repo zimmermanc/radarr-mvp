@@ -2,9 +2,12 @@
 
 use crate::{
     error::{ApiError, ApiResult},
-    models::{ReleaseResponse},
+    models::ReleaseResponse,
 };
-use axum::{extract::{State, Query}, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use radarr_core::repositories::MovieRepository;
 use radarr_infrastructure::DatabasePool;
 use serde::Deserialize;
@@ -36,7 +39,7 @@ pub async fn search_releases(
     Query(params): Query<SearchParams>,
 ) -> ApiResult<Json<Vec<ReleaseResponse>>> {
     info!("Searching releases with params: {:?}", params);
-    
+
     // Simulate failure for testing
     if params.fail_prowlarr.unwrap_or(false) {
         return Err(ApiError::ExternalServiceError {
@@ -44,7 +47,7 @@ pub async fn search_releases(
             error: "Simulated Prowlarr failure for testing".to_string(),
         });
     }
-    
+
     // Create mock releases for testing
     let releases = vec![
         ReleaseResponse {
@@ -86,7 +89,7 @@ pub async fn search_releases(
             progress: 0.0,
         },
     ];
-    
+
     info!("Found {} releases", releases.len());
     Ok(Json(releases))
 }

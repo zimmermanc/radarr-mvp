@@ -3,12 +3,12 @@
 //! This module provides notification capabilities for various events
 //! like movie downloads, errors, and system status updates.
 
-pub mod webhook;
 pub mod discord;
+pub mod webhook;
 
+use crate::{Movie, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use crate::{Result, Movie};
 
 /// Notification event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,25 +20,13 @@ pub enum NotificationEvent {
         size_mb: Option<u64>,
     },
     /// Download started
-    DownloadStarted {
-        movie: Movie,
-        release_title: String,
-    },
+    DownloadStarted { movie: Movie, release_title: String },
     /// Download failed
-    DownloadFailed {
-        movie: Movie,
-        error: String,
-    },
+    DownloadFailed { movie: Movie, error: String },
     /// Movie imported to library
-    MovieImported {
-        movie: Movie,
-        file_path: String,
-    },
+    MovieImported { movie: Movie, file_path: String },
     /// Health check failed
-    HealthCheckFailed {
-        service: String,
-        error: String,
-    },
+    HealthCheckFailed { service: String, error: String },
     /// Application started
     ApplicationStarted,
     /// Application stopped
@@ -50,10 +38,10 @@ pub enum NotificationEvent {
 pub trait NotificationProvider: Send + Sync {
     /// Send a notification for the given event
     async fn send_notification(&self, event: &NotificationEvent) -> Result<()>;
-    
+
     /// Test the notification provider configuration
     async fn test_notification(&self) -> Result<()>;
-    
+
     /// Get the provider name
     fn provider_name(&self) -> &'static str;
 }
@@ -70,17 +58,17 @@ impl NotificationService {
             providers: Vec::new(),
         }
     }
-    
+
     /// Add a notification provider
     pub fn add_provider(mut self, provider: Box<dyn NotificationProvider>) -> Self {
         self.providers.push(provider);
         self
     }
-    
+
     /// Send notification to all configured providers
     pub async fn notify(&self, event: NotificationEvent) -> Vec<Result<()>> {
         let mut results = Vec::new();
-        
+
         for provider in &self.providers {
             let result = provider.send_notification(&event).await;
             if let Err(ref e) = result {
@@ -92,19 +80,19 @@ impl NotificationService {
             }
             results.push(result);
         }
-        
+
         results
     }
-    
+
     /// Test all notification providers
     pub async fn test_all_providers(&self) -> Vec<(String, Result<()>)> {
         let mut results = Vec::new();
-        
+
         for provider in &self.providers {
             let result = provider.test_notification().await;
             results.push((provider.provider_name().to_string(), result));
         }
-        
+
         results
     }
 }

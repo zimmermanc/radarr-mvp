@@ -33,7 +33,7 @@ impl AlertLevel {
             Self::Emergency => "emergency",
         }
     }
-    
+
     /// Get numeric priority for sorting (higher = more urgent)
     pub fn priority(&self) -> u8 {
         match self {
@@ -104,7 +104,7 @@ impl Alert {
             last_fired: now,
         }
     }
-    
+
     /// Check if alert should be suppressed due to rate limiting
     pub fn should_rate_limit(&self, rule: &AlertRule) -> bool {
         if let Some(rate_limit) = rule.rate_limit {
@@ -114,12 +114,12 @@ impl Alert {
             false
         }
     }
-    
+
     /// Update alert status and timestamps
     pub fn update_status(&mut self, status: AlertStatus, user: Option<String>) {
         self.status = status;
         self.updated_at = Utc::now();
-        
+
         match status {
             AlertStatus::Resolved => {
                 self.resolved_at = Some(Utc::now());
@@ -131,7 +131,7 @@ impl Alert {
             _ => {}
         }
     }
-    
+
     /// Fire the alert again (increment count and update timestamp)
     pub fn fire(&mut self) {
         self.fire_count += 1;
@@ -161,39 +161,28 @@ pub struct AlertRule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AlertCondition {
     /// Consecutive sync failures
-    ConsecutiveFailures {
-        service: String,
-        count: u32,
-    },
+    ConsecutiveFailures { service: String, count: u32 },
     /// Sync duration exceeds threshold
     SlowSync {
         service: String,
         duration_seconds: f64,
     },
     /// Rate limit hit frequency
-    RateLimitHits {
-        service: String,
-        hits_per_hour: u32,
-    },
+    RateLimitHits { service: String, hits_per_hour: u32 },
     /// Service unavailable
     ServiceDown {
         service: String,
         check_interval_seconds: u64,
     },
     /// Cache hit rate below threshold
-    LowCacheHitRate {
-        cache_type: String,
-        threshold: f64,
-    },
+    LowCacheHitRate { cache_type: String, threshold: f64 },
     /// Queue depth exceeds threshold
     HighQueueDepth {
         queue_name: String,
         depth_threshold: u64,
     },
     /// Circuit breaker open
-    CircuitBreakerOpen {
-        service: String,
-    },
+    CircuitBreakerOpen { service: String },
 }
 
 /// Alert manager for handling rule evaluation and notifications
@@ -216,13 +205,13 @@ pub trait AlertNotificationHandler: Send + Sync {
 pub enum AlertError {
     #[error("Rule not found: {0}")]
     RuleNotFound(String),
-    
+
     #[error("Alert not found: {0}")]
     AlertNotFound(Uuid),
-    
+
     #[error("Notification error: {0}")]
     NotificationError(String),
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfiguration(String),
 }
@@ -241,12 +230,16 @@ impl AlertManager {
     /// Add an alert rule
     pub async fn add_rule(&self, rule: AlertRule) -> Result<(), AlertError> {
         let mut rules = self.rules.write().await;
-        
+
         if !rule.enabled {
             debug!("Adding disabled rule: {}", rule.name);
         }
-        
-        info!("Adding alert rule: {} (level: {})", rule.name, rule.level.as_str());
+
+        info!(
+            "Adding alert rule: {} (level: {})",
+            rule.name,
+            rule.level.as_str()
+        );
         rules.insert(rule.name.clone(), rule);
         Ok(())
     }
@@ -277,20 +270,24 @@ impl AlertManager {
     /// Check for consecutive sync failures
     pub async fn check_consecutive_failures(&self, service: &str, failure_count: u32) {
         let rules = self.rules.read().await;
-        
+
         for rule in rules.values() {
             if !rule.enabled {
                 continue;
             }
-            
-            if let AlertCondition::ConsecutiveFailures { service: rule_service, count } = &rule.condition {
+
+            if let AlertCondition::ConsecutiveFailures {
+                service: rule_service,
+                count,
+            } = &rule.condition
+            {
                 if rule_service == service && failure_count >= *count {
                     let title = format!("{} sync failures", failure_count);
                     let description = format!(
                         "Service {} has failed {} consecutive sync attempts",
                         service, failure_count
                     );
-                    
+
                     self.fire_alert(rule, service, title, description).await;
                 }
             }
@@ -300,20 +297,24 @@ impl AlertManager {
     /// Check for slow sync operations
     pub async fn check_slow_sync(&self, service: &str, duration_seconds: f64) {
         let rules = self.rules.read().await;
-        
+
         for rule in rules.values() {
             if !rule.enabled {
                 continue;
             }
-            
-            if let AlertCondition::SlowSync { service: rule_service, duration_seconds: threshold } = &rule.condition {
+
+            if let AlertCondition::SlowSync {
+                service: rule_service,
+                duration_seconds: threshold,
+            } = &rule.condition
+            {
                 if rule_service == service && duration_seconds > *threshold {
                     let title = "Slow sync operation".to_string();
                     let description = format!(
                         "Service {} sync took {:.2}s (threshold: {:.2}s)",
                         service, duration_seconds, threshold
                     );
-                    
+
                     self.fire_alert(rule, service, title, description).await;
                 }
             }
@@ -323,20 +324,24 @@ impl AlertManager {
     /// Check for rate limit hits
     pub async fn check_rate_limit_hits(&self, service: &str, hits_per_hour: u32) {
         let rules = self.rules.read().await;
-        
+
         for rule in rules.values() {
             if !rule.enabled {
                 continue;
             }
-            
-            if let AlertCondition::RateLimitHits { service: rule_service, hits_per_hour: threshold } = &rule.condition {
+
+            if let AlertCondition::RateLimitHits {
+                service: rule_service,
+                hits_per_hour: threshold,
+            } = &rule.condition
+            {
                 if rule_service == service && hits_per_hour >= *threshold {
                     let title = "High rate limit hits".to_string();
                     let description = format!(
                         "Service {} hit rate limits {} times per hour (threshold: {})",
                         service, hits_per_hour, threshold
                     );
-                    
+
                     self.fire_alert(rule, service, title, description).await;
                 }
             }
@@ -346,17 +351,22 @@ impl AlertManager {
     /// Check service health
     pub async fn check_service_health(&self, service: &str, is_healthy: bool) {
         let rules = self.rules.read().await;
-        
+
         for rule in rules.values() {
             if !rule.enabled {
                 continue;
             }
-            
-            if let AlertCondition::ServiceDown { service: rule_service, .. } = &rule.condition {
+
+            if let AlertCondition::ServiceDown {
+                service: rule_service,
+                ..
+            } = &rule.condition
+            {
                 if rule_service == service && !is_healthy {
                     let title = "Service unavailable".to_string();
-                    let description = format!("Service {} is not responding to health checks", service);
-                    
+                    let description =
+                        format!("Service {} is not responding to health checks", service);
+
                     self.fire_alert(rule, service, title, description).await;
                 } else if rule_service == service && is_healthy {
                     // Auto-resolve service down alerts when service comes back up
@@ -369,17 +379,20 @@ impl AlertManager {
     /// Check circuit breaker state
     pub async fn check_circuit_breaker_state(&self, service: &str, is_open: bool) {
         let rules = self.rules.read().await;
-        
+
         for rule in rules.values() {
             if !rule.enabled {
                 continue;
             }
-            
-            if let AlertCondition::CircuitBreakerOpen { service: rule_service } = &rule.condition {
+
+            if let AlertCondition::CircuitBreakerOpen {
+                service: rule_service,
+            } = &rule.condition
+            {
                 if rule_service == service && is_open {
                     let title = "Circuit breaker open".to_string();
                     let description = format!("Circuit breaker for service {} is open", service);
-                    
+
                     self.fire_alert(rule, service, title, description).await;
                 } else if rule_service == service && !is_open {
                     // Auto-resolve circuit breaker alerts when circuit closes
@@ -390,17 +403,22 @@ impl AlertManager {
     }
 
     /// Fire an alert based on a rule
-    async fn fire_alert(&self, rule: &AlertRule, service: &str, title: String, description: String) {
+    async fn fire_alert(
+        &self,
+        rule: &AlertRule,
+        service: &str,
+        title: String,
+        description: String,
+    ) {
         let mut active_alerts = self.active_alerts.write().await;
-        
+
         // Check if we already have an active alert for this rule and service
-        let existing_alert = active_alerts.values_mut()
-            .find(|alert| {
-                alert.rule_name == rule.name &&
-                alert.service == service &&
-                alert.status == AlertStatus::Active
-            });
-        
+        let existing_alert = active_alerts.values_mut().find(|alert| {
+            alert.rule_name == rule.name
+                && alert.service == service
+                && alert.status == AlertStatus::Active
+        });
+
         match existing_alert {
             Some(existing) => {
                 // Check rate limiting
@@ -412,7 +430,7 @@ impl AlertManager {
                     );
                     return;
                 }
-                
+
                 // Re-fire existing alert
                 existing.fire();
                 warn!(
@@ -432,7 +450,7 @@ impl AlertManager {
                     level = rule.level.as_str(),
                     "New alert fired"
                 );
-                
+
                 active_alerts.insert(alert.id, alert);
             }
         }
@@ -442,14 +460,15 @@ impl AlertManager {
     async fn resolve_alerts_for_condition(&self, rule: &AlertRule, service: &str) {
         let mut active_alerts = self.active_alerts.write().await;
         let mut resolved_count = 0;
-        
+
         for alert in active_alerts.values_mut() {
-            if alert.rule_name == rule.name &&
-               alert.service == service &&
-               alert.status == AlertStatus::Active {
+            if alert.rule_name == rule.name
+                && alert.service == service
+                && alert.status == AlertStatus::Active
+            {
                 alert.update_status(AlertStatus::Resolved, None);
                 resolved_count += 1;
-                
+
                 info!(
                     alert_id = %alert.id,
                     rule = rule.name,
@@ -458,7 +477,7 @@ impl AlertManager {
                 );
             }
         }
-        
+
         if resolved_count > 0 {
             debug!(
                 rule = rule.name,
@@ -472,7 +491,7 @@ impl AlertManager {
     /// Manually acknowledge an alert
     pub async fn acknowledge_alert(&self, alert_id: Uuid, user: String) -> Result<(), AlertError> {
         let mut active_alerts = self.active_alerts.write().await;
-        
+
         if let Some(alert) = active_alerts.get_mut(&alert_id) {
             alert.update_status(AlertStatus::Acknowledged, Some(user.clone()));
             info!(
@@ -489,7 +508,7 @@ impl AlertManager {
     /// Manually resolve an alert
     pub async fn resolve_alert(&self, alert_id: Uuid, user: String) -> Result<(), AlertError> {
         let mut active_alerts = self.active_alerts.write().await;
-        
+
         if let Some(alert) = active_alerts.get_mut(&alert_id) {
             alert.update_status(AlertStatus::Resolved, Some(user.clone()));
             info!(
@@ -506,17 +525,20 @@ impl AlertManager {
     /// Get all active alerts
     pub async fn get_active_alerts(&self) -> Vec<Alert> {
         let active_alerts = self.active_alerts.read().await;
-        let mut alerts: Vec<Alert> = active_alerts.values()
+        let mut alerts: Vec<Alert> = active_alerts
+            .values()
             .filter(|alert| alert.status == AlertStatus::Active)
             .cloned()
             .collect();
-        
+
         // Sort by priority (highest first), then by creation time (newest first)
         alerts.sort_by(|a, b| {
-            b.level.priority().cmp(&a.level.priority())
+            b.level
+                .priority()
+                .cmp(&a.level.priority())
                 .then_with(|| b.created_at.cmp(&a.created_at))
         });
-        
+
         alerts
     }
 
@@ -524,26 +546,37 @@ impl AlertManager {
     pub async fn get_alert_stats(&self) -> AlertStats {
         let active_alerts = self.active_alerts.read().await;
         let history = self.alert_history.read().await;
-        
-        let active_by_level = active_alerts.values()
+
+        let active_by_level = active_alerts
+            .values()
             .filter(|alert| alert.status == AlertStatus::Active)
             .fold(HashMap::new(), |mut acc, alert| {
                 *acc.entry(alert.level).or_insert(0) += 1;
                 acc
             });
-        
+
         AlertStats {
             total_active: active_by_level.values().sum(),
-            active_critical: active_by_level.get(&AlertLevel::Critical).copied().unwrap_or(0),
-            active_warning: active_by_level.get(&AlertLevel::Warning).copied().unwrap_or(0),
+            active_critical: active_by_level
+                .get(&AlertLevel::Critical)
+                .copied()
+                .unwrap_or(0),
+            active_warning: active_by_level
+                .get(&AlertLevel::Warning)
+                .copied()
+                .unwrap_or(0),
             active_info: active_by_level.get(&AlertLevel::Info).copied().unwrap_or(0),
-            active_emergency: active_by_level.get(&AlertLevel::Emergency).copied().unwrap_or(0),
-            total_resolved_today: history.iter()
+            active_emergency: active_by_level
+                .get(&AlertLevel::Emergency)
+                .copied()
+                .unwrap_or(0),
+            total_resolved_today: history
+                .iter()
                 .filter(|alert| {
-                    alert.status == AlertStatus::Resolved &&
-                    alert.resolved_at.map_or(false, |t| {
-                        (Utc::now() - t).num_days() < 1
-                    })
+                    alert.status == AlertStatus::Resolved
+                        && alert
+                            .resolved_at
+                            .map_or(false, |t| (Utc::now() - t).num_days() < 1)
                 })
                 .count() as u32,
         }
@@ -554,11 +587,11 @@ impl AlertManager {
         let cutoff = Utc::now() - Duration::days(retention_days);
         let mut active_alerts = self.active_alerts.write().await;
         let mut history = self.alert_history.write().await;
-        
+
         // Move resolved alerts older than retention to history and remove from active
         let mut to_remove = Vec::new();
         let mut moved_count = 0;
-        
+
         for (id, alert) in active_alerts.iter() {
             if alert.status == AlertStatus::Resolved {
                 if let Some(resolved_at) = alert.resolved_at {
@@ -570,14 +603,14 @@ impl AlertManager {
                 }
             }
         }
-        
+
         for id in to_remove {
             active_alerts.remove(&id);
         }
-        
+
         // Also cleanup history if it gets too large
         history.truncate(10000); // Keep last 10k historical alerts
-        
+
         if moved_count > 0 {
             info!(
                 moved_count = moved_count,
@@ -625,7 +658,6 @@ pub fn create_default_alert_rules() -> Vec<AlertRule> {
             auto_resolve_after: None,
             enabled: true,
         },
-        
         // Slow sync operations
         AlertRule {
             name: "slow_sync_operation".to_string(),
@@ -643,7 +675,6 @@ pub fn create_default_alert_rules() -> Vec<AlertRule> {
             auto_resolve_after: Some(Duration::minutes(30)),
             enabled: true,
         },
-        
         // High rate limit hits
         AlertRule {
             name: "high_rate_limit_hits".to_string(),
@@ -661,7 +692,6 @@ pub fn create_default_alert_rules() -> Vec<AlertRule> {
             auto_resolve_after: Some(Duration::hours(4)),
             enabled: true,
         },
-        
         // Service down
         AlertRule {
             name: "external_service_down".to_string(),
@@ -679,7 +709,6 @@ pub fn create_default_alert_rules() -> Vec<AlertRule> {
             auto_resolve_after: None, // Auto-resolve immediately when service comes back
             enabled: true,
         },
-        
         // Circuit breaker open
         AlertRule {
             name: "circuit_breaker_open".to_string(),
@@ -703,7 +732,7 @@ pub fn create_default_alert_rules() -> Vec<AlertRule> {
 mod tests {
     use super::*;
     use tokio::time::sleep;
-    
+
     #[tokio::test]
     async fn test_alert_creation() {
         let rule = AlertRule {
@@ -722,20 +751,20 @@ mod tests {
             auto_resolve_after: None,
             enabled: true,
         };
-        
+
         let alert = Alert::new(&rule, "test_service", "Test Alert", "Test description");
-        
+
         assert_eq!(alert.rule_name, "test_rule");
         assert_eq!(alert.level, AlertLevel::Warning);
         assert_eq!(alert.status, AlertStatus::Active);
         assert_eq!(alert.service, "test_service");
         assert_eq!(alert.fire_count, 1);
     }
-    
+
     #[tokio::test]
     async fn test_alert_manager_consecutive_failures() {
         let manager = AlertManager::new();
-        
+
         let rule = AlertRule {
             name: "consecutive_failures".to_string(),
             level: AlertLevel::Warning,
@@ -752,14 +781,14 @@ mod tests {
             auto_resolve_after: None,
             enabled: true,
         };
-        
+
         manager.add_rule(rule).await.unwrap();
-        
+
         // Should not trigger alert yet
         manager.check_consecutive_failures("imdb", 2).await;
         let alerts = manager.get_active_alerts().await;
         assert_eq!(alerts.len(), 0);
-        
+
         // Should trigger alert
         manager.check_consecutive_failures("imdb", 3).await;
         let alerts = manager.get_active_alerts().await;
@@ -767,11 +796,11 @@ mod tests {
         assert_eq!(alerts[0].service, "imdb");
         assert_eq!(alerts[0].level, AlertLevel::Warning);
     }
-    
+
     #[tokio::test]
     async fn test_alert_acknowledgment() {
         let manager = AlertManager::new();
-        
+
         let rule = AlertRule {
             name: "test_rule".to_string(),
             level: AlertLevel::Warning,
@@ -788,17 +817,20 @@ mod tests {
             auto_resolve_after: None,
             enabled: true,
         };
-        
+
         manager.add_rule(rule).await.unwrap();
         manager.check_consecutive_failures("test", 1).await;
-        
+
         let alerts = manager.get_active_alerts().await;
         assert_eq!(alerts.len(), 1);
         let alert_id = alerts[0].id;
-        
+
         // Acknowledge the alert
-        manager.acknowledge_alert(alert_id, "test_user".to_string()).await.unwrap();
-        
+        manager
+            .acknowledge_alert(alert_id, "test_user".to_string())
+            .await
+            .unwrap();
+
         // Should not appear in active alerts anymore
         let active_alerts = manager.get_active_alerts().await;
         assert_eq!(active_alerts.len(), 0);

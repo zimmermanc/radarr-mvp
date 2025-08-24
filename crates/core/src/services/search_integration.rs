@@ -1,7 +1,7 @@
 //! Search integration service for connecting indexer results with queue management
 
-use crate::models::{Movie, Release, QueuePriority};
-use crate::services::{QueueService, QueueRepository, DownloadClientService};
+use crate::models::{Movie, QueuePriority, Release};
+use crate::services::{DownloadClientService, QueueRepository, QueueService};
 use crate::Result;
 // use crate::RadarrError; // Currently unused
 use uuid::Uuid;
@@ -16,7 +16,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
     pub fn new(queue_service: QueueService<Q, D>) -> Self {
         Self { queue_service }
     }
-    
+
     /// Automatically download the best release for a movie
     pub async fn auto_download_for_movie(
         &self,
@@ -27,7 +27,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
         if releases.is_empty() {
             return Ok(None);
         }
-        
+
         // Score and rank releases
         let mut scored_releases: Vec<_> = releases
             .into_iter()
@@ -36,33 +36,45 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 (release, score)
             })
             .collect();
-        
+
         // Sort by score (highest first)
         scored_releases.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         // Take the best release
         if let Some((best_release, score)) = scored_releases.into_iter().next() {
             if score >= quality_preferences.minimum_score_threshold {
-                tracing::info!("Auto-downloading release '{}' for movie '{}' (score: {:.2})", 
-                             best_release.title, movie.title, score);
-                
-                let queue_item = self.queue_service.grab_release(
-                    movie,
-                    &best_release,
-                    Some(QueuePriority::Normal),
-                    Some("movies".to_string()),
-                ).await?;
-                
+                tracing::info!(
+                    "Auto-downloading release '{}' for movie '{}' (score: {:.2})",
+                    best_release.title,
+                    movie.title,
+                    score
+                );
+
+                let queue_item = self
+                    .queue_service
+                    .grab_release(
+                        movie,
+                        &best_release,
+                        Some(QueuePriority::Normal),
+                        Some("movies".to_string()),
+                    )
+                    .await?;
+
                 return Ok(Some(queue_item.id));
             } else {
-                tracing::debug!("Best release '{}' for movie '{}' scored {:.2}, below threshold {:.2}", 
-                              best_release.title, movie.title, score, quality_preferences.minimum_score_threshold);
+                tracing::debug!(
+                    "Best release '{}' for movie '{}' scored {:.2}, below threshold {:.2}",
+                    best_release.title,
+                    movie.title,
+                    score,
+                    quality_preferences.minimum_score_threshold
+                );
             }
         }
-        
+
         Ok(None)
     }
-    
+
     /// Grab a specific release manually
     pub async fn grab_release_manual(
         &self,
@@ -70,26 +82,32 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
         release: &Release,
         priority: Option<QueuePriority>,
     ) -> Result<Uuid> {
-        tracing::info!("Manually grabbing release '{}' for movie '{}'", 
-                     release.title, movie.title);
-        
-        let queue_item = self.queue_service.grab_release(
-            movie,
-            release,
-            Some(priority.unwrap_or(QueuePriority::High)),
-            Some("movies".to_string()),
-        ).await?;
-        
+        tracing::info!(
+            "Manually grabbing release '{}' for movie '{}'",
+            release.title,
+            movie.title
+        );
+
+        let queue_item = self
+            .queue_service
+            .grab_release(
+                movie,
+                release,
+                Some(priority.unwrap_or(QueuePriority::High)),
+                Some("movies".to_string()),
+            )
+            .await?;
+
         Ok(queue_item.id)
     }
-    
+
     /// Calculate release score based on quality preferences
     fn calculate_release_score(&self, release: &Release, prefs: &QualityPreferences) -> f32 {
         let mut score = 0.0;
-        
+
         // Parse release name for quality indicators
         let title_lower = release.title.to_lowercase();
-        
+
         // Resolution scoring
         if title_lower.contains("2160p") || title_lower.contains("4k") {
             score += prefs.resolution_scores.uhd_4k;
@@ -100,7 +118,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
         } else {
             score += prefs.resolution_scores.sd;
         }
-        
+
         // Source scoring
         if title_lower.contains("bluray") || title_lower.contains("blu-ray") {
             score += prefs.source_scores.bluray;
@@ -113,18 +131,18 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
         } else if title_lower.contains("dvdrip") {
             score += prefs.source_scores.dvdrip;
         }
-        
+
         // Codec scoring
         if title_lower.contains("x265") || title_lower.contains("hevc") {
             score += prefs.codec_scores.hevc;
         } else if title_lower.contains("x264") || title_lower.contains("avc") {
             score += prefs.codec_scores.avc;
         }
-        
+
         // Size scoring (prefer reasonable sizes)
         if let Some(size_bytes) = release.size_bytes {
             let size_gb = size_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
-            
+
             // Reasonable size ranges by resolution
             let size_score = if title_lower.contains("2160p") || title_lower.contains("4k") {
                 // 4K: prefer 15-50GB
@@ -136,7 +154,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                     0.0
                 }
             } else if title_lower.contains("1080p") {
-                // 1080p: prefer 5-15GB  
+                // 1080p: prefer 5-15GB
                 if (5.0..=15.0).contains(&size_gb) {
                     prefs.size_preference_bonus
                 } else if size_gb < 2.0 {
@@ -154,10 +172,10 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                     0.0
                 }
             };
-            
+
             score += size_score;
         }
-        
+
         // Seeders bonus (for torrents)
         if let Some(seeders) = release.seeders {
             if seeders >= 50 {
@@ -170,7 +188,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 score -= 5.0; // Very few seeders
             }
         }
-        
+
         // Age penalty (prefer newer releases)
         if let Some(age_hours) = release.age_hours {
             let age_days = age_hours as f32 / 24.0;
@@ -178,7 +196,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 score -= (age_days - 30.0) * 0.1; // 0.1 point penalty per day after 30 days
             }
         }
-        
+
         // Scene group bonus/penalty
         for preferred_group in &prefs.preferred_groups {
             if title_lower.contains(&preferred_group.to_lowercase()) {
@@ -186,28 +204,32 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 break;
             }
         }
-        
+
         for ignored_group in &prefs.ignored_groups {
             if title_lower.contains(&ignored_group.to_lowercase()) {
                 score -= prefs.ignored_group_penalty;
                 break;
             }
         }
-        
+
         // Must-have keywords
-        let has_required = prefs.required_keywords.iter()
+        let has_required = prefs
+            .required_keywords
+            .iter()
             .all(|keyword| title_lower.contains(&keyword.to_lowercase()));
         if !has_required {
             score -= 50.0; // Heavy penalty for missing required keywords
         }
-        
+
         // Forbidden keywords
-        let has_forbidden = prefs.forbidden_keywords.iter()
+        let has_forbidden = prefs
+            .forbidden_keywords
+            .iter()
             .any(|keyword| title_lower.contains(&keyword.to_lowercase()));
         if has_forbidden {
             score -= 25.0; // Heavy penalty for forbidden keywords
         }
-        
+
         score.max(0.0) // Don't allow negative scores
     }
 }
@@ -303,10 +325,7 @@ impl Default for QualityPreferences {
                 "FraMeSToR".to_string(),
                 "KRaLiMaRKo".to_string(),
             ],
-            ignored_groups: vec![
-                "YIFY".to_string(),
-                "YTS".to_string(),
-            ],
+            ignored_groups: vec!["YIFY".to_string(), "YTS".to_string()],
             preferred_group_bonus: 15.0,
             ignored_group_penalty: 20.0,
             required_keywords: vec![],
@@ -323,12 +342,12 @@ impl Default for QualityPreferences {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Release, ReleaseProtocol, Movie};
-    
+    use crate::models::{Movie, Release, ReleaseProtocol};
+
     #[test]
     fn test_release_scoring() {
         let prefs = QualityPreferences::default();
-        
+
         // High quality release
         let mut high_quality = Release::new(
             1,
@@ -339,20 +358,20 @@ mod tests {
         );
         high_quality.size_bytes = Some(25 * 1024 * 1024 * 1024); // 25GB
         high_quality.seeders = Some(100);
-        
+
         // Test would need actual implementations - this is a placeholder test
         // In a real test, you would create a mock queue service
         // and test the scoring algorithm
-        
+
         // For now, just test that the quality preferences have sensible defaults
         assert!(prefs.resolution_scores.uhd_4k > prefs.resolution_scores.full_hd);
         assert!(prefs.source_scores.bluray > prefs.source_scores.webrip);
     }
-    
-    #[test]  
+
+    #[test]
     fn test_quality_preferences_default() {
         let prefs = QualityPreferences::default();
-        
+
         assert_eq!(prefs.minimum_score_threshold, 50.0);
         assert!(prefs.resolution_scores.uhd_4k > prefs.resolution_scores.full_hd);
         assert!(prefs.source_scores.bluray > prefs.source_scores.webrip);

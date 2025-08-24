@@ -60,7 +60,7 @@ pub struct HDBitsResponse {
 pub use radarr_indexers::hdbits::HDBitsTorrent;
 
 // Re-export HDBits types from indexers crate
-pub use radarr_indexers::hdbits::{HDBitsImdbInfo as HDBitsImdb};
+pub use radarr_indexers::hdbits::HDBitsImdbInfo as HDBitsImdb;
 
 // Category is not available in indexers crate, define locally
 #[derive(Debug, Deserialize, Clone)]
@@ -152,14 +152,17 @@ impl HDBitsClient {
 
         // Add delay between requests to be respectful
         sleep(Duration::from_millis(2400)).await; // 1500 requests per hour = 2.4s between requests
-        
+
         *requests += 1;
         *last_time = now;
-        
+
         Ok(())
     }
 
-    pub async fn search_torrents(&self, request: HDBitsSearchRequest) -> Result<Vec<HDBitsTorrent>> {
+    pub async fn search_torrents(
+        &self,
+        request: HDBitsSearchRequest,
+    ) -> Result<Vec<HDBitsTorrent>> {
         self.check_rate_limit().await?;
 
         debug!("Searching HDBits with request: {:?}", request);
@@ -195,12 +198,16 @@ impl HDBitsClient {
         Ok(hdbits_response.data.unwrap_or_default())
     }
 
-    pub async fn collect_internal_releases(&self, categories: Vec<u32>, limit_per_category: u32) -> Result<Vec<HDBitsTorrent>> {
+    pub async fn collect_internal_releases(
+        &self,
+        categories: Vec<u32>,
+        limit_per_category: u32,
+    ) -> Result<Vec<HDBitsTorrent>> {
         let mut all_torrents = Vec::new();
 
         for category in categories {
             info!("Collecting internal releases for category: {}", category);
-            
+
             let mut page = 0;
             let mut total_collected = 0;
 
@@ -210,7 +217,7 @@ impl HDBitsClient {
                     passkey: self.config.passkey.clone(),
                     category: Some(vec![category]),
                     origin: Some(vec![1]), // Internal releases only
-                    limit: Some(100), // Max per request
+                    limit: Some(100),      // Max per request
                     page: Some(page),
                     codec: None,
                     medium: None,
@@ -218,23 +225,29 @@ impl HDBitsClient {
                 };
 
                 let torrents = self.search_torrents(request).await?;
-                
+
                 if torrents.is_empty() {
                     break; // No more results
                 }
 
-                let to_take = std::cmp::min(torrents.len(), (limit_per_category - total_collected) as usize);
+                let to_take = std::cmp::min(
+                    torrents.len(),
+                    (limit_per_category - total_collected) as usize,
+                );
                 all_torrents.extend(torrents.into_iter().take(to_take));
                 total_collected += to_take as u32;
 
                 page += 1;
-                
+
                 if total_collected >= limit_per_category {
                     break;
                 }
             }
 
-            info!("Collected {} internal releases for category {}", total_collected, category);
+            info!(
+                "Collected {} internal releases for category {}",
+                total_collected, category
+            );
         }
 
         Ok(all_torrents)
@@ -242,7 +255,7 @@ impl HDBitsClient {
 
     pub async fn collect_comprehensive_data(&self) -> Result<Vec<HDBitsTorrent>> {
         info!("Starting comprehensive HDBits data collection");
-        
+
         // Focus on movie categories for scene group analysis
         let categories = vec![
             1, // Movie
@@ -253,13 +266,15 @@ impl HDBitsClient {
         let mut all_torrents = Vec::new();
 
         // Collect internal releases (higher quality, scene groups)
-        let internal_torrents = self.collect_internal_releases(categories.clone(), 500).await?;
+        let internal_torrents = self
+            .collect_internal_releases(categories.clone(), 500)
+            .await?;
         all_torrents.extend(internal_torrents);
 
         // Collect external releases for baseline comparison
         for category in categories {
             info!("Collecting external releases for category: {}", category);
-            
+
             let request = HDBitsSearchRequest {
                 username: self.config.username.clone(),
                 passkey: self.config.passkey.clone(),
@@ -276,7 +291,10 @@ impl HDBitsClient {
             all_torrents.extend(torrents.into_iter().take(200)); // Limit external for comparison
         }
 
-        info!("Comprehensive data collection complete: {} total torrents", all_torrents.len());
+        info!(
+            "Comprehensive data collection complete: {} total torrents",
+            all_torrents.len()
+        );
         Ok(all_torrents)
     }
 }
@@ -295,7 +313,7 @@ impl SceneGroupAnalyzer {
             output_dir: None,
         }
     }
-    
+
     pub fn with_config(config: HDBitsConfig, output_dir: String) -> Self {
         Self {
             group_metrics: HashMap::new(),
@@ -303,45 +321,49 @@ impl SceneGroupAnalyzer {
             output_dir: Some(output_dir),
         }
     }
-    
+
     pub async fn collect_and_analyze(&mut self) -> Result<AnalysisReport> {
         info!("Starting data collection and analysis");
-        
+
         // Ensure we have a configuration
-        let config = self.config.as_ref()
+        let config = self
+            .config
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("HDBits configuration not set"))?
             .clone();
-        
+
         // Create API client
         let api_client = HDBitsClient::new(config);
-        
+
         // Collect comprehensive data from HDBits
-        let torrents = api_client.collect_comprehensive_data().await
+        let torrents = api_client
+            .collect_comprehensive_data()
+            .await
             .context("Failed to collect data from HDBits")?;
-        
+
         info!("Collected {} torrents from HDBits", torrents.len());
-        
+
         // Analyze the collected torrents
         self.analyze_torrents(torrents)?;
-        
+
         // Generate the analysis report
         let report = self.generate_analysis_report();
-        
+
         // Save report if output directory is specified
         if let Some(output_dir) = &self.output_dir {
             self.save_analysis_report(&report, output_dir).await?;
         }
-        
+
         Ok(report)
     }
 
     pub fn extract_scene_group(torrent_name: &str) -> Option<String> {
         // Common scene group patterns in release names
         let patterns = [
-            r"-([A-Za-z0-9]+)$",              // Standard: Movie.Name.2023.1080p.BluRay.x264-GROUP
-            r"\.([A-Za-z0-9]+)$",             // Dot notation: Movie.Name.2023.1080p.BluRay.x264.GROUP
-            r"\[([A-Za-z0-9]+)\]$",           // Brackets: Movie.Name.2023.1080p.BluRay.x264[GROUP]
-            r"\(([A-Za-z0-9]+)\)$",           // Parentheses: Movie.Name.2023.1080p.BluRay.x264(GROUP)
+            r"-([A-Za-z0-9]+)$",    // Standard: Movie.Name.2023.1080p.BluRay.x264-GROUP
+            r"\.([A-Za-z0-9]+)$",   // Dot notation: Movie.Name.2023.1080p.BluRay.x264.GROUP
+            r"\[([A-Za-z0-9]+)\]$", // Brackets: Movie.Name.2023.1080p.BluRay.x264[GROUP]
+            r"\(([A-Za-z0-9]+)\)$", // Parentheses: Movie.Name.2023.1080p.BluRay.x264(GROUP)
         ];
 
         for pattern in &patterns {
@@ -350,7 +372,12 @@ impl SceneGroupAnalyzer {
                     if let Some(group) = captures.get(1) {
                         let group_name = group.as_str().to_uppercase();
                         // Filter out common false positives
-                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV"].contains(&group_name.as_str()) {
+                        if ![
+                            "X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS",
+                            "BLURAY", "WEB", "HDTV",
+                        ]
+                        .contains(&group_name.as_str())
+                        {
                             return Some(group_name);
                         }
                     }
@@ -362,7 +389,10 @@ impl SceneGroupAnalyzer {
     }
 
     pub fn analyze_torrents(&mut self, torrents: Vec<HDBitsTorrent>) -> Result<()> {
-        info!("Analyzing {} torrents for scene group metrics", torrents.len());
+        info!(
+            "Analyzing {} torrents for scene group metrics",
+            torrents.len()
+        );
 
         for torrent in torrents {
             if let Some(group_name) = Self::extract_scene_group(&torrent.name) {
@@ -384,39 +414,40 @@ impl SceneGroupAnalyzer {
                     medium: get_medium_name(torrent.type_medium),
                 };
 
-                let group_metrics = self.group_metrics.entry(group_name.clone()).or_insert_with(|| {
-                    SceneGroupMetrics {
-                        group_name: group_name.clone(),
-                        total_releases: 0,
-                        internal_releases: 0,
-                        avg_seeders: 0.0,
-                        avg_leechers: 0.0,
-                        avg_size_gb: 0.0,
-                        avg_completion_rate: 0.0,
-                        seeder_leecher_ratio: 0.0,
-                        internal_ratio: 0.0,
-                        quality_consistency: 0.0,
-                        recency_score: 0.0,
-                        reputation_score: 0.0,
-                        comprehensive_reputation_score: 0.0,
-                        evidence_based_tier: "Unrated".to_string(),
-                        quality_tier: "Unrated".to_string(),
-                        categories_covered: Vec::new(),
-                        seeder_health_score: 0.0,
-                        first_seen: release_metric.added_date,
-                        last_seen: release_metric.added_date,
-                        release_history: Vec::new(),
-                    }
-                });
+                let group_metrics =
+                    self.group_metrics
+                        .entry(group_name.clone())
+                        .or_insert_with(|| SceneGroupMetrics {
+                            group_name: group_name.clone(),
+                            total_releases: 0,
+                            internal_releases: 0,
+                            avg_seeders: 0.0,
+                            avg_leechers: 0.0,
+                            avg_size_gb: 0.0,
+                            avg_completion_rate: 0.0,
+                            seeder_leecher_ratio: 0.0,
+                            internal_ratio: 0.0,
+                            quality_consistency: 0.0,
+                            recency_score: 0.0,
+                            reputation_score: 0.0,
+                            comprehensive_reputation_score: 0.0,
+                            evidence_based_tier: "Unrated".to_string(),
+                            quality_tier: "Unrated".to_string(),
+                            categories_covered: Vec::new(),
+                            seeder_health_score: 0.0,
+                            first_seen: release_metric.added_date,
+                            last_seen: release_metric.added_date,
+                            release_history: Vec::new(),
+                        });
 
                 // Update metrics
                 group_metrics.total_releases += 1;
                 if release_metric.is_internal {
                     group_metrics.internal_releases += 1;
                 }
-                
+
                 group_metrics.release_history.push(release_metric.clone());
-                
+
                 if release_metric.added_date < group_metrics.first_seen {
                     group_metrics.first_seen = release_metric.added_date;
                 }
@@ -434,7 +465,10 @@ impl SceneGroupAnalyzer {
             }
         }
 
-        info!("Analysis complete. Found {} unique scene groups", self.group_metrics.len());
+        info!(
+            "Analysis complete. Found {} unique scene groups",
+            self.group_metrics.len()
+        );
         Ok(())
     }
 
@@ -450,7 +484,8 @@ impl SceneGroupAnalyzer {
         metrics.avg_seeders = releases.iter().map(|r| r.seeders as f64).sum::<f64>() / count;
         metrics.avg_leechers = releases.iter().map(|r| r.leechers as f64).sum::<f64>() / count;
         metrics.avg_size_gb = releases.iter().map(|r| r.size_gb).sum::<f64>() / count;
-        metrics.avg_completion_rate = releases.iter().map(|r| r.completion_rate).sum::<f64>() / count;
+        metrics.avg_completion_rate =
+            releases.iter().map(|r| r.completion_rate).sum::<f64>() / count;
 
         // Ratios
         metrics.seeder_leecher_ratio = if metrics.avg_leechers > 0.0 {
@@ -462,9 +497,11 @@ impl SceneGroupAnalyzer {
         metrics.internal_ratio = metrics.internal_releases as f64 / metrics.total_releases as f64;
 
         // Quality consistency (lower variance in size = higher consistency)
-        let size_variance = releases.iter()
+        let size_variance = releases
+            .iter()
             .map(|r| (r.size_gb - metrics.avg_size_gb).powi(2))
-            .sum::<f64>() / count;
+            .sum::<f64>()
+            / count;
         metrics.quality_consistency = 1.0 / (1.0 + size_variance); // Inverse relationship
 
         // Recency score (more recent releases = higher score)
@@ -479,12 +516,12 @@ impl SceneGroupAnalyzer {
     fn calculate_reputation_score_static(metrics: &SceneGroupMetrics) -> f64 {
         // Weighted scoring formula based on real data analysis
         let weights = ReputationWeights {
-            seeder_ratio: 0.25,      // High seeders indicate quality/popularity
-            internal_ratio: 0.20,    // Internal releases are typically higher quality
-            completion_rate: 0.15,   // High completion indicates good releases
-            consistency: 0.15,       // Consistent quality over time
-            recency: 0.10,          // Recent activity indicates active group
-            volume: 0.10,           // Number of releases indicates established group
+            seeder_ratio: 0.25,         // High seeders indicate quality/popularity
+            internal_ratio: 0.20,       // Internal releases are typically higher quality
+            completion_rate: 0.15,      // High completion indicates good releases
+            consistency: 0.15,          // Consistent quality over time
+            recency: 0.10,              // Recent activity indicates active group
+            volume: 0.10,               // Number of releases indicates established group
             size_appropriateness: 0.05, // Reasonable file sizes for quality
         };
 
@@ -496,14 +533,13 @@ impl SceneGroupAnalyzer {
         let volume_score = (metrics.total_releases as f64 / 100.0).min(1.0); // Normalize
         let size_score = Self::calculate_size_appropriateness_score_static(metrics);
 
-        let weighted_score = 
-            weights.seeder_ratio * seeder_score +
-            weights.internal_ratio * internal_score +
-            weights.completion_rate * completion_score +
-            weights.consistency * consistency_score +
-            weights.recency * recency_score +
-            weights.volume * volume_score +
-            weights.size_appropriateness * size_score;
+        let weighted_score = weights.seeder_ratio * seeder_score
+            + weights.internal_ratio * internal_score
+            + weights.completion_rate * completion_score
+            + weights.consistency * consistency_score
+            + weights.recency * recency_score
+            + weights.volume * volume_score
+            + weights.size_appropriateness * size_score;
 
         // Scale to 0-100 for easier interpretation
         weighted_score * 100.0
@@ -513,15 +549,15 @@ impl SceneGroupAnalyzer {
         // Reasonable size ranges for different quality levels
         // This is based on general quality standards
         let avg_size = metrics.avg_size_gb;
-        
+
         match avg_size {
-            size if size >= 15.0 && size <= 50.0 => 1.0,  // Full quality range
-            size if size >= 8.0 && size < 15.0 => 0.8,    // Good compressed
-            size if size >= 4.0 && size < 8.0 => 0.6,     // Acceptable
-            size if size >= 2.0 && size < 4.0 => 0.4,     // Low quality
-            size if size < 2.0 => 0.2,                     // Very low quality
-            size if size > 50.0 => 0.7,                    // Possibly uncompressed/remux
-            _ => 0.5,                                       // Default
+            size if size >= 15.0 && size <= 50.0 => 1.0, // Full quality range
+            size if size >= 8.0 && size < 15.0 => 0.8,   // Good compressed
+            size if size >= 4.0 && size < 8.0 => 0.6,    // Acceptable
+            size if size >= 2.0 && size < 4.0 => 0.4,    // Low quality
+            size if size < 2.0 => 0.2,                   // Very low quality
+            size if size > 50.0 => 0.7,                  // Possibly uncompressed/remux
+            _ => 0.5,                                    // Default
         }
     }
 
@@ -539,19 +575,20 @@ impl SceneGroupAnalyzer {
         serde_json::to_string_pretty(&self.group_metrics)
             .context("Failed to serialize scene group analysis")
     }
-    
+
     pub fn generate_analysis_report(&self) -> AnalysisReport {
         let mut report = AnalysisReport::default();
-        
-        report.total_torrents_analyzed = self.group_metrics.values()
-            .map(|g| g.total_releases)
-            .sum();
+
+        report.total_torrents_analyzed =
+            self.group_metrics.values().map(|g| g.total_releases).sum();
         report.unique_scene_groups = self.group_metrics.len() as u32;
-        report.internal_releases = self.group_metrics.values()
+        report.internal_releases = self
+            .group_metrics
+            .values()
             .map(|g| g.internal_releases)
             .sum();
         report.external_releases = report.total_torrents_analyzed - report.internal_releases;
-        
+
         // Quality distribution
         for group in self.group_metrics.values() {
             match group.reputation_score {
@@ -562,11 +599,12 @@ impl SceneGroupAnalyzer {
                 _ => report.quality_distribution.poor_groups += 1,
             }
         }
-        
+
         // Top groups
         let mut top_groups: Vec<_> = self.group_metrics.values().collect();
         top_groups.sort_by(|a, b| b.reputation_score.partial_cmp(&a.reputation_score).unwrap());
-        report.top_groups_by_reputation = top_groups.iter()
+        report.top_groups_by_reputation = top_groups
+            .iter()
             .take(10)
             .map(|g| SceneGroupSummary {
                 group_name: g.group_name.clone(),
@@ -575,24 +613,24 @@ impl SceneGroupAnalyzer {
                 total_releases: g.total_releases,
             })
             .collect();
-        
+
         // Statistical summary
         if !self.group_metrics.is_empty() {
-            let reputation_scores: Vec<f64> = self.group_metrics.values()
+            let reputation_scores: Vec<f64> = self
+                .group_metrics
+                .values()
                 .map(|g| g.reputation_score)
                 .collect();
-            let seeder_counts: Vec<f64> = self.group_metrics.values()
-                .map(|g| g.avg_seeders)
-                .collect();
-            let file_sizes: Vec<f64> = self.group_metrics.values()
-                .map(|g| g.avg_size_gb)
-                .collect();
-            
-            report.statistical_summary.reputation_scores = Self::calculate_statistics(&reputation_scores);
+            let seeder_counts: Vec<f64> =
+                self.group_metrics.values().map(|g| g.avg_seeders).collect();
+            let file_sizes: Vec<f64> = self.group_metrics.values().map(|g| g.avg_size_gb).collect();
+
+            report.statistical_summary.reputation_scores =
+                Self::calculate_statistics(&reputation_scores);
             report.statistical_summary.seeder_counts = Self::calculate_statistics(&seeder_counts);
             report.statistical_summary.file_sizes_gb = Self::calculate_statistics(&file_sizes);
         }
-        
+
         // Temporal analysis
         let now = Utc::now();
         for group in self.group_metrics.values() {
@@ -604,53 +642,64 @@ impl SceneGroupAnalyzer {
                 report.temporal_analysis.active_groups_last_90_days += 1;
             }
             let days_since_first = now.signed_duration_since(group.first_seen).num_days();
-            if days_since_first >= 730 { // 2 years
+            if days_since_first >= 730 {
+                // 2 years
                 report.temporal_analysis.established_groups_over_2_years += 1;
             }
-            if days_since_last > 180 { // 6 months
+            if days_since_last > 180 {
+                // 6 months
                 report.temporal_analysis.dormant_groups += 1;
             }
         }
-        
+
         report
     }
-    
+
     fn calculate_statistics(values: &[f64]) -> StatisticalMetrics {
         if values.is_empty() {
             return StatisticalMetrics::default();
         }
-        
+
         let mut sorted_values: Vec<f64> = values.to_vec();
         sorted_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
+
         let min = sorted_values[0];
         let max = sorted_values[sorted_values.len() - 1];
         let mean = sorted_values.iter().sum::<f64>() / sorted_values.len() as f64;
         let p95_index = ((sorted_values.len() as f64 * 0.95) as usize).min(sorted_values.len() - 1);
         let p95 = sorted_values[p95_index];
-        
-        StatisticalMetrics { min, max, mean, p95 }
+
+        StatisticalMetrics {
+            min,
+            max,
+            mean,
+            p95,
+        }
     }
-    
-    pub async fn save_analysis_report(&self, report: &AnalysisReport, output_dir: &str) -> Result<()> {
+
+    pub async fn save_analysis_report(
+        &self,
+        report: &AnalysisReport,
+        output_dir: &str,
+    ) -> Result<()> {
         use std::fs;
         use std::path::Path;
-        
+
         // Create output directory if it doesn't exist
         fs::create_dir_all(output_dir)?;
-        
+
         // Save JSON report
         let json_path = Path::new(output_dir).join("analysis_report.json");
         let json_content = serde_json::to_string_pretty(report)?;
         fs::write(&json_path, json_content)?;
         info!("Saved analysis report to: {:?}", json_path);
-        
+
         // Save scene groups data
         let groups_path = Path::new(output_dir).join("scene_groups.json");
         let groups_content = self.export_analysis()?;
         fs::write(&groups_path, groups_content)?;
         info!("Saved scene groups data to: {:?}", groups_path);
-        
+
         Ok(())
     }
 }
@@ -724,20 +773,38 @@ mod tests {
 
     #[test]
     fn test_scene_group_extraction() {
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264-SPARKS"), Some("SPARKS".to_string()));
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264.ROVERS"), Some("ROVERS".to_string()));
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264[CMRG]"), Some("CMRG".to_string()));
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264(FGT)"), Some("FGT".to_string()));
-        
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264-SPARKS"),
+            Some("SPARKS".to_string())
+        );
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264.ROVERS"),
+            Some("ROVERS".to_string())
+        );
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264[CMRG]"),
+            Some("CMRG".to_string())
+        );
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.x264(FGT)"),
+            Some("FGT".to_string())
+        );
+
         // Should not match codec/format strings
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay-x264"), None);
-        assert_eq!(SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.HEVC"), None);
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay-x264"),
+            None
+        );
+        assert_eq!(
+            SceneGroupAnalyzer::extract_scene_group("Movie.Name.2023.1080p.BluRay.HEVC"),
+            None
+        );
     }
 
     #[test]
     fn test_reputation_score_calculation() {
         let mut analyzer = SceneGroupAnalyzer::new();
-        
+
         // Create some sample release history
         let mut release_history = Vec::new();
         for i in 0..10 {
@@ -780,7 +847,7 @@ mod tests {
         };
 
         SceneGroupAnalyzer::calculate_group_metrics_static(&mut metrics);
-        
+
         assert!(metrics.reputation_score > 50.0); // Should be a good score
         assert!(metrics.reputation_score <= 100.0); // Should not exceed max
     }

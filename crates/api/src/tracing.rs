@@ -1,11 +1,5 @@
 use anyhow::Result;
-use axum::{
-    body::Body,
-    extract::Request,
-    http::HeaderMap,
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::Request, http::HeaderMap, middleware::Next, response::Response};
 use tracing::{field, Instrument, Span};
 use uuid::Uuid;
 
@@ -20,12 +14,12 @@ impl DistributedTracing {
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string())
     }
-    
+
     /// Generate a new correlation ID
     pub fn generate_correlation_id() -> String {
         Uuid::new_v4().to_string()
     }
-    
+
     /// Create a span for business operations
     pub fn business_span(operation: &str, entity_type: &str, entity_id: Option<&str>) -> Span {
         tracing::info_span!(
@@ -37,7 +31,7 @@ impl DistributedTracing {
             success = field::Empty,
         )
     }
-    
+
     /// Create a span for database operations
     pub fn database_span(operation: &str, table: &str) -> Span {
         tracing::info_span!(
@@ -48,7 +42,7 @@ impl DistributedTracing {
             success = field::Empty,
         )
     }
-    
+
     /// Create a span for external service calls
     pub fn external_span(service: &str, operation: &str) -> Span {
         tracing::info_span!(
@@ -67,15 +61,15 @@ pub async fn simple_tracing_middleware(
     next: Next,
 ) -> Result<Response, Response> {
     let headers = req.headers();
-    
+
     // Get or generate correlation ID
     let correlation_id = DistributedTracing::extract_correlation_id(headers)
         .unwrap_or_else(|| DistributedTracing::generate_correlation_id());
-    
+
     req.extensions_mut().insert(correlation_id.clone());
-    
+
     let start = std::time::Instant::now();
-    
+
     // Create span for the request
     let span = tracing::info_span!(
         "http_request",
@@ -85,14 +79,14 @@ pub async fn simple_tracing_middleware(
         status_code = field::Empty,
         duration_ms = field::Empty,
     );
-    
+
     let _enter = span.enter();
     let result = next.run(req).await;
     let duration = start.elapsed();
-    
+
     span.record("status_code", result.status().as_u16());
     span.record("duration_ms", duration.as_millis() as u64);
-    
+
     Ok(result)
 }
 
@@ -108,13 +102,13 @@ where
 {
     let span = DistributedTracing::business_span(operation, entity_type, entity_id);
     let _enter = span.enter();
-    
+
     let start = std::time::Instant::now();
     let result = operation_fn.await;
     let duration = start.elapsed();
-    
+
     span.record("duration_ms", duration.as_millis() as u64);
-    
+
     match &result {
         Ok(_) => {
             span.record("success", true);
@@ -125,7 +119,7 @@ where
             tracing::error!("Business operation failed: {}", e);
         }
     }
-    
+
     result
 }
 
@@ -137,7 +131,7 @@ impl CorrelationId {
     pub fn new() -> String {
         Uuid::new_v4().to_string()
     }
-    
+
     /// Extract correlation ID from headers
     pub fn from_headers(headers: &HeaderMap) -> Option<String> {
         headers

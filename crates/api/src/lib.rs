@@ -4,27 +4,27 @@
 //! implementing the Radarr v3 API specification with proper error handling,
 //! pagination, and integration with the domain services.
 
-pub mod routes;
-pub mod handlers;
-pub mod models;
-pub mod extractors;
-pub mod middleware;
 pub mod error;
+pub mod extractors;
+pub mod handlers;
+pub mod metrics;
+pub mod middleware;
+pub mod models;
+pub mod routes;
+pub mod security;
 pub mod simple_api;
 pub mod telemetry;
-pub mod metrics;
 pub mod tracing;
-pub mod security;
 pub mod validation;
 
 // Re-export main types
 pub use error::{ApiError, ApiResult};
+pub use metrics::MetricsCollector;
 pub use models::*;
-pub use simple_api::{SimpleApiState, create_simple_api_router};
-pub use telemetry::{TelemetryConfig, ServiceInfo, init_telemetry, shutdown_telemetry};
-pub use metrics::{MetricsCollector};
-pub use tracing::{DistributedTracing, simple_tracing_middleware, instrument_business_operation};
-pub use security::{SecurityConfig, apply_security, configure_cors, security_headers};
+pub use security::{apply_security, configure_cors, security_headers, SecurityConfig};
+pub use simple_api::{create_simple_api_router, SimpleApiState};
+pub use telemetry::{init_telemetry, shutdown_telemetry, ServiceInfo, TelemetryConfig};
+pub use tracing::{instrument_business_operation, simple_tracing_middleware, DistributedTracing};
 pub use validation::{validate_json, ValidationErrorResponse};
 
 // use axum::Router;
@@ -44,7 +44,7 @@ pub use validation::{validate_json, ValidationErrorResponse};
 //     /// API rate limit (requests per minute)
 //     pub rate_limit: Option<u32>,
 // }
-// 
+//
 // /// Complete API dependencies for creating the router
 // pub struct ApiDependencies {
 //     pub database_pool: DatabasePool,
@@ -58,7 +58,7 @@ pub use validation::{validate_json, ValidationErrorResponse};
 // pub fn create_api_router(config: ApiConfig) -> Router {
 //     create_router(config)
 // }
-// 
+//
 // /// Create API router with all dependencies properly injected
 // pub fn create_api_router_with_deps(deps: ApiDependencies) -> Router {
 //     routes::create_router_with_state(deps)

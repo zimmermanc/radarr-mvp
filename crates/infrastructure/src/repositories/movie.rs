@@ -5,11 +5,11 @@ use crate::database::DatabasePool;
 use async_trait::async_trait;
 use radarr_core::{
     domain::repositories::MovieRepository,
-    models::{Movie, MovieStatus, MinimumAvailability},
+    models::{MinimumAvailability, Movie, MovieStatus},
     Result,
 };
-use uuid::Uuid;
 use sqlx::Row;
+use uuid::Uuid;
 
 /// Standard movie columns for SELECT queries
 const MOVIE_COLUMNS: &str = "id, tmdb_id, imdb_id, title, original_title, year, runtime,
@@ -41,7 +41,9 @@ impl PostgresMovieRepository {
             status: parse_movie_status(&row.try_get::<String, _>("status")?)?,
             monitored: row.try_get("monitored")?,
             quality_profile_id: row.try_get("quality_profile_id")?,
-            minimum_availability: parse_minimum_availability(&row.try_get::<String, _>("minimum_availability")?)?,
+            minimum_availability: parse_minimum_availability(
+                &row.try_get::<String, _>("minimum_availability")?,
+            )?,
             has_file: row.try_get("has_file")?,
             movie_file_id: row.try_get("movie_file_id")?,
             metadata: row.try_get("metadata")?,
@@ -147,11 +149,16 @@ impl PostgresMovieRepository {
     }
 
     /// Find movies by metadata field using JSONB operators
-    pub async fn find_by_metadata_field(&self, field_path: &str, value: &serde_json::Value) -> Result<Vec<Movie>> {
+    pub async fn find_by_metadata_field(
+        &self,
+        field_path: &str,
+        value: &serde_json::Value,
+    ) -> Result<Vec<Movie>> {
         let rows = sqlx::query(&format!(
             "SELECT {} FROM movies 
              WHERE metadata #> $1 = $2
-             ORDER BY title ASC", MOVIE_COLUMNS
+             ORDER BY title ASC",
+            MOVIE_COLUMNS
         ))
         .bind(&field_path.split('.').collect::<Vec<_>>())
         .bind(value)
@@ -169,7 +176,10 @@ impl PostgresMovieRepository {
 #[async_trait]
 impl MovieRepository for PostgresMovieRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Movie>> {
-        let row = sqlx::query(&format!("SELECT {} FROM movies WHERE id = $1", MOVIE_COLUMNS))
+        let row = sqlx::query(&format!(
+            "SELECT {} FROM movies WHERE id = $1",
+            MOVIE_COLUMNS
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -181,7 +191,10 @@ impl MovieRepository for PostgresMovieRepository {
     }
 
     async fn find_by_tmdb_id(&self, tmdb_id: i32) -> Result<Option<Movie>> {
-        let row = sqlx::query(&format!("SELECT {} FROM movies WHERE tmdb_id = $1", MOVIE_COLUMNS))
+        let row = sqlx::query(&format!(
+            "SELECT {} FROM movies WHERE tmdb_id = $1",
+            MOVIE_COLUMNS
+        ))
         .bind(tmdb_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -193,7 +206,10 @@ impl MovieRepository for PostgresMovieRepository {
     }
 
     async fn find_by_imdb_id(&self, imdb_id: &str) -> Result<Option<Movie>> {
-        let row = sqlx::query(&format!("SELECT {} FROM movies WHERE imdb_id = $1", MOVIE_COLUMNS))
+        let row = sqlx::query(&format!(
+            "SELECT {} FROM movies WHERE imdb_id = $1",
+            MOVIE_COLUMNS
+        ))
         .bind(imdb_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -205,7 +221,10 @@ impl MovieRepository for PostgresMovieRepository {
     }
 
     async fn find_monitored(&self) -> Result<Vec<Movie>> {
-        let rows = sqlx::query(&format!("SELECT {} FROM movies WHERE monitored = true ORDER BY title ASC", MOVIE_COLUMNS))
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM movies WHERE monitored = true ORDER BY title ASC",
+            MOVIE_COLUMNS
+        ))
         .fetch_all(&self.pool)
         .await?;
 
@@ -217,7 +236,10 @@ impl MovieRepository for PostgresMovieRepository {
     }
 
     async fn find_missing_files(&self) -> Result<Vec<Movie>> {
-        let rows = sqlx::query(&format!("SELECT {} FROM movies WHERE has_file = false AND monitored = true ORDER BY title ASC", MOVIE_COLUMNS))
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM movies WHERE has_file = false AND monitored = true ORDER BY title ASC",
+            MOVIE_COLUMNS
+        ))
         .fetch_all(&self.pool)
         .await?;
 
@@ -305,7 +327,7 @@ impl MovieRepository for PostgresMovieRepository {
              has_file = $12, movie_file_id = $13, metadata = $14,
              alternative_titles = $15, updated_at = $16,
              last_search_time = $17, last_info_sync = $18
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(movie.id)
         .bind(movie.tmdb_id)
@@ -343,7 +365,8 @@ impl MovieRepository for PostgresMovieRepository {
         let rows = sqlx::query(&format!(
             "SELECT {} FROM movies 
              ORDER BY title ASC
-             LIMIT $1 OFFSET $2", MOVIE_COLUMNS
+             LIMIT $1 OFFSET $2",
+            MOVIE_COLUMNS
         ))
         .bind(limit)
         .bind(offset)

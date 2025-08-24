@@ -1,11 +1,11 @@
 //! hdbits_comprehensive_analyzer module
 
+use crate::{ReleaseMetric, SceneGroupMetrics};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, warn};
-use crate::{SceneGroupMetrics, ReleaseMetric};
 
 // Internal torrent representation for analysis
 #[derive(Debug, Clone)]
@@ -28,7 +28,7 @@ impl AnalysisTorrent {
     pub fn is_internal(&self) -> bool {
         self.internal || self.type_origin == 1
     }
-    
+
     pub fn parsed_date(&self) -> Option<DateTime<Utc>> {
         chrono::DateTime::parse_from_rfc3339(&self.added)
             .map(|dt| dt.with_timezone(&Utc))
@@ -73,114 +73,125 @@ pub struct HDBitsComprehensiveAnalyzer {
 
 impl HDBitsComprehensiveAnalyzer {
     pub fn new(config: HDBitsComprehensiveConfig) -> Result<Self> {
-        Ok(Self { 
+        Ok(Self {
             config,
             scene_groups: HashMap::new(),
             releases: Vec::new(),
         })
     }
-    
+
     pub async fn verify_session(&self) -> Result<()> {
         info!("Verifying HDBits session");
-        
+
         // Create HTTP client with session cookie
         let client = reqwest::Client::builder()
             .cookie_store(true)
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
-        
+
         // Test the session by accessing the browse page
         let response = client
             .get(&format!("{}/browse.php", self.config.base_url))
             .header("Cookie", &self.config.session_cookie)
             .send()
             .await?;
-        
+
         // Check if we're redirected to login (session invalid)
         if response.url().path().contains("login") {
-            return Err(anyhow::anyhow!("Session expired or invalid - please update session cookie"));
+            return Err(anyhow::anyhow!(
+                "Session expired or invalid - please update session cookie"
+            ));
         }
-        
+
         // Check for successful response
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Session verification failed with status: {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Session verification failed with status: {}",
+                response.status()
+            ));
         }
-        
+
         info!("Session verified successfully");
         Ok(())
     }
-    
+
     pub async fn collect_comprehensive_data(&self) -> Result<Vec<AnalysisTorrent>> {
         info!("Starting comprehensive data collection");
-        
+
         let client = reqwest::Client::builder()
             .cookie_store(true)
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
-        
+
         let mut all_torrents = Vec::new();
-        
+
         // Use advanced filters for high-quality content
         // Categories: c1=1 (Movies), c3=1 (Documentaries)
         // Codecs: co1=1 (H.264), co5=1 (x264), co2=1 (Xvid), co3=1 (MPEG2)
         // Media: m1=1 (Blu-ray), m4=1 (HDTV), m3=1 (WEB-DL), m5=1 (Encode), m6=1 (Capture)
         // Language: English only
         let base_filters = "c1=1&co1=1&co5=1&co2=1&co3=1&m1=1&m4=1&m3=1&m5=1&m6=1&descriptions=0&season_packs=0&selected_languages%5B%5D=English&languagesearchtype=showonly";
-        
+
         info!("Collecting data with advanced quality filters");
         let mut page = 0;
-        
+
         while page < self.config.max_pages_per_category {
             // Build browse URL with advanced filters
             let url = format!(
                 "{}/browse.php?{}&page={}",
                 self.config.base_url, base_filters, page
             );
-                
-                // Add delay between requests to respect rate limits
-                if page > 0 {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(self.config.request_delay_seconds)).await;
-                }
-                
-                let response = client
-                    .get(&url)
-                    .header("Cookie", &self.config.session_cookie)
-                    .send()
-                    .await?;
-                
-                if !response.status().is_success() {
-                    warn!("Failed to fetch page {}", page);
-                    break;
-                }
-                
-                let html = response.text().await?;
-                
-                // Parse torrents from HTML (simplified extraction)
-                let torrents = self.parse_torrents_from_html(&html)?;
-                
-                if torrents.is_empty() {
-                    info!("No more torrents found at page {}", page);
-                    break;
-                }
-                
-                all_torrents.extend(torrents);
-                page += 1;
-                
-                info!("Collected {} torrents so far", all_torrents.len());
+
+            // Add delay between requests to respect rate limits
+            if page > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    self.config.request_delay_seconds,
+                ))
+                .await;
             }
-        
-        info!("Comprehensive data collection complete: {} torrents", all_torrents.len());
+
+            let response = client
+                .get(&url)
+                .header("Cookie", &self.config.session_cookie)
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                warn!("Failed to fetch page {}", page);
+                break;
+            }
+
+            let html = response.text().await?;
+
+            // Parse torrents from HTML (simplified extraction)
+            let torrents = self.parse_torrents_from_html(&html)?;
+
+            if torrents.is_empty() {
+                info!("No more torrents found at page {}", page);
+                break;
+            }
+
+            all_torrents.extend(torrents);
+            page += 1;
+
+            info!("Collected {} torrents so far", all_torrents.len());
+        }
+
+        info!(
+            "Comprehensive data collection complete: {} torrents",
+            all_torrents.len()
+        );
         Ok(all_torrents)
     }
-    
+
     fn parse_torrents_from_html(&self, html: &str) -> Result<Vec<AnalysisTorrent>> {
         // Simplified HTML parsing - in production would use scraper crate
         let mut torrents = Vec::new();
-        
+
         // Parse complete table rows for torrent data
         let mut in_row = false;
         let mut current_row = String::new();
-        
+
         for line in html.lines() {
             // Check for start of torrent row
             if line.contains("<tr class=\"t_row\">") {
@@ -188,11 +199,11 @@ impl HDBitsComprehensiveAnalyzer {
                 current_row = line.to_string();
             } else if in_row {
                 current_row.push_str(line);
-                
+
                 // Check for end of row
                 if line.contains("</tr>") {
                     in_row = false;
-                    
+
                     // Parse the complete row
                     if let Some(torrent) = self.parse_torrent_row(&current_row) {
                         torrents.push(torrent);
@@ -206,65 +217,65 @@ impl HDBitsComprehensiveAnalyzer {
                 }
             }
         }
-        
+
         Ok(torrents)
     }
-    
+
     fn parse_torrent_row(&self, row: &str) -> Option<AnalysisTorrent> {
         // Parse complete table row data
         if !row.contains("class=\"t_row\"") {
             return self.extract_torrent_from_line(row); // Fallback for old format
         }
-        
+
         // Extract all cells from the row
         let cells: Vec<&str> = row.split("<td").collect();
         if cells.len() < 9 {
             return None;
         }
-        
+
         // Parse title cell (index 2)
         let title_cell = cells.get(2)?;
         let (id, name, is_exclusive) = self.parse_title_cell(title_cell)?;
-        
+
         // Parse size cell (index 4)
         let size_bytes = if let Some(size_cell) = cells.get(4) {
             self.parse_size(size_cell)
         } else {
             0
         };
-        
+
         // Parse snatched cell (index 5)
         let snatched = if let Some(snatched_cell) = cells.get(5) {
             self.parse_number(snatched_cell)
         } else {
             0
         };
-        
+
         // Parse seeders cell (index 6)
         let seeders = if let Some(seeders_cell) = cells.get(6) {
             self.parse_number(seeders_cell)
         } else {
             0
         };
-        
+
         // Parse leechers cell (index 7)
         let leechers = if let Some(leechers_cell) = cells.get(7) {
             self.parse_number(leechers_cell)
         } else {
             0
         };
-        
+
         // Parse time alive cell (index 8)
         let added = if let Some(time_cell) = cells.get(8) {
             self.parse_time_alive(time_cell)
         } else {
             Utc::now().to_rfc3339()
         };
-        
+
         // Create a simple torrent representation for analysis
         let codec_id = Self::detect_codec_id(&name);
         let medium_id = Self::detect_medium_id(&name);
-        
+
         Some(AnalysisTorrent {
             id: id.clone(),
             name,
@@ -280,15 +291,16 @@ impl HDBitsComprehensiveAnalyzer {
             internal: is_exclusive,
         })
     }
-    
+
     fn parse_title_cell(&self, cell: &str) -> Option<(String, String, bool)> {
         // Extract ID from details.php?id=XXXXX
-        let id = cell.split("details.php?id=")
+        let id = cell
+            .split("details.php?id=")
             .nth(1)?
             .split('&')
             .next()?
             .to_string();
-        
+
         // Extract name from link text (between > and </a>)
         let name = if let Some(start) = cell.find(">") {
             let text_start = &cell[start + 1..];
@@ -300,14 +312,13 @@ impl HDBitsComprehensiveAnalyzer {
         } else {
             format!("Torrent_{}", id)
         };
-        
+
         // Check for exclusive/internal tag
-        let is_exclusive = cell.contains("class=\"tag exclusive\"") || 
-                          cell.contains(">Exclusive<");
-        
+        let is_exclusive = cell.contains("class=\"tag exclusive\"") || cell.contains(">Exclusive<");
+
         Some((id, name, is_exclusive))
     }
-    
+
     fn parse_size(&self, cell: &str) -> u64 {
         // Extract size like "4.42 GB" and convert to bytes
         if let Some(start) = cell.find(">") {
@@ -319,13 +330,13 @@ impl HDBitsComprehensiveAnalyzer {
         }
         0
     }
-    
+
     fn parse_size_string(&self, size_str: &str) -> u64 {
         let parts: Vec<&str> = size_str.trim().split_whitespace().collect();
         if parts.len() != 2 {
             return 0;
         }
-        
+
         let value: f64 = parts[0].parse().unwrap_or(0.0);
         let multiplier = match parts[1].to_uppercase().as_str() {
             "TB" => 1_099_511_627_776.0,
@@ -334,10 +345,10 @@ impl HDBitsComprehensiveAnalyzer {
             "KB" => 1_024.0,
             _ => 1.0,
         };
-        
+
         (value * multiplier) as u64
     }
-    
+
     fn parse_number(&self, cell: &str) -> u32 {
         // Extract number from cell content
         if let Some(start) = cell.find(">") {
@@ -349,25 +360,25 @@ impl HDBitsComprehensiveAnalyzer {
         }
         0
     }
-    
+
     fn parse_time_alive(&self, _cell: &str) -> String {
         // Parse time like "3 years<br />1 month" and convert to timestamp
         // For now, just return current time minus approximation
         // In production, parse properly
         Utc::now().to_rfc3339()
     }
-    
-    
+
     fn extract_torrent_from_line(&self, line: &str) -> Option<AnalysisTorrent> {
         // Simplified extraction - would need proper HTML parsing in production
-        
+
         // Extract ID from details.php?id=XXXXX pattern
-        let id = line.split("details.php?id=")
+        let id = line
+            .split("details.php?id=")
             .nth(1)?
             .split('&')
             .next()?
             .to_string();
-        
+
         // Extract torrent name from link text (NOT from title attribute which is the FL tooltip)
         // The actual torrent name is between > and </a>
         let name = if let Some(link_start) = line.find("details.php?id=") {
@@ -386,12 +397,12 @@ impl HDBitsComprehensiveAnalyzer {
         } else {
             format!("Torrent_{}", id)
         };
-        
+
         // Check if this is an exclusive/internal release
-        let is_exclusive = line.contains("class=\"tag exclusive\"") || 
-                          line.contains("class=\" exclusive") ||
-                          line.contains(">Exclusive<");
-        
+        let is_exclusive = line.contains("class=\"tag exclusive\"")
+            || line.contains("class=\" exclusive")
+            || line.contains(">Exclusive<");
+
         // Create a basic torrent entry
         Some(AnalysisTorrent {
             id: id.clone(),
@@ -408,10 +419,10 @@ impl HDBitsComprehensiveAnalyzer {
             internal: is_exclusive,
         })
     }
-    
+
     pub fn analyze_scene_groups(&mut self, releases: Vec<AnalysisTorrent>) -> Result<()> {
         info!("Analyzing {} releases for scene groups", releases.len());
-        
+
         // Log a sample of release names for debugging
         if !releases.is_empty() {
             info!("Sample release names:");
@@ -419,7 +430,7 @@ impl HDBitsComprehensiveAnalyzer {
                 info!("  {}: {}", i + 1, torrent.name);
             }
         }
-        
+
         // Extract scene groups from release names
         for torrent in releases {
             // Try to extract scene group from name, or check if it's exclusive
@@ -431,7 +442,7 @@ impl HDBitsComprehensiveAnalyzer {
             } else {
                 None
             };
-            
+
             if let Some(group_name) = group_name {
                 let release_metric = ReleaseMetric {
                     torrent_id: torrent.id.to_string(),
@@ -450,42 +461,43 @@ impl HDBitsComprehensiveAnalyzer {
                     codec: Self::get_codec_name(torrent.type_codec),
                     medium: Self::get_medium_name(torrent.type_medium),
                 };
-                
+
                 // Add to releases list
                 self.releases.push(release_metric.clone());
-                
+
                 // Update or create scene group metrics
-                let group_metrics = self.scene_groups.entry(group_name.clone()).or_insert_with(|| {
-                    SceneGroupMetrics {
-                        group_name: group_name.clone(),
-                        total_releases: 0,
-                        internal_releases: 0,
-                        avg_seeders: 0.0,
-                        avg_leechers: 0.0,
-                        avg_size_gb: 0.0,
-                        avg_completion_rate: 0.0,
-                        seeder_leecher_ratio: 0.0,
-                        internal_ratio: 0.0,
-                        quality_consistency: 0.0,
-                        recency_score: 0.0,
-                        reputation_score: 0.0,
-                        comprehensive_reputation_score: 0.0,
-                        evidence_based_tier: "Unrated".to_string(),
-                        quality_tier: "Unrated".to_string(),
-                        categories_covered: Vec::new(),
-                        seeder_health_score: 0.0,
-                        first_seen: release_metric.added_date,
-                        last_seen: release_metric.added_date,
-                        release_history: Vec::new(),
-                    }
-                });
-                
+                let group_metrics =
+                    self.scene_groups
+                        .entry(group_name.clone())
+                        .or_insert_with(|| SceneGroupMetrics {
+                            group_name: group_name.clone(),
+                            total_releases: 0,
+                            internal_releases: 0,
+                            avg_seeders: 0.0,
+                            avg_leechers: 0.0,
+                            avg_size_gb: 0.0,
+                            avg_completion_rate: 0.0,
+                            seeder_leecher_ratio: 0.0,
+                            internal_ratio: 0.0,
+                            quality_consistency: 0.0,
+                            recency_score: 0.0,
+                            reputation_score: 0.0,
+                            comprehensive_reputation_score: 0.0,
+                            evidence_based_tier: "Unrated".to_string(),
+                            quality_tier: "Unrated".to_string(),
+                            categories_covered: Vec::new(),
+                            seeder_health_score: 0.0,
+                            first_seen: release_metric.added_date,
+                            last_seen: release_metric.added_date,
+                            release_history: Vec::new(),
+                        });
+
                 // Update group metrics
                 group_metrics.total_releases += 1;
                 if release_metric.is_internal {
                     group_metrics.internal_releases += 1;
                 }
-                
+
                 // Update date ranges
                 if release_metric.added_date < group_metrics.first_seen {
                     group_metrics.first_seen = release_metric.added_date;
@@ -493,33 +505,36 @@ impl HDBitsComprehensiveAnalyzer {
                 if release_metric.added_date > group_metrics.last_seen {
                     group_metrics.last_seen = release_metric.added_date;
                 }
-                
+
                 // Add category if not already present
                 let category_name = Self::get_category_name(torrent.type_category);
                 if !group_metrics.categories_covered.contains(&category_name) {
                     group_metrics.categories_covered.push(category_name);
                 }
-                
+
                 group_metrics.release_history.push(release_metric);
             }
         }
-        
+
         // Calculate derived metrics for each group
         for group_metrics in self.scene_groups.values_mut() {
             Self::calculate_group_metrics(group_metrics);
         }
-        
-        info!("Scene group analysis complete. Found {} unique groups", self.scene_groups.len());
+
+        info!(
+            "Scene group analysis complete. Found {} unique groups",
+            self.scene_groups.len()
+        );
         Ok(())
     }
-    
+
     fn extract_scene_group(torrent_name: &str) -> Option<String> {
         // Common scene group patterns in release names
         let patterns = [
-            r"-([A-Za-z0-9]+)$",              // Standard: Movie.Name.2023.1080p.BluRay.x264-GROUP
-            r"\.([A-Za-z0-9]+)$",             // Dot notation: Movie.Name.2023.1080p.BluRay.x264.GROUP
-            r"\[([A-Za-z0-9]+)\]$",           // Brackets: Movie.Name.2023.1080p.BluRay.x264[GROUP]
-            r"\(([A-Za-z0-9]+)\)$",           // Parentheses: Movie.Name.2023.1080p.BluRay.x264(GROUP)
+            r"-([A-Za-z0-9]+)$",    // Standard: Movie.Name.2023.1080p.BluRay.x264-GROUP
+            r"\.([A-Za-z0-9]+)$",   // Dot notation: Movie.Name.2023.1080p.BluRay.x264.GROUP
+            r"\[([A-Za-z0-9]+)\]$", // Brackets: Movie.Name.2023.1080p.BluRay.x264[GROUP]
+            r"\(([A-Za-z0-9]+)\)$", // Parentheses: Movie.Name.2023.1080p.BluRay.x264(GROUP)
         ];
 
         for pattern in &patterns {
@@ -528,7 +543,12 @@ impl HDBitsComprehensiveAnalyzer {
                     if let Some(group) = captures.get(1) {
                         let group_name = group.as_str().to_uppercase();
                         // Filter out common false positives
-                        if !["X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS", "BLURAY", "WEB", "HDTV", "MA", "1", "0", "5"].contains(&group_name.as_str()) {
+                        if ![
+                            "X264", "X265", "H264", "H265", "HEVC", "AVC", "AAC", "AC3", "DTS",
+                            "BLURAY", "WEB", "HDTV", "MA", "1", "0", "5",
+                        ]
+                        .contains(&group_name.as_str())
+                        {
                             return Some(group_name);
                         }
                     }
@@ -538,7 +558,7 @@ impl HDBitsComprehensiveAnalyzer {
 
         None
     }
-    
+
     fn calculate_group_metrics(metrics: &mut SceneGroupMetrics) {
         if metrics.release_history.is_empty() {
             return;
@@ -551,7 +571,8 @@ impl HDBitsComprehensiveAnalyzer {
         metrics.avg_seeders = releases.iter().map(|r| r.seeders as f64).sum::<f64>() / count;
         metrics.avg_leechers = releases.iter().map(|r| r.leechers as f64).sum::<f64>() / count;
         metrics.avg_size_gb = releases.iter().map(|r| r.size_gb).sum::<f64>() / count;
-        metrics.avg_completion_rate = releases.iter().map(|r| r.completion_rate).sum::<f64>() / count;
+        metrics.avg_completion_rate =
+            releases.iter().map(|r| r.completion_rate).sum::<f64>() / count;
 
         // Ratios
         metrics.seeder_leecher_ratio = if metrics.avg_leechers > 0.0 {
@@ -563,9 +584,11 @@ impl HDBitsComprehensiveAnalyzer {
         metrics.internal_ratio = metrics.internal_releases as f64 / metrics.total_releases as f64;
 
         // Quality consistency (lower variance in size = higher consistency)
-        let size_variance = releases.iter()
+        let size_variance = releases
+            .iter()
             .map(|r| (r.size_gb - metrics.avg_size_gb).powi(2))
-            .sum::<f64>() / count;
+            .sum::<f64>()
+            / count;
         metrics.quality_consistency = 1.0 / (1.0 + size_variance);
 
         // Recency score (more recent releases = higher score)
@@ -579,7 +602,7 @@ impl HDBitsComprehensiveAnalyzer {
         // Overall reputation score (weighted combination)
         metrics.reputation_score = Self::calculate_reputation_score(metrics);
         metrics.comprehensive_reputation_score = metrics.reputation_score;
-        
+
         // Determine quality tier based on reputation score
         metrics.quality_tier = match metrics.reputation_score {
             score if score >= 90.0 => "Elite",
@@ -589,11 +612,12 @@ impl HDBitsComprehensiveAnalyzer {
             score if score >= 50.0 => "Average",
             score if score >= 40.0 => "Below Average",
             _ => "Poor",
-        }.to_string();
-        
+        }
+        .to_string();
+
         metrics.evidence_based_tier = metrics.quality_tier.clone();
     }
-    
+
     fn calculate_reputation_score(metrics: &SceneGroupMetrics) -> f64 {
         // Weighted scoring formula based on real data analysis
         let seeder_score = (metrics.seeder_leecher_ratio / 10.0).min(1.0) * 25.0;
@@ -603,23 +627,28 @@ impl HDBitsComprehensiveAnalyzer {
         let recency_score = metrics.recency_score * 10.0;
         let volume_score = (metrics.total_releases as f64 / 100.0).min(1.0) * 10.0;
         let size_score = Self::calculate_size_appropriateness_score(metrics.avg_size_gb) * 5.0;
-        
-        seeder_score + internal_score + completion_score + consistency_score + 
-        recency_score + volume_score + size_score
+
+        seeder_score
+            + internal_score
+            + completion_score
+            + consistency_score
+            + recency_score
+            + volume_score
+            + size_score
     }
-    
+
     fn calculate_size_appropriateness_score(avg_size_gb: f64) -> f64 {
         match avg_size_gb {
-            size if size >= 15.0 && size <= 50.0 => 1.0,  // Full quality range
-            size if size >= 8.0 && size < 15.0 => 0.8,    // Good compressed
-            size if size >= 4.0 && size < 8.0 => 0.6,     // Acceptable
-            size if size >= 2.0 && size < 4.0 => 0.4,     // Low quality
-            size if size < 2.0 => 0.2,                     // Very low quality
-            size if size > 50.0 => 0.7,                    // Possibly uncompressed/remux
-            _ => 0.5,                                       // Default
+            size if size >= 15.0 && size <= 50.0 => 1.0, // Full quality range
+            size if size >= 8.0 && size < 15.0 => 0.8,   // Good compressed
+            size if size >= 4.0 && size < 8.0 => 0.6,    // Acceptable
+            size if size >= 2.0 && size < 4.0 => 0.4,    // Low quality
+            size if size < 2.0 => 0.2,                   // Very low quality
+            size if size > 50.0 => 0.7,                  // Possibly uncompressed/remux
+            _ => 0.5,                                    // Default
         }
     }
-    
+
     fn get_category_name(id: u32) -> String {
         match id {
             1 => "Movie".to_string(),
@@ -633,7 +662,7 @@ impl HDBitsComprehensiveAnalyzer {
             _ => "Unknown".to_string(),
         }
     }
-    
+
     fn get_codec_name(id: u32) -> String {
         match id {
             1 => "H.264".to_string(),
@@ -644,7 +673,7 @@ impl HDBitsComprehensiveAnalyzer {
             _ => "Unknown".to_string(),
         }
     }
-    
+
     fn get_medium_name(id: u32) -> String {
         match id {
             1 => "Blu-ray".to_string(),
@@ -655,7 +684,7 @@ impl HDBitsComprehensiveAnalyzer {
             _ => "Unknown".to_string(),
         }
     }
-    
+
     fn detect_codec_id(name: &str) -> u32 {
         if name.contains("x265") || name.contains("HEVC") {
             5 // HEVC
@@ -667,7 +696,7 @@ impl HDBitsComprehensiveAnalyzer {
             1 // Default to H.264
         }
     }
-    
+
     fn detect_medium_id(name: &str) -> u32 {
         if name.contains("BluRay") || name.contains("Blu-ray") || name.contains("BD") {
             1 // Blu-ray
@@ -683,16 +712,16 @@ impl HDBitsComprehensiveAnalyzer {
             1 // Default to Blu-ray
         }
     }
-    
+
     pub fn get_statistics(&self) -> (usize, usize, usize, usize) {
         // Returns: (total_groups, total_releases, internal_releases, six_month_releases)
         (self.scene_groups.len(), self.releases.len(), 0, 0)
     }
-    
+
     pub fn generate_comprehensive_report(&self, start_time: DateTime<Utc>) -> ComprehensiveReport {
         let end_time = Utc::now();
         let duration = end_time.signed_duration_since(start_time);
-        
+
         // Calculate reputation distribution
         let mut distribution = ReputationDistribution::default();
         for group in self.scene_groups.values() {
@@ -706,14 +735,16 @@ impl HDBitsComprehensiveAnalyzer {
                 _ => distribution.poor += 1,
             }
         }
-        
+
         // Calculate data quality indicators
         let internal_releases = self.releases.iter().filter(|r| r.is_internal).count();
         let six_month_cutoff = Utc::now() - chrono::Duration::days(180);
-        let six_month_releases = self.releases.iter()
+        let six_month_releases = self
+            .releases
+            .iter()
             .filter(|r| r.added_date > six_month_cutoff)
             .count();
-        
+
         let data_quality = DataQualityIndicators {
             scene_group_extraction_rate: if !self.releases.is_empty() {
                 (self.scene_groups.len() as f64 / self.releases.len() as f64) * 100.0
@@ -731,7 +762,7 @@ impl HDBitsComprehensiveAnalyzer {
                 0.0
             },
         };
-        
+
         ComprehensiveReport {
             data_collection_period: format!("{} seconds", duration.num_seconds()),
             pages_processed: (self.releases.len() / 50) as u32, // Estimate based on releases
@@ -741,20 +772,21 @@ impl HDBitsComprehensiveAnalyzer {
             },
         }
     }
-    
+
     pub fn get_top_groups_by_reputation(&self, limit: usize) -> Vec<&SceneGroupMetrics> {
         let mut groups: Vec<&SceneGroupMetrics> = self.scene_groups.values().collect();
         groups.sort_by(|a, b| b.reputation_score.partial_cmp(&a.reputation_score).unwrap());
         groups.into_iter().take(limit).collect()
     }
-    
+
     pub fn export_comprehensive_json(&self) -> Result<String> {
         serde_json::to_string_pretty(&self.scene_groups)
             .map_err(|e| anyhow::anyhow!("Failed to serialize data: {}", e))
     }
-    
+
     pub fn export_csv_comprehensive(&self) -> String {
-        let mut csv = String::from("group_name,reputation_score,total_releases,internal_releases\n");
+        let mut csv =
+            String::from("group_name,reputation_score,total_releases,internal_releases\n");
         for group in self.scene_groups.values() {
             csv.push_str(&format!(
                 "{},{},{},{}\n",
@@ -766,7 +798,7 @@ impl HDBitsComprehensiveAnalyzer {
         }
         csv
     }
-    
+
     pub async fn analyze(&self) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         // Placeholder implementation
         Ok(serde_json::json!({

@@ -2,7 +2,7 @@
 //!
 //! This module provides a generic circuit breaker that can be used to protect
 //! against cascading failures when external services become unavailable.
-//! 
+//!
 //! Circuit breaker states:
 //! - Closed: Normal operation, requests pass through
 //! - Open: Service is failing, requests are rejected immediately  
@@ -31,7 +31,7 @@ impl CircuitBreakerState {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Closed => "closed",
-            Self::Open => "open", 
+            Self::Open => "open",
             Self::HalfOpen => "half_open",
         }
     }
@@ -71,22 +71,22 @@ impl CircuitBreakerConfig {
             ..Default::default()
         }
     }
-    
+
     pub fn with_failure_threshold(mut self, threshold: u32) -> Self {
         self.failure_threshold = threshold;
         self
     }
-    
+
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
-    
+
     pub fn with_success_threshold(mut self, threshold: u32) -> Self {
         self.success_threshold = threshold;
         self
     }
-    
+
     pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
         self
@@ -148,10 +148,22 @@ impl std::fmt::Debug for CircuitBreaker {
         f.debug_struct("CircuitBreaker")
             .field("config", &self.config)
             .field("metrics", &self.metrics)
-            .field("total_requests", &self.total_requests.load(Ordering::Relaxed))
-            .field("successful_requests", &self.successful_requests.load(Ordering::Relaxed))
-            .field("failed_requests", &self.failed_requests.load(Ordering::Relaxed))
-            .field("rejected_requests", &self.rejected_requests.load(Ordering::Relaxed))
+            .field(
+                "total_requests",
+                &self.total_requests.load(Ordering::Relaxed),
+            )
+            .field(
+                "successful_requests",
+                &self.successful_requests.load(Ordering::Relaxed),
+            )
+            .field(
+                "failed_requests",
+                &self.failed_requests.load(Ordering::Relaxed),
+            )
+            .field(
+                "rejected_requests",
+                &self.rejected_requests.load(Ordering::Relaxed),
+            )
             .finish()
     }
 }
@@ -160,7 +172,7 @@ impl CircuitBreaker {
     /// Create a new circuit breaker with the given configuration
     pub fn new(config: CircuitBreakerConfig) -> Self {
         let service_name = config.service_name.clone();
-        
+
         Self {
             config,
             state: Arc::new(RwLock::new(CircuitBreakerInternalState {
@@ -210,10 +222,7 @@ impl CircuitBreaker {
 
         // Execute the operation with timeout
         let start_time = Instant::now();
-        let operation_result = tokio::time::timeout(
-            self.config.request_timeout,
-            operation
-        ).await;
+        let operation_result = tokio::time::timeout(self.config.request_timeout, operation).await;
 
         match operation_result {
             Ok(Ok(result)) => {
@@ -257,7 +266,7 @@ impl CircuitBreaker {
     /// Check if a request can proceed based on current circuit breaker state
     async fn can_proceed(&self) -> Result<bool> {
         let state = self.state.read().await;
-        
+
         match state.state {
             CircuitBreakerState::Closed => Ok(true),
             CircuitBreakerState::HalfOpen => {
@@ -290,7 +299,7 @@ impl CircuitBreaker {
     /// Handle successful operation
     async fn on_success(&self) {
         self.successful_requests.fetch_add(1, Ordering::Relaxed);
-        
+
         let mut state = self.state.write().await;
         state.last_success_time = Some(Instant::now());
         state.consecutive_failures = 0;
@@ -326,7 +335,7 @@ impl CircuitBreaker {
     /// Handle failed operation
     async fn on_failure(&self, error: &RadarrError) {
         self.failed_requests.fetch_add(1, Ordering::Relaxed);
-        
+
         let mut state = self.state.write().await;
         state.last_failure_time = Some(Instant::now());
         state.consecutive_successes = 0;
@@ -380,7 +389,7 @@ impl CircuitBreaker {
     /// Get current circuit breaker metrics
     pub async fn get_metrics(&self) -> CircuitBreakerMetrics {
         let state = self.state.read().await;
-        
+
         CircuitBreakerMetrics {
             state: state.state,
             total_requests: self.total_requests.load(Ordering::Relaxed),
@@ -432,13 +441,13 @@ impl CircuitBreaker {
         self.successful_requests.store(0, Ordering::Relaxed);
         self.failed_requests.store(0, Ordering::Relaxed);
         self.rejected_requests.store(0, Ordering::Relaxed);
-        
+
         let mut state = self.state.write().await;
         state.consecutive_failures = 0;
         state.consecutive_successes = 0;
         state.last_failure_time = None;
         state.last_success_time = None;
-        
+
         info!(
             service = %self.config.service_name,
             "Circuit breaker: metrics reset"
@@ -448,20 +457,20 @@ impl CircuitBreaker {
     /// Check if the service is healthy based on success rate
     pub async fn is_healthy(&self) -> bool {
         let metrics = self.get_metrics().await;
-        
+
         // If no requests have been made, consider it healthy
         if metrics.total_requests == 0 {
             return true;
         }
-        
+
         // If circuit is open, it's not healthy
         if metrics.state == CircuitBreakerState::Open {
             return false;
         }
-        
+
         // Calculate success rate
         let success_rate = metrics.successful_requests as f64 / metrics.total_requests as f64;
-        
+
         // Consider healthy if success rate is above 80% and not too many consecutive failures
         success_rate >= 0.8 && metrics.consecutive_failures < self.config.failure_threshold / 2
     }
@@ -474,18 +483,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_breaker_closed_state() {
-        let config = CircuitBreakerConfig::new("test_service")
-            .with_failure_threshold(3);
+        let config = CircuitBreakerConfig::new("test_service").with_failure_threshold(3);
         let cb = CircuitBreaker::new(config);
 
         // Should start in closed state
         assert_eq!(cb.get_state().await, CircuitBreakerState::Closed);
-        
+
         // Successful operation should work
         let result = cb.call(async { Ok::<_, RadarrError>(42) }).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
-        
+
         let metrics = cb.get_metrics().await;
         assert_eq!(metrics.total_requests, 1);
         assert_eq!(metrics.successful_requests, 1);
@@ -494,27 +502,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_breaker_transitions_to_open() {
-        let config = CircuitBreakerConfig::new("test_service")
-            .with_failure_threshold(2);
+        let config = CircuitBreakerConfig::new("test_service").with_failure_threshold(2);
         let cb = CircuitBreaker::new(config);
 
         // First failure
-        let result = cb.call(async { 
-            Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
-                service: "test".to_string(),
-                error: "test error".to_string(),
+        let result = cb
+            .call(async {
+                Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
+                    service: "test".to_string(),
+                    error: "test error".to_string(),
+                })
             })
-        }).await;
+            .await;
         assert!(result.is_err());
         assert_eq!(cb.get_state().await, CircuitBreakerState::Closed);
 
         // Second failure should open the circuit
-        let result = cb.call(async { 
-            Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
-                service: "test".to_string(),
-                error: "test error".to_string(),
+        let result = cb
+            .call(async {
+                Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
+                    service: "test".to_string(),
+                    error: "test error".to_string(),
+                })
             })
-        }).await;
+            .await;
         assert!(result.is_err());
         assert_eq!(cb.get_state().await, CircuitBreakerState::Open);
 
@@ -536,12 +547,14 @@ mod tests {
         let cb = CircuitBreaker::new(config);
 
         // Fail to open circuit
-        let result = cb.call(async { 
-            Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
-                service: "test".to_string(),
-                error: "test error".to_string(),
+        let result = cb
+            .call(async {
+                Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
+                    service: "test".to_string(),
+                    error: "test error".to_string(),
+                })
             })
-        }).await;
+            .await;
         assert!(result.is_err());
         assert_eq!(cb.get_state().await, CircuitBreakerState::Open);
 
@@ -561,11 +574,13 @@ mod tests {
         let cb = CircuitBreaker::new(config);
 
         // Operation that times out
-        let result = cb.call(async {
-            sleep(Duration::from_millis(100)).await;
-            Ok::<_, RadarrError>(42)
-        }).await;
-        
+        let result = cb
+            .call(async {
+                sleep(Duration::from_millis(100)).await;
+                Ok::<_, RadarrError>(42)
+            })
+            .await;
+
         assert!(result.is_err());
         if let RadarrError::Timeout { operation } = result.unwrap_err() {
             assert!(operation.contains("test_service"));
@@ -581,14 +596,16 @@ mod tests {
 
         // Successful request
         let _ = cb.call(async { Ok::<_, RadarrError>(1) }).await;
-        
+
         // Failed request
-        let _ = cb.call(async { 
-            Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
-                service: "test".to_string(),
-                error: "test error".to_string(),
+        let _ = cb
+            .call(async {
+                Err::<i32, RadarrError>(RadarrError::ExternalServiceError {
+                    service: "test".to_string(),
+                    error: "test error".to_string(),
+                })
             })
-        }).await;
+            .await;
 
         let metrics = cb.get_metrics().await;
         assert_eq!(metrics.total_requests, 2);

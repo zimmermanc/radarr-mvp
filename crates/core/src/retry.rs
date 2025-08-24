@@ -1,10 +1,10 @@
 //! Retry logic with exponential backoff and circuit breaker patterns
 
+use crate::{RadarrError, Result};
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{debug, warn, error};
-use crate::{RadarrError, Result};
+use tracing::{debug, error, warn};
 
 /// Configuration for retry behavior
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ impl RetryConfig {
             jitter: true,
         }
     }
-    
+
     /// Create a configuration for slow retries (downloads, imports)
     pub fn slow() -> Self {
         Self {
@@ -81,11 +81,14 @@ where
 {
     let mut attempt = 0;
     let mut delay = config.initial_delay;
-    
+
     loop {
         attempt += 1;
-        debug!("Attempting {} (attempt {}/{})", operation_name, attempt, config.max_attempts);
-        
+        debug!(
+            "Attempting {} (attempt {}/{})",
+            operation_name, attempt, config.max_attempts
+        );
+
         match operation().await {
             Ok(result) => {
                 if attempt > 1 {
@@ -96,26 +99,34 @@ where
             Err(err) => {
                 // Check if we should retry this error
                 if !should_retry(&err, policy) {
-                    debug!("{} failed with non-retryable error: {}", operation_name, err);
+                    debug!(
+                        "{} failed with non-retryable error: {}",
+                        operation_name, err
+                    );
                     return Err(err);
                 }
-                
+
                 // Check if we've exhausted attempts
                 if attempt >= config.max_attempts {
-                    error!("{} failed after {} attempts: {}", operation_name, config.max_attempts, err);
+                    error!(
+                        "{} failed after {} attempts: {}",
+                        operation_name, config.max_attempts, err
+                    );
                     return Err(RadarrError::RetryExhausted {
                         operation: operation_name.to_string(),
                         attempts: config.max_attempts,
                         last_error: Box::new(err),
                     });
                 }
-                
+
                 // Calculate next delay with exponential backoff
-                warn!("{} failed on attempt {}/{}: {}. Retrying in {:?}", 
-                      operation_name, attempt, config.max_attempts, err, delay);
-                
+                warn!(
+                    "{} failed on attempt {}/{}: {}. Retrying in {:?}",
+                    operation_name, attempt, config.max_attempts, err, delay
+                );
+
                 sleep(delay).await;
-                
+
                 // Calculate next delay
                 delay = calculate_next_delay(delay, &config);
             }
@@ -130,10 +141,10 @@ fn should_retry(error: &RadarrError, policy: RetryPolicy) -> bool {
         RetryPolicy::All => true,
         RetryPolicy::Transient => matches!(
             error,
-            RadarrError::NetworkError { .. } |
-            RadarrError::Timeout { .. } |
-            RadarrError::ExternalServiceError { .. } |
-            RadarrError::TemporaryError { .. }
+            RadarrError::NetworkError { .. }
+                | RadarrError::Timeout { .. }
+                | RadarrError::ExternalServiceError { .. }
+                | RadarrError::TemporaryError { .. }
         ),
     }
 }
@@ -141,12 +152,12 @@ fn should_retry(error: &RadarrError, policy: RetryPolicy) -> bool {
 /// Calculate the next retry delay with exponential backoff and jitter
 fn calculate_next_delay(current: Duration, config: &RetryConfig) -> Duration {
     let mut next = current.mul_f64(config.backoff_multiplier);
-    
+
     // Apply maximum delay cap
     if next > config.max_delay {
         next = config.max_delay;
     }
-    
+
     // Add jitter if configured
     if config.jitter {
         use rand::Rng;
@@ -154,7 +165,7 @@ fn calculate_next_delay(current: Duration, config: &RetryConfig) -> Duration {
         let jitter_factor = rng.gen_range(0.5..1.5);
         next = next.mul_f64(jitter_factor);
     }
-    
+
     next
 }
 
@@ -193,7 +204,7 @@ impl CircuitBreaker {
             opened_at: None,
         }
     }
-    
+
     /// Check if the circuit allows requests
     pub fn can_proceed(&mut self) -> bool {
         match self.state {
@@ -215,12 +226,15 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => true,
         }
     }
-    
+
     /// Record a successful operation
     pub fn record_success(&mut self) {
         match self.state {
             CircuitState::HalfOpen => {
-                debug!("Circuit breaker {} closing after successful test", self.name);
+                debug!(
+                    "Circuit breaker {} closing after successful test",
+                    self.name
+                );
                 self.state = CircuitState::Closed;
                 self.failure_count = 0;
                 self.opened_at = None;
@@ -237,7 +251,7 @@ impl CircuitBreaker {
             }
         }
     }
-    
+
     /// Record a failed operation
     pub fn record_failure(&mut self) {
         match self.state {
@@ -251,8 +265,10 @@ impl CircuitBreaker {
             CircuitState::Closed => {
                 self.failure_count += 1;
                 if self.failure_count >= self.failure_threshold {
-                    error!("Circuit breaker {} opening after {} failures", 
-                           self.name, self.failure_count);
+                    error!(
+                        "Circuit breaker {} opening after {} failures",
+                        self.name, self.failure_count
+                    );
                     self.state = CircuitState::Open;
                     self.opened_at = Some(std::time::Instant::now());
                 }
@@ -262,12 +278,9 @@ impl CircuitBreaker {
             }
         }
     }
-    
+
     /// Execute an operation with circuit breaker protection
-    pub async fn execute<F, Fut, T>(
-        &mut self,
-        operation: F,
-    ) -> Result<T>
+    pub async fn execute<F, Fut, T>(&mut self, operation: F) -> Result<T>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T>>,
@@ -277,7 +290,7 @@ impl CircuitBreaker {
                 service: self.name.clone(),
             });
         }
-        
+
         match operation().await {
             Ok(result) => {
                 self.record_success();
@@ -294,43 +307,39 @@ impl CircuitBreaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_retry_success_on_second_attempt() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicU32, Ordering};
-        
+        use std::sync::Arc;
+
         let attempt = Arc::new(AtomicU32::new(0));
         let config = RetryConfig {
             max_attempts: 3,
             initial_delay: Duration::from_millis(10),
             ..Default::default()
         };
-        
+
         let attempt_clone = attempt.clone();
-        let result = retry_with_backoff(
-            config,
-            RetryPolicy::All,
-            "test_operation",
-            move || {
-                let attempt = attempt_clone.clone();
-                async move {
-                    let current_attempt = attempt.fetch_add(1, Ordering::SeqCst) + 1;
-                    if current_attempt == 2 {
-                        Ok(42)
-                    } else {
-                        Err(RadarrError::TemporaryError {
-                            message: "simulated failure".to_string(),
-                        })
-                    }
+        let result = retry_with_backoff(config, RetryPolicy::All, "test_operation", move || {
+            let attempt = attempt_clone.clone();
+            async move {
+                let current_attempt = attempt.fetch_add(1, Ordering::SeqCst) + 1;
+                if current_attempt == 2 {
+                    Ok(42)
+                } else {
+                    Err(RadarrError::TemporaryError {
+                        message: "simulated failure".to_string(),
+                    })
                 }
             }
-        ).await;
-        
+        })
+        .await;
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
     }
-    
+
     #[tokio::test]
     async fn test_retry_exhausted() {
         let config = RetryConfig {
@@ -338,42 +347,39 @@ mod tests {
             initial_delay: Duration::from_millis(10),
             ..Default::default()
         };
-        
-        let result: Result<()> = retry_with_backoff(
-            config,
-            RetryPolicy::All,
-            "test_operation",
-            || async {
+
+        let result: Result<()> =
+            retry_with_backoff(config, RetryPolicy::All, "test_operation", || async {
                 Err(RadarrError::TemporaryError {
                     message: "always fails".to_string(),
                 })
-            }
-        ).await;
-        
+            })
+            .await;
+
         assert!(matches!(result, Err(RadarrError::RetryExhausted { .. })));
     }
-    
+
     #[test]
     fn test_circuit_breaker_state_transitions() {
         let mut cb = CircuitBreaker::new("test", 2, Duration::from_millis(100));
-        
+
         // Initially closed
         assert!(cb.can_proceed());
-        
+
         // First failure
         cb.record_failure();
         assert!(cb.can_proceed());
-        
+
         // Second failure opens circuit
         cb.record_failure();
         assert!(!cb.can_proceed());
-        
+
         // Wait for reset timeout
         std::thread::sleep(Duration::from_millis(100));
-        
+
         // Should transition to half-open
         assert!(cb.can_proceed());
-        
+
         // Success closes circuit
         cb.record_success();
         assert!(cb.can_proceed());

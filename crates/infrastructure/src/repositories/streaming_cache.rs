@@ -2,8 +2,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use radarr_core::{
     streaming::{
-        traits::{StreamingCacheRepository, TrendingRepository, AvailabilityRepository, ComingSoonRepository, OAuthTokenRepository},
-        IdMapping, MediaType, TrendingEntry, TrendingSource, TimeWindow, AvailabilityItem, ComingSoon, OAuthToken,
+        traits::{
+            AvailabilityRepository, ComingSoonRepository, OAuthTokenRepository,
+            StreamingCacheRepository, TrendingRepository,
+        },
+        AvailabilityItem, ComingSoon, IdMapping, MediaType, OAuthToken, TimeWindow, TrendingEntry,
+        TrendingSource,
     },
     RadarrError,
 };
@@ -41,9 +45,7 @@ impl StreamingCacheRepository for PostgresStreamingCache {
         })?;
 
         match result {
-            Some(row) if row.expires_at > Utc::now() => {
-                Ok(Some(row.data))
-            }
+            Some(row) if row.expires_at > Utc::now() => Ok(Some(row.data)),
             Some(_) => {
                 // Entry expired, delete it
                 let _ = self.delete(key).await;
@@ -55,7 +57,7 @@ impl StreamingCacheRepository for PostgresStreamingCache {
 
     async fn set_raw(&self, key: &str, data: JsonValue, ttl_hours: i64) -> Result<(), RadarrError> {
         let expires_at = Utc::now() + chrono::Duration::hours(ttl_hours);
-        
+
         sqlx::query!(
             r#"
             INSERT INTO streaming_cache (cache_key, data, expires_at)
@@ -80,38 +82,34 @@ impl StreamingCacheRepository for PostgresStreamingCache {
     }
 
     async fn delete(&self, key: &str) -> Result<(), RadarrError> {
-        sqlx::query!(
-            "DELETE FROM streaming_cache WHERE cache_key = $1",
-            key
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to delete cache entry: {}", e),
-        })?;
+        sqlx::query!("DELETE FROM streaming_cache WHERE cache_key = $1", key)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to delete cache entry: {}", e),
+            })?;
 
         Ok(())
     }
 
     async fn clear_expired(&self) -> Result<usize, RadarrError> {
-        let result = sqlx::query!(
-            "DELETE FROM streaming_cache WHERE expires_at < CURRENT_TIMESTAMP"
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to clear expired cache: {}", e),
-        })?;
+        let result =
+            sqlx::query!("DELETE FROM streaming_cache WHERE expires_at < CURRENT_TIMESTAMP")
+                .execute(&self.pool)
+                .await
+                .map_err(|e| RadarrError::DatabaseError {
+                    message: format!("Failed to clear expired cache: {}", e),
+                })?;
 
         Ok(result.rows_affected() as usize)
     }
 
     async fn store_id_mappings(&self, mappings: Vec<IdMapping>) -> Result<usize, RadarrError> {
         let mut count = 0;
-        
+
         for mapping in mappings {
             let media_type_str = mapping.media_type.as_str();
-            
+
             sqlx::query!(
                 r#"
                 INSERT INTO streaming_id_mappings (tmdb_id, watchmode_id, media_type)
@@ -132,16 +130,20 @@ impl StreamingCacheRepository for PostgresStreamingCache {
             .map_err(|e| RadarrError::DatabaseError {
                 message: format!("Failed to store id mapping: {}", e),
             })?;
-            
+
             count += 1;
         }
 
         Ok(count)
     }
 
-    async fn get_watchmode_id(&self, tmdb_id: i32, media_type: MediaType) -> Result<Option<i32>, RadarrError> {
+    async fn get_watchmode_id(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Option<i32>, RadarrError> {
         let media_type_str = media_type.as_str();
-        
+
         let result = sqlx::query!(
             r#"
             SELECT watchmode_id
@@ -160,9 +162,13 @@ impl StreamingCacheRepository for PostgresStreamingCache {
         Ok(result.and_then(|r| r.watchmode_id))
     }
 
-    async fn get_id_mapping(&self, tmdb_id: i32, media_type: MediaType) -> Result<Option<IdMapping>, RadarrError> {
+    async fn get_id_mapping(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Option<IdMapping>, RadarrError> {
         let media_type_str = media_type.as_str();
-        
+
         let result = sqlx::query!(
             r#"
             SELECT tmdb_id, watchmode_id, media_type, last_verified
@@ -185,7 +191,7 @@ impl StreamingCacheRepository for PostgresStreamingCache {
                     "tv" => MediaType::Tv,
                     _ => return Ok(None),
                 };
-                
+
                 Ok(Some(IdMapping {
                     tmdb_id: row.tmdb_id,
                     watchmode_id: row.watchmode_id,
@@ -202,12 +208,12 @@ impl StreamingCacheRepository for PostgresStreamingCache {
 impl TrendingRepository for PostgresStreamingCache {
     async fn store_trending(&self, entries: Vec<TrendingEntry>) -> Result<usize, RadarrError> {
         let mut count = 0;
-        
+
         for entry in entries {
             let media_type_str = entry.media_type.as_str();
             let source_str = entry.source.as_str();
             let window_str = entry.time_window.as_str();
-            
+
             sqlx::query!(
                 r#"
                 INSERT INTO trending_entries (
@@ -241,10 +247,16 @@ impl TrendingRepository for PostgresStreamingCache {
                 source_str,
                 window_str,
                 entry.rank,
-                entry.score.and_then(|s| rust_decimal::Decimal::from_f32_retain(s)),
-                entry.vote_average.and_then(|v| rust_decimal::Decimal::from_f32_retain(v)),
+                entry
+                    .score
+                    .and_then(|s| rust_decimal::Decimal::from_f32_retain(s)),
+                entry
+                    .vote_average
+                    .and_then(|v| rust_decimal::Decimal::from_f32_retain(v)),
                 entry.vote_count,
-                entry.popularity.and_then(|p| rust_decimal::Decimal::from_f32_retain(p)),
+                entry
+                    .popularity
+                    .and_then(|p| rust_decimal::Decimal::from_f32_retain(p)),
                 entry.fetched_at,
                 entry.expires_at
             )
@@ -253,7 +265,7 @@ impl TrendingRepository for PostgresStreamingCache {
             .map_err(|e| RadarrError::DatabaseError {
                 message: format!("Failed to store trending entry: {}", e),
             })?;
-            
+
             count += 1;
         }
 
@@ -269,7 +281,7 @@ impl TrendingRepository for PostgresStreamingCache {
         let media_type_str = media_type.as_str();
         let source_str = source.as_str();
         let window_str = window.as_str();
-        
+
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -298,20 +310,20 @@ impl TrendingRepository for PostgresStreamingCache {
                     "tv" => MediaType::Tv,
                     _ => MediaType::Movie,
                 };
-                
+
                 let source = match row.source.as_str() {
                     "tmdb" => TrendingSource::Tmdb,
                     "trakt" => TrendingSource::Trakt,
                     "aggregated" => TrendingSource::Aggregated,
                     _ => TrendingSource::Aggregated,
                 };
-                
+
                 let time_window = match row.time_window.as_str() {
                     "day" => TimeWindow::Day,
                     "week" => TimeWindow::Week,
                     _ => TimeWindow::Day,
                 };
-                
+
                 TrendingEntry {
                     id: Some(row.id),
                     tmdb_id: row.tmdb_id,
@@ -325,9 +337,13 @@ impl TrendingRepository for PostgresStreamingCache {
                     time_window,
                     rank: row.rank,
                     score: row.score.and_then(|s| s.to_string().parse::<f32>().ok()),
-                    vote_average: row.vote_average.and_then(|v| v.to_string().parse::<f32>().ok()),
+                    vote_average: row
+                        .vote_average
+                        .and_then(|v| v.to_string().parse::<f32>().ok()),
                     vote_count: row.vote_count,
-                    popularity: row.popularity.and_then(|p| p.to_string().parse::<f32>().ok()),
+                    popularity: row
+                        .popularity
+                        .and_then(|p| p.to_string().parse::<f32>().ok()),
                     fetched_at: row.fetched_at.unwrap_or_else(|| Utc::now()),
                     expires_at: row.expires_at,
                 }
@@ -338,14 +354,13 @@ impl TrendingRepository for PostgresStreamingCache {
     }
 
     async fn clear_expired_trending(&self) -> Result<usize, RadarrError> {
-        let result = sqlx::query!(
-            "DELETE FROM trending_entries WHERE expires_at < CURRENT_TIMESTAMP"
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to clear expired trending: {}", e),
-        })?;
+        let result =
+            sqlx::query!("DELETE FROM trending_entries WHERE expires_at < CURRENT_TIMESTAMP")
+                .execute(&self.pool)
+                .await
+                .map_err(|e| RadarrError::DatabaseError {
+                    message: format!("Failed to clear expired trending: {}", e),
+                })?;
 
         Ok(result.rows_affected() as usize)
     }
@@ -355,12 +370,12 @@ impl TrendingRepository for PostgresStreamingCache {
 impl AvailabilityRepository for PostgresStreamingCache {
     async fn store_availability(&self, items: Vec<AvailabilityItem>) -> Result<usize, RadarrError> {
         let mut count = 0;
-        
+
         for item in items {
             let media_type_str = item.media_type.as_str();
             let service_type_str = item.service_type.as_str();
             let quality_str = item.quality.as_ref().map(|q| q.as_str());
-            
+
             sqlx::query!(
                 r#"
                 INSERT INTO streaming_availability (
@@ -399,7 +414,7 @@ impl AvailabilityRepository for PostgresStreamingCache {
             .map_err(|e| RadarrError::DatabaseError {
                 message: format!("Failed to store availability item: {}", e),
             })?;
-            
+
             count += 1;
         }
 
@@ -413,7 +428,7 @@ impl AvailabilityRepository for PostgresStreamingCache {
         region: &str,
     ) -> Result<Vec<AvailabilityItem>, RadarrError> {
         let media_type_str = media_type.as_str();
-        
+
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -439,13 +454,13 @@ impl AvailabilityRepository for PostgresStreamingCache {
             .map(|row| {
                 use radarr_core::streaming::ServiceType;
                 use radarr_core::streaming::VideoQuality;
-                
+
                 let media_type = match row.media_type.as_str() {
                     "movie" => MediaType::Movie,
                     "tv" => MediaType::Tv,
                     _ => MediaType::Movie,
                 };
-                
+
                 let service_type = match row.service_type.as_deref() {
                     Some("subscription") => ServiceType::Subscription,
                     Some("rent") => ServiceType::Rent,
@@ -454,7 +469,7 @@ impl AvailabilityRepository for PostgresStreamingCache {
                     Some("ads") => ServiceType::Ads,
                     _ => ServiceType::Subscription,
                 };
-                
+
                 let quality = row.quality.and_then(|q| match q.as_str() {
                     "SD" => Some(VideoQuality::SD),
                     "HD" => Some(VideoQuality::HD),
@@ -462,7 +477,7 @@ impl AvailabilityRepository for PostgresStreamingCache {
                     "HDR" => Some(VideoQuality::HDR),
                     _ => None,
                 });
-                
+
                 AvailabilityItem {
                     id: Some(row.id),
                     tmdb_id: row.tmdb_id,
@@ -472,7 +487,9 @@ impl AvailabilityRepository for PostgresStreamingCache {
                     service_type,
                     service_logo_url: row.service_logo_url,
                     deep_link: row.deep_link,
-                    price_amount: row.price_amount.and_then(|p| p.to_string().parse::<f32>().ok()),
+                    price_amount: row
+                        .price_amount
+                        .and_then(|p| p.to_string().parse::<f32>().ok()),
                     price_currency: row.price_currency.unwrap_or_else(|| "USD".to_string()),
                     quality,
                     leaving_date: row.leaving_date,
@@ -486,14 +503,13 @@ impl AvailabilityRepository for PostgresStreamingCache {
     }
 
     async fn clear_expired_availability(&self) -> Result<usize, RadarrError> {
-        let result = sqlx::query!(
-            "DELETE FROM streaming_availability WHERE expires_at < CURRENT_TIMESTAMP"
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to clear expired availability: {}", e),
-        })?;
+        let result =
+            sqlx::query!("DELETE FROM streaming_availability WHERE expires_at < CURRENT_TIMESTAMP")
+                .execute(&self.pool)
+                .await
+                .map_err(|e| RadarrError::DatabaseError {
+                    message: format!("Failed to clear expired availability: {}", e),
+                })?;
 
         Ok(result.rows_affected() as usize)
     }
@@ -503,12 +519,12 @@ impl AvailabilityRepository for PostgresStreamingCache {
 impl ComingSoonRepository for PostgresStreamingCache {
     async fn store_coming_soon(&self, entries: Vec<ComingSoon>) -> Result<usize, RadarrError> {
         let mut count = 0;
-        
+
         for entry in entries {
             let media_type_str = entry.media_type.as_str();
             let streaming_services = serde_json::to_value(&entry.streaming_services)
                 .unwrap_or(serde_json::Value::Array(vec![]));
-            
+
             sqlx::query!(
                 r#"
                 INSERT INTO coming_soon_releases (
@@ -545,7 +561,7 @@ impl ComingSoonRepository for PostgresStreamingCache {
             .map_err(|e| RadarrError::DatabaseError {
                 message: format!("Failed to store coming soon entry: {}", e),
             })?;
-            
+
             count += 1;
         }
 
@@ -558,7 +574,7 @@ impl ComingSoonRepository for PostgresStreamingCache {
         region: &str,
     ) -> Result<Vec<ComingSoon>, RadarrError> {
         let media_type_str = media_type.as_str();
-        
+
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -585,11 +601,12 @@ impl ComingSoonRepository for PostgresStreamingCache {
                     "tv" => MediaType::Tv,
                     _ => MediaType::Movie,
                 };
-                
-                let streaming_services: Vec<String> = row.streaming_services
+
+                let streaming_services: Vec<String> = row
+                    .streaming_services
                     .and_then(|v| serde_json::from_value(v).ok())
                     .unwrap_or_default();
-                
+
                 ComingSoon {
                     id: Some(row.id),
                     tmdb_id: row.tmdb_id,
@@ -612,14 +629,13 @@ impl ComingSoonRepository for PostgresStreamingCache {
     }
 
     async fn clear_expired_coming_soon(&self) -> Result<usize, RadarrError> {
-        let result = sqlx::query!(
-            "DELETE FROM coming_soon_releases WHERE expires_at < CURRENT_TIMESTAMP"
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to clear expired coming soon: {}", e),
-        })?;
+        let result =
+            sqlx::query!("DELETE FROM coming_soon_releases WHERE expires_at < CURRENT_TIMESTAMP")
+                .execute(&self.pool)
+                .await
+                .map_err(|e| RadarrError::DatabaseError {
+                    message: format!("Failed to clear expired coming soon: {}", e),
+                })?;
 
         Ok(result.rows_affected() as usize)
     }
@@ -645,19 +661,17 @@ impl OAuthTokenRepository for PostgresStreamingCache {
         })?;
 
         match result {
-            Some(row) => {
-                Ok(Some(OAuthToken {
-                    id: Some(row.id),
-                    service: row.service,
-                    access_token: row.access_token,
-                    refresh_token: row.refresh_token,
-                    token_type: row.token_type.unwrap_or_else(|| "Bearer".to_string()),
-                    expires_at: row.expires_at,
-                    scope: row.scope,
-                    created_at: row.created_at.unwrap_or_else(|| Utc::now()),
-                    updated_at: row.updated_at.unwrap_or_else(|| Utc::now()),
-                }))
-            }
+            Some(row) => Ok(Some(OAuthToken {
+                id: Some(row.id),
+                service: row.service,
+                access_token: row.access_token,
+                refresh_token: row.refresh_token,
+                token_type: row.token_type.unwrap_or_else(|| "Bearer".to_string()),
+                expires_at: row.expires_at,
+                scope: row.scope,
+                created_at: row.created_at.unwrap_or_else(|| Utc::now()),
+                updated_at: row.updated_at.unwrap_or_else(|| Utc::now()),
+            })),
             None => Ok(None),
         }
     }
@@ -725,15 +739,12 @@ impl OAuthTokenRepository for PostgresStreamingCache {
     }
 
     async fn delete_token(&self, service: &str) -> Result<(), RadarrError> {
-        sqlx::query!(
-            "DELETE FROM oauth_tokens WHERE service = $1",
-            service
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| RadarrError::DatabaseError {
-            message: format!("Failed to delete oauth token: {}", e),
-        })?;
+        sqlx::query!("DELETE FROM oauth_tokens WHERE service = $1", service)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RadarrError::DatabaseError {
+                message: format!("Failed to delete oauth token: {}", e),
+            })?;
 
         Ok(())
     }

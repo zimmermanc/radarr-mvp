@@ -2,18 +2,20 @@
 
 use crate::error::{ApiError, ApiResult};
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
-use radarr_decision::{CustomFormat, FormatSpecification, CustomFormatEngine, ReleaseData};
-use radarr_infrastructure::{DatabasePool, PostgresCustomFormatsRepository, CustomFormatsRepository};
+use radarr_decision::{CustomFormat, CustomFormatEngine, FormatSpecification, ReleaseData};
+use radarr_infrastructure::{
+    CustomFormatsRepository, DatabasePool, PostgresCustomFormatsRepository,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, debug, instrument};
+use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
 /// Quality management state
@@ -25,7 +27,8 @@ pub struct QualityState {
 
 impl QualityState {
     pub fn new(database_pool: DatabasePool) -> Self {
-        let custom_formats_repo = Arc::new(PostgresCustomFormatsRepository::new(database_pool.clone()));
+        let custom_formats_repo =
+            Arc::new(PostgresCustomFormatsRepository::new(database_pool.clone()));
         Self {
             database_pool,
             custom_formats_repo,
@@ -100,7 +103,8 @@ impl From<FormatSpecification> for FormatSpecificationResponse {
 
 impl From<CustomFormatRequest> for CustomFormat {
     fn from(request: CustomFormatRequest) -> Self {
-        let specifications = request.specifications
+        let specifications = request
+            .specifications
             .into_iter()
             .map(|spec| FormatSpecification {
                 spec_type: spec.spec_type,
@@ -152,12 +156,15 @@ pub async fn list_custom_formats(
     State(state): State<QualityState>,
 ) -> ApiResult<Json<Vec<CustomFormatResponse>>> {
     info!("Listing all custom formats");
-    
-    let formats = state.custom_formats_repo.list().await
+
+    let formats = state
+        .custom_formats_repo
+        .list()
+        .await
         .map_err(ApiError::CoreError)?;
-    
+
     let responses: Vec<CustomFormatResponse> = formats.into_iter().map(Into::into).collect();
-    
+
     info!("Retrieved {} custom formats", responses.len());
     Ok(Json(responses))
 }
@@ -168,19 +175,21 @@ pub async fn get_custom_format(
     State(state): State<QualityState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<CustomFormatResponse>> {
-    let format_id = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid custom format ID".to_string(),
-        })?;
-    
+    let format_id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest {
+        message: "Invalid custom format ID".to_string(),
+    })?;
+
     debug!("Getting custom format with ID: {}", format_id);
-    
-    let format = state.custom_formats_repo.find_by_id(&format_id).await
+
+    let format = state
+        .custom_formats_repo
+        .find_by_id(&format_id)
+        .await
         .map_err(ApiError::CoreError)?
         .ok_or_else(|| ApiError::NotFound {
             resource: format!("custom format with id {}", id),
         })?;
-    
+
     Ok(Json(format.into()))
 }
 
@@ -191,20 +200,26 @@ pub async fn create_custom_format(
     Json(request): Json<CustomFormatRequest>,
 ) -> ApiResult<Json<CustomFormatResponse>> {
     info!("Creating custom format: {}", request.name);
-    
+
     // Check if format with this name already exists
     if let Ok(Some(_)) = state.custom_formats_repo.find_by_name(&request.name).await {
         return Err(ApiError::Conflict {
             resource: format!("custom format '{}'", request.name),
         });
     }
-    
+
     let format: CustomFormat = request.into();
-    
-    let created_format = state.custom_formats_repo.create(&format).await
+
+    let created_format = state
+        .custom_formats_repo
+        .create(&format)
+        .await
         .map_err(ApiError::CoreError)?;
-    
-    info!("Created custom format '{}' with ID: {}", created_format.name, created_format.id);
+
+    info!(
+        "Created custom format '{}' with ID: {}",
+        created_format.name, created_format.id
+    );
     Ok(Json(created_format.into()))
 }
 
@@ -215,27 +230,34 @@ pub async fn update_custom_format(
     Path(id): Path<String>,
     Json(request): Json<CustomFormatRequest>,
 ) -> ApiResult<Json<CustomFormatResponse>> {
-    let format_id = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid custom format ID".to_string(),
-        })?;
-    
+    let format_id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest {
+        message: "Invalid custom format ID".to_string(),
+    })?;
+
     info!("Updating custom format: {} ({})", request.name, format_id);
-    
+
     // Check if format exists
-    if state.custom_formats_repo.find_by_id(&format_id).await
-        .map_err(ApiError::CoreError)?.is_none() {
+    if state
+        .custom_formats_repo
+        .find_by_id(&format_id)
+        .await
+        .map_err(ApiError::CoreError)?
+        .is_none()
+    {
         return Err(ApiError::NotFound {
             resource: format!("custom format with id {}", id),
         });
     }
-    
+
     let mut format: CustomFormat = request.into();
     format.id = format_id; // Preserve the existing ID
-    
-    let updated_format = state.custom_formats_repo.update(&format).await
+
+    let updated_format = state
+        .custom_formats_repo
+        .update(&format)
+        .await
         .map_err(ApiError::CoreError)?;
-    
+
     info!("Updated custom format '{}'", updated_format.name);
     Ok(Json(updated_format.into()))
 }
@@ -246,23 +268,28 @@ pub async fn delete_custom_format(
     State(state): State<QualityState>,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    let format_id = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid custom format ID".to_string(),
-        })?;
-    
+    let format_id = Uuid::parse_str(&id).map_err(|_| ApiError::BadRequest {
+        message: "Invalid custom format ID".to_string(),
+    })?;
+
     info!("Deleting custom format with ID: {}", format_id);
-    
+
     // Check if format exists
-    let format = state.custom_formats_repo.find_by_id(&format_id).await
+    let format = state
+        .custom_formats_repo
+        .find_by_id(&format_id)
+        .await
         .map_err(ApiError::CoreError)?
         .ok_or_else(|| ApiError::NotFound {
             resource: format!("custom format with id {}", id),
         })?;
-    
-    state.custom_formats_repo.delete(&format_id).await
+
+    state
+        .custom_formats_repo
+        .delete(&format_id)
+        .await
         .map_err(ApiError::CoreError)?;
-    
+
     info!("Deleted custom format '{}'", format.name);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -274,14 +301,17 @@ pub async fn test_custom_formats(
     Json(request): Json<TestReleaseRequest>,
 ) -> ApiResult<Json<TestReleaseResponse>> {
     info!("Testing release against custom formats: {}", request.title);
-    
+
     // Load all enabled custom formats
-    let formats = state.custom_formats_repo.list_enabled().await
+    let formats = state
+        .custom_formats_repo
+        .list_enabled()
+        .await
         .map_err(ApiError::CoreError)?;
-    
+
     // Create custom format engine
     let engine = CustomFormatEngine::with_formats(formats);
-    
+
     // Create release data for testing
     let release_data = ReleaseData {
         title: request.title.clone(),
@@ -291,42 +321,58 @@ pub async fn test_custom_formats(
         freeleech: request.freeleech,
         internal: request.internal,
         indexer: request.indexer.unwrap_or_else(|| "Test".to_string()),
-        release_group: request.title.split('-').last().map(|s| s.trim().to_string()),
+        release_group: request
+            .title
+            .split('-')
+            .last()
+            .map(|s| s.trim().to_string()),
     };
-    
+
     // Calculate score and get matching formats
     let total_score = engine.calculate_format_score(&release_data);
     let matching_formats = engine.get_matching_formats(&release_data);
-    
+
     let matching_info: Vec<MatchingFormatInfo> = matching_formats
         .into_iter()
         .map(|format| MatchingFormatInfo {
             name: format.name.clone(),
             score: format.score,
-            specifications_matched: format.specifications
+            specifications_matched: format
+                .specifications
                 .iter()
                 .filter(|spec| spec.matches(&release_data))
                 .map(|spec| format!("{}: {}", spec.spec_type, spec.value))
                 .collect(),
         })
         .collect();
-    
+
     let response = TestReleaseResponse {
         total_score,
         matching_formats: matching_info,
     };
-    
-    info!("Release test completed: total score = {}, {} formats matched", 
-          total_score, response.matching_formats.len());
-    
+
+    info!(
+        "Release test completed: total score = {}, {} formats matched",
+        total_score,
+        response.matching_formats.len()
+    );
+
     Ok(Json(response))
 }
 
 /// Create quality management router
 pub fn create_quality_router(state: QualityState) -> Router {
     Router::new()
-        .route("/customformat", get(list_custom_formats).post(create_custom_format))
-        .route("/customformat/:id", get(get_custom_format).put(update_custom_format).delete(delete_custom_format))
+        .route(
+            "/customformat",
+            get(list_custom_formats).post(create_custom_format),
+        )
+        .route(
+            "/customformat/:id",
+            get(get_custom_format)
+                .put(update_custom_format)
+                .delete(delete_custom_format),
+        )
         .route("/customformat/test", post(test_custom_formats))
         .with_state(state)
 }

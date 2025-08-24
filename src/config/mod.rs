@@ -5,10 +5,10 @@
 
 pub mod retry_config;
 
-use serde::{Deserialize, Serialize};
-use std::env;
 use radarr_core::{RadarrError, Result};
 pub use retry_config::*;
+use serde::{Deserialize, Serialize};
+use std::env;
 
 /// Simplified Prowlarr configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,7 +223,7 @@ impl AppConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self> {
         let mut config = Self::default();
-        
+
         // Server configuration
         if let Ok(host) = env::var("RADARR_HOST") {
             config.server.host = host;
@@ -238,38 +238,42 @@ impl AppConfig {
             config.server.api_key = api_key;
         }
         if let Ok(max_conn) = env::var("RADARR_MAX_CONNECTIONS") {
-            config.server.max_connections = max_conn.parse().map_err(|e| RadarrError::ValidationError {
-                field: "RADARR_MAX_CONNECTIONS".to_string(),
-                message: format!("Invalid max connections: {}", e),
-            })?;
+            config.server.max_connections =
+                max_conn.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "RADARR_MAX_CONNECTIONS".to_string(),
+                    message: format!("Invalid max connections: {}", e),
+                })?;
         }
         if let Ok(timeout) = env::var("RADARR_REQUEST_TIMEOUT") {
-            config.server.request_timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
-                field: "RADARR_REQUEST_TIMEOUT".to_string(),
-                message: format!("Invalid timeout: {}", e),
-            })?;
+            config.server.request_timeout =
+                timeout.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "RADARR_REQUEST_TIMEOUT".to_string(),
+                    message: format!("Invalid timeout: {}", e),
+                })?;
         }
-        
+
         // Database configuration
         if let Ok(db_url) = env::var("DATABASE_URL") {
             config.database.url = db_url;
         }
         if let Ok(max_conn) = env::var("DATABASE_MAX_CONNECTIONS") {
-            config.database.max_connections = max_conn.parse().map_err(|e| RadarrError::ValidationError {
-                field: "DATABASE_MAX_CONNECTIONS".to_string(),
-                message: format!("Invalid max connections: {}", e),
-            })?;
+            config.database.max_connections =
+                max_conn.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "DATABASE_MAX_CONNECTIONS".to_string(),
+                    message: format!("Invalid max connections: {}", e),
+                })?;
         }
         if let Ok(timeout) = env::var("DATABASE_CONNECT_TIMEOUT") {
-            config.database.connect_timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
-                field: "DATABASE_CONNECT_TIMEOUT".to_string(),
-                message: format!("Invalid timeout: {}", e),
-            })?;
+            config.database.connect_timeout =
+                timeout.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "DATABASE_CONNECT_TIMEOUT".to_string(),
+                    message: format!("Invalid timeout: {}", e),
+                })?;
         }
         if let Ok(log_queries) = env::var("DATABASE_LOG_QUERIES") {
             config.database.log_queries = log_queries.parse().unwrap_or(false);
         }
-        
+
         // Prowlarr configuration
         if let Ok(base_url) = env::var("PROWLARR_BASE_URL") {
             config.prowlarr.base_url = base_url;
@@ -278,18 +282,22 @@ impl AppConfig {
             config.prowlarr.api_key = api_key;
         }
         if let Ok(timeout) = env::var("PROWLARR_TIMEOUT") {
-            config.prowlarr.timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
-                field: "PROWLARR_TIMEOUT".to_string(),
-                message: format!("Invalid timeout: {}", e),
-            })?;
+            config.prowlarr.timeout =
+                timeout.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "PROWLARR_TIMEOUT".to_string(),
+                    message: format!("Invalid timeout: {}", e),
+                })?;
         }
         if let Ok(rate_limit) = env::var("PROWLARR_RATE_LIMIT") {
-            config.prowlarr.max_requests_per_minute = rate_limit.parse().map_err(|e| RadarrError::ValidationError {
-                field: "PROWLARR_RATE_LIMIT".to_string(),
-                message: format!("Invalid rate limit: {}", e),
-            })?;
+            config.prowlarr.max_requests_per_minute =
+                rate_limit
+                    .parse()
+                    .map_err(|e| RadarrError::ValidationError {
+                        field: "PROWLARR_RATE_LIMIT".to_string(),
+                        message: format!("Invalid rate limit: {}", e),
+                    })?;
         }
-        
+
         // qBittorrent configuration
         if let Ok(base_url) = env::var("QBITTORRENT_BASE_URL") {
             config.qbittorrent.base_url = base_url;
@@ -301,12 +309,13 @@ impl AppConfig {
             config.qbittorrent.password = password;
         }
         if let Ok(timeout) = env::var("QBITTORRENT_TIMEOUT") {
-            config.qbittorrent.timeout = timeout.parse().map_err(|e| RadarrError::ValidationError {
-                field: "QBITTORRENT_TIMEOUT".to_string(),
-                message: format!("Invalid timeout: {}", e),
-            })?;
+            config.qbittorrent.timeout =
+                timeout.parse().map_err(|e| RadarrError::ValidationError {
+                    field: "QBITTORRENT_TIMEOUT".to_string(),
+                    message: format!("Invalid timeout: {}", e),
+                })?;
         }
-        
+
         // TMDB configuration
         if let Ok(api_key) = env::var("TMDB_API_KEY") {
             config.tmdb.api_key = api_key;
@@ -321,7 +330,7 @@ impl AppConfig {
         if let Ok(enabled) = env::var("TMDB_ENABLED") {
             config.tmdb.enabled = enabled.parse().unwrap_or(false);
         }
-        
+
         // Logging configuration
         if let Ok(level) = env::var("RUST_LOG") {
             config.logging.level = level;
@@ -332,10 +341,10 @@ impl AppConfig {
         if let Ok(log_file) = env::var("LOG_FILE") {
             config.logging.log_file = Some(log_file);
         }
-        
+
         Ok(config)
     }
-    
+
     /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
         // Validate server config
@@ -345,21 +354,21 @@ impl AppConfig {
                 message: "Port must be greater than 0".to_string(),
             });
         }
-        
+
         if self.server.api_key.is_empty() {
             return Err(RadarrError::ValidationError {
                 field: "server.api_key".to_string(),
                 message: "API key cannot be empty".to_string(),
             });
         }
-        
+
         if self.server.api_key.len() < 8 {
             return Err(RadarrError::ValidationError {
                 field: "server.api_key".to_string(),
                 message: "API key must be at least 8 characters long".to_string(),
             });
         }
-        
+
         // Prevent default API key in production
         if self.server.api_key == "changeme123" {
             tracing::warn!("WARNING: Using default API key 'changeme123' - this should be changed for production!");
@@ -367,17 +376,18 @@ impl AppConfig {
             #[cfg(not(debug_assertions))]
             return Err(RadarrError::ValidationError {
                 field: "server.api_key".to_string(),
-                message: "Default API key 'changeme123' is not allowed in production builds".to_string(),
+                message: "Default API key 'changeme123' is not allowed in production builds"
+                    .to_string(),
             });
         }
-        
+
         if self.server.max_connections == 0 {
             return Err(RadarrError::ValidationError {
                 field: "server.max_connections".to_string(),
                 message: "Max connections must be greater than 0".to_string(),
             });
         }
-        
+
         // Validate database config
         if self.database.url.is_empty() {
             return Err(RadarrError::ValidationError {
@@ -385,14 +395,14 @@ impl AppConfig {
                 message: "Database URL cannot be empty".to_string(),
             });
         }
-        
+
         if self.database.max_connections == 0 {
             return Err(RadarrError::ValidationError {
                 field: "database.max_connections".to_string(),
                 message: "Database max connections must be greater than 0".to_string(),
             });
         }
-        
+
         // Validate Prowlarr config
         if self.prowlarr.base_url.is_empty() {
             return Err(RadarrError::ValidationError {
@@ -400,9 +410,9 @@ impl AppConfig {
                 message: "Prowlarr base URL cannot be empty".to_string(),
             });
         }
-        
+
         // Note: API key validation is optional as it might be set later
-        
+
         // Validate qBittorrent config
         if self.qbittorrent.base_url.is_empty() {
             return Err(RadarrError::ValidationError {
@@ -410,7 +420,7 @@ impl AppConfig {
                 message: "qBittorrent base URL cannot be empty".to_string(),
             });
         }
-        
+
         Ok(())
     }
 }

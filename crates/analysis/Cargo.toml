@@ -3,6 +3,8 @@ name = "radarr-analysis"
 version = "0.1.0"
 edition = "2021"
 description = "HDBits scene group analysis and reputation scoring system"
+repository = "https://github.com/zimmermanc/radarr-mvp"
+homepage = "https://github.com/zimmermanc/radarr-mvp"
 
 [dependencies]
 # Workspace dependencies

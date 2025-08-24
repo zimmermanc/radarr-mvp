@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play } from 'lucide-react';
+import { Play, Film } from 'lucide-react';
 import { getStreamingApi } from '../../lib/streamingApi';
 import type { Movie } from '../../types/api';
 import type { AvailabilityItem } from '../../types/streaming';
@@ -86,7 +86,7 @@ export const MovieCardWithStreaming: React.FC<MovieCardWithStreamingProps> = ({
             />
           ) : (
             <div className="w-full h-full bg-secondary-300 dark:bg-secondary-600 flex items-center justify-center">
-              <FilmIcon className="h-16 w-16 text-secondary-500" />
+              <Film className="h-16 w-16 text-secondary-500" />
             </div>
           )}
 
@@ -139,19 +139,3 @@ export const MovieCardWithStreaming: React.FC<MovieCardWithStreamingProps> = ({
   );
 };
 
-// Import FilmIcon if not available from lucide-react
-const FilmIcon = () => (
-  <svg
-    className="h-16 w-16 text-secondary-500"
-    fill="none"
-    viewBox="0 0 24 24"
-    stroke="currentColor"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-    />
-  </svg>
-);

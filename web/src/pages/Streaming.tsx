@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { TrendingUp, Calendar, Tv, Film, RefreshCw } from 'lucide-react';
+import { TrendingUp, Tv, Film, RefreshCw } from 'lucide-react';
 import {
   TrendingCarousel,
   ComingSoonList,
@@ -11,7 +10,6 @@ import { initStreamingApi, getStreamingApi } from '../lib/streamingApi';
 import type { MediaType } from '../types/streaming';
 
 const Streaming: React.FC = () => {
-  const navigate = useNavigate();
   const [mediaType, setMediaType] = useState<MediaType>('movie');
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);

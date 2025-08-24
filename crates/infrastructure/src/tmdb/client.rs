@@ -236,6 +236,249 @@ impl TmdbClient {
         Ok(movies)
     }
 
+    /// Get now playing movies
+    pub async fn get_now_playing(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
+        let page = page.unwrap_or(1);
+        let url = format!("{}/movie/now_playing", self.base_url);
+        
+        debug!("Fetching TMDB now playing movies: page={}", page);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[
+                ("api_key", &self.api_key),
+                ("page", &page.to_string()),
+            ])
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let search_response: TmdbSearchResponse = response.json().await?;
+        
+        debug!("TMDB now playing returned {} results", search_response.results.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = search_response.results
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
+    /// Get top rated movies
+    pub async fn get_top_rated(&self, page: Option<i32>) -> Result<Vec<Movie>, TmdbError> {
+        let page = page.unwrap_or(1);
+        let url = format!("{}/movie/top_rated", self.base_url);
+        
+        debug!("Fetching TMDB top rated movies: page={}", page);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[
+                ("api_key", &self.api_key),
+                ("page", &page.to_string()),
+            ])
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let search_response: TmdbSearchResponse = response.json().await?;
+        
+        debug!("TMDB top rated returned {} results", search_response.results.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = search_response.results
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
+    /// Get movies from a collection
+    pub async fn get_collection(&self, collection_id: i32) -> Result<Vec<Movie>, TmdbError> {
+        let url = format!("{}/collection/{}", self.base_url, collection_id);
+        
+        debug!("Fetching TMDB collection: id={}", collection_id);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[("api_key", &self.api_key)])
+            .send()
+            .await?;
+
+        if response.status() == 404 {
+            return Err(TmdbError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let collection_response: TmdbCollectionResponse = response.json().await?;
+        
+        debug!("TMDB collection returned {} movies", collection_response.parts.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = collection_response.parts
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
+    /// Get movies by person (actor/director)
+    pub async fn get_person_movies(&self, person_id: i32) -> Result<Vec<Movie>, TmdbError> {
+        let url = format!("{}/person/{}/movie_credits", self.base_url, person_id);
+        
+        debug!("Fetching movies for person: id={}", person_id);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[("api_key", &self.api_key)])
+            .send()
+            .await?;
+
+        if response.status() == 404 {
+            return Err(TmdbError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let credits_response: TmdbPersonCreditsResponse = response.json().await?;
+        
+        debug!("TMDB person credits returned {} movies", credits_response.cast.len());
+        
+        // Convert TMDB results to our Movie model (combine cast and crew)
+        let mut movies = credits_response.cast
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect::<Vec<_>>();
+            
+        let crew_movies: Vec<Movie> = credits_response.crew
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+            
+        movies.extend(crew_movies);
+        
+        // Remove duplicates by TMDB ID
+        movies.sort_by_key(|m| m.tmdb_id);
+        movies.dedup_by_key(|m| m.tmdb_id);
+
+        Ok(movies)
+    }
+
+    /// Get movies by keyword
+    pub async fn get_keyword_movies(&self, keyword_id: i32) -> Result<Vec<Movie>, TmdbError> {
+        let page = 1;
+        let url = format!("{}/keyword/{}/movies", self.base_url, keyword_id);
+        
+        debug!("Fetching movies for keyword: id={}", keyword_id);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[
+                ("api_key", &self.api_key),
+                ("page", &page.to_string()),
+            ])
+            .send()
+            .await?;
+
+        if response.status() == 404 {
+            return Err(TmdbError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let search_response: TmdbSearchResponse = response.json().await?;
+        
+        debug!("TMDB keyword movies returned {} results", search_response.results.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = search_response.results
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
+    /// Get public list
+    pub async fn get_list(&self, list_id: &str) -> Result<Vec<Movie>, TmdbError> {
+        let url = format!("{}/list/{}", self.base_url, list_id);
+        
+        debug!("Fetching TMDB list: id={}", list_id);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[("api_key", &self.api_key)])
+            .send()
+            .await?;
+
+        if response.status() == 404 {
+            return Err(TmdbError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let list_response: TmdbListResponse = response.json().await?;
+        
+        debug!("TMDB list returned {} items", list_response.items.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = list_response.items
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
     /// Convert TMDB movie to our Movie model
     fn tmdb_movie_to_movie(&self, tmdb_movie: TmdbMovie) -> Movie {
         let mut movie = Movie::new(tmdb_movie.id, tmdb_movie.title.clone());
@@ -335,4 +578,37 @@ struct TmdbMovie {
     budget: Option<i64>,
     revenue: Option<i64>,
     imdb_id: Option<String>,
+}
+
+/// TMDB collection response
+#[derive(Debug, Deserialize)]
+struct TmdbCollectionResponse {
+    id: i32,
+    name: String,
+    overview: Option<String>,
+    poster_path: Option<String>,
+    backdrop_path: Option<String>,
+    parts: Vec<TmdbMovie>,
+}
+
+/// TMDB person credits response
+#[derive(Debug, Deserialize)]
+struct TmdbPersonCreditsResponse {
+    id: i32,
+    cast: Vec<TmdbMovie>,
+    crew: Vec<TmdbMovie>,
+}
+
+/// TMDB list response
+#[derive(Debug, Deserialize)]
+struct TmdbListResponse {
+    created_by: String,
+    description: String,
+    favorite_count: i32,
+    id: String,
+    items: Vec<TmdbMovie>,
+    item_count: i32,
+    iso_639_1: String,
+    name: String,
+    poster_path: Option<String>,
 }

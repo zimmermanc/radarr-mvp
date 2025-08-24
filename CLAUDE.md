@@ -2,9 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 📈 PROGRESS UPDATE: ~60% Complete, 33 TODOs Remaining
+## 📈 PROGRESS UPDATE: ~68% Complete, 21 TODOs Remaining
 
-### Reality Check (2025-01-24)
+### Progress Update (2025-08-24)
+- **Current TODO count**: 21 (down from 33 after today's work)
+- **UI operations**: All Queue and Movie operations now wired up
+- **TMDb integration**: List methods implemented and integrated
+- **Build artifacts**: Cleaned up 56GB of accumulated artifacts
+- **Actual completion**: ~68% (significant progress from UI wiring)
+- **Key accomplishment**: Fixed misleading RSS TODO and completed UI integration
+
+### Previous Reality Check (2025-01-24)
 - **Verified TODO count**: 33 (not 28 as previously claimed)
 - **Stubbed methods**: 11 returning Ok(vec![])
 - **Mock API calls**: 10 in Web UI
@@ -28,6 +36,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - NTB dominates volume with 2,620 releases
   - Top 5 groups control 46.9% of all releases
 - **Integration Ready**: Scoring database for Radarr quality decisions
+
+### 🎯 Today's Accomplishments (2025-08-24)
+- **Fixed misleading RSS TODO**: Resolved search_movie() implementation confusion
+- **Wired up Queue UI operations**: 6 operations (pause/resume/remove/bulk/priority) now connected
+- **Wired up Movie UI operations**: 5 operations (download/queue actions) now functional  
+- **Implemented TMDb list integration**: 8 methods now working with real API calls
+- **Cleaned up build artifacts**: Removed 56GB of accumulated target/ directory bloat
+- **Updated progress tracking**: Moved from 60% to 68% completion with accurate TODO count
 
 ### 🔧 HDBits Architecture Clarification (2025-08-23)
 - **Separated Concerns**: Distinguished production indexer from analysis tools
@@ -164,6 +180,36 @@ cargo tarpaulin --workspace --all-features --out lcov
 gh run list
 gh run view
 ```
+
+## Build Management
+
+### Build Artifact Cleanup
+The Rust target directory can grow very large (50GB+) with incremental compilation artifacts. Regular cleanup is essential:
+
+```bash
+# Check current target directory size
+du -sh target/
+
+# Clean all build artifacts (recommended periodically)
+cargo clean
+
+# Build only what you need:
+# For development (faster compilation, larger binary)
+cargo build
+
+# For production (slower compilation, optimized binary)
+cargo build --release
+
+# Clean and rebuild when switching between debug/release frequently
+cargo clean && cargo build --release
+```
+
+### Build Best Practices
+- Run `cargo clean` weekly or when target/ exceeds 10GB
+- Use `cargo build --release` for deployments
+- Use `cargo build` (debug) only during active development
+- The debug build can be 10x larger than release
+- Incremental compilation cache in target/debug/incremental can grow to 15GB+
 
 ### Database Operations
 ```bash

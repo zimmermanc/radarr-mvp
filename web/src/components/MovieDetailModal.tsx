@@ -10,7 +10,7 @@ import {
   TagIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/solid';
-import type { Movie } from '../types/api';
+import type { Movie, QueueItem, SearchRelease } from '../types/api';
 import { radarrApi, isApiError } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { LoadingButton } from '../components/ui/Loading';
@@ -30,8 +30,9 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
   onUpdate
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [downloadQueue] = useState<any[]>([]);
+  const [downloadQueue, setDownloadQueue] = useState<QueueItem[]>([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(false);
   const { success, error: toastError } = useToast();
 
   useEffect(() => {
@@ -39,15 +40,25 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
       // Load download queue for this movie
       loadDownloadQueue();
     }
-  }, [isOpen, movie.id]);
+  }, [isOpen, movie.id]); // loadDownloadQueue is stable as it doesn't depend on external variables
 
   const loadDownloadQueue = async () => {
     try {
-      // TODO: Implement queue API endpoint
-      // const response = await radarrApi.getMovieQueue(movie.id);
-      // setDownloadQueue(response.data);
-    } catch (err) {
-      console.error('Failed to load download queue:', err);
+      setQueueLoading(true);
+      const response = await radarrApi.getQueue();
+      
+      if (isApiError(response)) {
+        console.error('Failed to load download queue:', response.error);
+        return;
+      }
+
+      // Filter queue items for this specific movie
+      const movieQueueItems = response.data.items.filter(item => item.movieId === movie.id);
+      setDownloadQueue(movieQueueItems);
+    } catch (error) {
+      console.error('Failed to load download queue:', error);
+    } finally {
+      setQueueLoading(false);
     }
   };
 
@@ -79,10 +90,27 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
     setShowSearchModal(true);
   };
 
-  const handleDownloadRelease = (release: any) => {
-    success('Download Started', `Downloading: ${release.title}`);
-    // TODO: Implement actual download logic
-    loadDownloadQueue();
+  const handleDownloadRelease = async (release: SearchRelease) => {
+    try {
+      const response = await radarrApi.downloadRelease({
+        movieId: movie.id,
+        releaseId: release.id,
+        indexerId: release.indexerId,
+        downloadUrl: release.downloadUrl || `mock://download/${release.id}`
+      });
+
+      if (isApiError(response)) {
+        toastError('Download Failed', response.error.message);
+        return;
+      }
+
+      success('Download Started', `Downloading: ${release.title}`);
+      // Reload queue to show new download
+      loadDownloadQueue();
+    } catch (err) {
+      console.error('Failed to start download:', err);
+      toastError('Download Error', 'Failed to start download');
+    }
   };
 
   if (!isOpen) return null;
@@ -313,38 +341,57 @@ export const MovieDetailModal: React.FC<MovieDetailModalProps> = ({
                 )}
 
                 {/* Download Queue */}
-                {downloadQueue.length > 0 && (
+                {queueLoading ? (
                   <div>
                     <h3 className="text-lg font-semibold text-secondary-900 dark:text-white mb-2">
                       Download Queue
                     </h3>
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-16 bg-secondary-200 dark:bg-secondary-700 rounded"></div>
+                    </div>
+                  </div>
+                ) : downloadQueue.length > 0 ? (
+                  <div>
+                    <h3 className="text-lg font-semibold text-secondary-900 dark:text-white mb-2">
+                      Download Queue ({downloadQueue.length})
+                    </h3>
                     <div className="space-y-2">
-                      {downloadQueue.map((item, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-secondary-50 dark:bg-secondary-700 rounded">
+                      {downloadQueue.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-secondary-50 dark:bg-secondary-700 rounded">
                           <div className="flex items-center">
                             <ArrowDownTrayIcon className="h-5 w-5 text-primary-600 mr-3" />
                             <div>
                               <p className="text-sm font-medium text-secondary-900 dark:text-white">
-                                {item.title}
+                                {item.movieTitle}
                               </p>
                               <p className="text-xs text-secondary-500 dark:text-secondary-400">
-                                {item.size} • {item.quality}
+                                {(item.size / (1024 * 1024 * 1024)).toFixed(2)} GB • {item.quality} • {item.indexer}
+                              </p>
+                              <p className="text-xs text-secondary-500 dark:text-secondary-400">
+                                Status: {item.status}
                               </p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-medium text-secondary-900 dark:text-white">
-                              {item.progress}%
+                              {item.progress.toFixed(1)}%
                             </p>
-                            <p className="text-xs text-secondary-500 dark:text-secondary-400">
-                              {item.eta}
-                            </p>
+                            {item.timeleft && (
+                              <p className="text-xs text-secondary-500 dark:text-secondary-400">
+                                {item.timeleft}
+                              </p>
+                            )}
+                            {item.errorMessage && (
+                              <p className="text-xs text-error-500">
+                                Error: {item.errorMessage}
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>

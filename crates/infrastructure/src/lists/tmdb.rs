@@ -24,7 +24,7 @@ impl TmdbListClient {
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -40,7 +40,7 @@ impl TmdbListClient {
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -52,11 +52,11 @@ impl TmdbListClient {
     pub async fn get_now_playing(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb now playing movies");
         
-        let movies = self.get_now_playing_from_api(1)
+        let movies = self.tmdb_client.get_now_playing(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -68,11 +68,11 @@ impl TmdbListClient {
     pub async fn get_top_rated(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb top rated movies");
         
-        let movies = self.get_top_rated_from_api(1)
+        let movies = self.tmdb_client.get_top_rated(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -84,11 +84,11 @@ impl TmdbListClient {
     pub async fn get_collection(&self, collection_id: i32) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb collection {}", collection_id);
         
-        let movies = self.get_collection_from_api(collection_id)
+        let movies = self.tmdb_client.get_collection(collection_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -100,11 +100,11 @@ impl TmdbListClient {
     pub async fn get_person_movies(&self, person_id: i32) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies for person {}", person_id);
         
-        let movies = self.get_person_movies_from_api(person_id)
+        let movies = self.tmdb_client.get_person_movies(person_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -116,11 +116,11 @@ impl TmdbListClient {
     pub async fn get_keyword_movies(&self, keyword_id: i32) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies for keyword {}", keyword_id);
         
-        let movies = self.get_keyword_movies_from_api(keyword_id)
+        let movies = self.tmdb_client.get_keyword_movies(keyword_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             
@@ -132,11 +132,11 @@ impl TmdbListClient {
     pub async fn get_list(&self, list_id: &str) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb list {}", list_id);
         
-        let movies = self.get_list_from_api(list_id)
+        let movies = self.tmdb_client.get_list(list_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
         
-        let items = movies.into_iter()
+        let items: Vec<ListItem> = movies.into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
             

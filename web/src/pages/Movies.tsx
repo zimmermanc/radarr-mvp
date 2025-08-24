@@ -37,7 +37,7 @@ export const Movies: React.FC = () => {
   const [selectedMovies, setSelectedMovies] = useState<Set<number>>(new Set());
   const [showBulkActions, setShowBulkActions] = useState(false);
 
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
   const handleApiError = useApiErrorHandler();
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export const Movies: React.FC = () => {
 
   // Removed toggleSort function as it's not being used in the current implementation
 
-  const updateFilter = (key: keyof MovieFilters, value: any) => {
+  const updateFilter = (key: keyof MovieFilters, value: MovieFilters[keyof MovieFilters]) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
@@ -131,13 +131,30 @@ export const Movies: React.FC = () => {
 
   const handleBulkMonitor = async (monitored: boolean) => {
     try {
-      // TODO: Implement bulk update API
-      success(`Bulk Update`, `${selectedMovies.size} movies ${monitored ? 'monitored' : 'unmonitored'}`);
+      const movieIds = Array.from(selectedMovies);
+      const response = await radarrApi.bulkUpdateMovies({
+        movieIds,
+        updates: { monitored }
+      });
+
+      if (isApiError(response)) {
+        toastError('Bulk Update Failed', response.error.message);
+        return;
+      }
+
+      success(
+        `Bulk Update Complete`, 
+        `${selectedMovies.size} movie${selectedMovies.size !== 1 ? 's' : ''} ${monitored ? 'monitored' : 'unmonitored'}`
+      );
+      
       setSelectedMovies(new Set());
       setShowBulkActions(false);
+      
+      // Reload movies to reflect changes
       loadMovies();
     } catch (err) {
       console.error('Failed to update movies:', err);
+      toastError('Error', 'Failed to update movies');
     }
   };
 

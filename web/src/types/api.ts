@@ -152,6 +152,49 @@ export interface SearchMovieRequest {
   offset?: number;
 }
 
+export interface SearchRelease {
+  id: string;
+  title: string;
+  indexer: string;
+  indexerId: string;
+  size: number;
+  quality: string;
+  resolution?: string;
+  source?: string;
+  codec?: string;
+  seeders: number;
+  leechers: number;
+  sceneGroup?: string;
+  releaseGroup?: string;
+  languages?: string[];
+  publishDate: string;
+  downloadUrl?: string;
+  infoUrl?: string;
+  score?: number;
+  matchType?: 'exact' | 'partial' | 'fuzzy';
+}
+
+export interface SearchReleasesRequest {
+  movieId: number;
+  indexers?: string[];
+}
+
+export interface DownloadReleaseRequest {
+  movieId: number;
+  releaseId: string;
+  indexerId: string;
+  downloadUrl: string;
+}
+
+export interface BulkUpdateRequest {
+  movieIds: number[];
+  updates: {
+    monitored?: boolean;
+    qualityProfileId?: number;
+    tags?: string[];
+  };
+}
+
 // Utility Types
 export type ApiResponse<T> = {
   data: T;

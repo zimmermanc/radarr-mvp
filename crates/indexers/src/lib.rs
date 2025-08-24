@@ -15,10 +15,10 @@ pub mod service_health;
 pub mod tests;
 
 // Re-export common types
+pub use hdbits::{HDBitsClient, HDBitsConfig, MovieSearchRequest};
 pub use models::*;
 pub use prowlarr::{IndexerClient, ProwlarrClient, ProwlarrConfig, ProwlarrConfigBuilder};
-pub use hdbits::{HDBitsClient, HDBitsConfig, MovieSearchRequest};
-pub use service_health::{ServiceHealth, HealthStatus, ServiceMetrics};
+pub use service_health::{HealthStatus, ServiceHealth, ServiceMetrics};
 // pub use multi_indexer::{MultiIndexerService, MultiIndexerConfig, IndexerSearchResult};
 
 #[cfg(test)]

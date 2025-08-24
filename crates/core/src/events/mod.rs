@@ -3,8 +3,8 @@
 //! This module provides a simple event bus using tokio broadcast channels
 //! to enable loose coupling between components like downloads, imports, and notifications.
 
-use crate::{Result, RadarrError};
-use crate::correlation::{CorrelationId, CorrelationContext, current_correlation_id};
+use crate::correlation::{current_correlation_id, CorrelationContext, CorrelationId};
+use crate::{RadarrError, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -19,16 +19,16 @@ const EVENT_BUFFER_SIZE: usize = 1000;
 pub struct EventEnvelope {
     /// Unique ID for this event instance
     pub event_id: Uuid,
-    
+
     /// Correlation ID for tracking across services
     pub correlation_id: CorrelationId,
-    
+
     /// Timestamp when the event was created
     pub timestamp: chrono::DateTime<chrono::Utc>,
-    
+
     /// The actual event data
     pub event: SystemEvent,
-    
+
     /// Optional source component/service
     pub source: Option<String>,
 }
@@ -44,7 +44,7 @@ impl EventEnvelope {
             source: None,
         }
     }
-    
+
     /// Create a new event envelope with a specific correlation ID
     pub fn with_correlation(event: SystemEvent, correlation_id: CorrelationId) -> Self {
         Self {
@@ -55,13 +55,13 @@ impl EventEnvelope {
             source: None,
         }
     }
-    
+
     /// Set the source component
     pub fn with_source(mut self, source: impl Into<String>) -> Self {
         self.source = Some(source.into());
         self
     }
-    
+
     /// Get a description including correlation info
     pub fn description(&self) -> String {
         format!(
@@ -111,10 +111,7 @@ pub enum SystemEvent {
         error: String,
     },
     /// Import process started
-    ImportTriggered {
-        movie_id: Uuid,
-        source_path: String,
-    },
+    ImportTriggered { movie_id: Uuid, source_path: String },
     /// Import completed successfully
     ImportComplete {
         movie_id: Uuid,
@@ -133,10 +130,7 @@ pub enum SystemEvent {
         changes: Vec<String>,
     },
     /// Quality profile changed
-    QualityProfileUpdated {
-        profile_id: Uuid,
-        name: String,
-    },
+    QualityProfileUpdated { profile_id: Uuid, name: String },
     /// System health event
     SystemHealth {
         component: String,
@@ -181,20 +175,51 @@ impl SystemEvent {
     pub fn description(&self) -> String {
         match self {
             SystemEvent::DownloadQueued { title, .. } => format!("Download queued: {}", title),
-            SystemEvent::DownloadStarted { client_id, .. } => format!("Download started: {}", client_id),
-            SystemEvent::DownloadProgress { progress, .. } => format!("Download progress: {:.1}%", progress * 100.0),
-            SystemEvent::DownloadComplete { file_path, .. } => format!("Download complete: {}", file_path),
+            SystemEvent::DownloadStarted { client_id, .. } => {
+                format!("Download started: {}", client_id)
+            }
+            SystemEvent::DownloadProgress { progress, .. } => {
+                format!("Download progress: {:.1}%", progress * 100.0)
+            }
+            SystemEvent::DownloadComplete { file_path, .. } => {
+                format!("Download complete: {}", file_path)
+            }
             SystemEvent::DownloadFailed { error, .. } => format!("Download failed: {}", error),
-            SystemEvent::ImportTriggered { source_path, .. } => format!("Import triggered: {}", source_path),
-            SystemEvent::ImportComplete { destination_path, file_count, .. } => {
-                format!("Import complete: {} files to {}", file_count, destination_path)
+            SystemEvent::ImportTriggered { source_path, .. } => {
+                format!("Import triggered: {}", source_path)
+            }
+            SystemEvent::ImportComplete {
+                destination_path,
+                file_count,
+                ..
+            } => {
+                format!(
+                    "Import complete: {} files to {}",
+                    file_count, destination_path
+                )
             }
             SystemEvent::ImportFailed { error, .. } => format!("Import failed: {}", error),
-            SystemEvent::MovieUpdated { changes, .. } => format!("Movie updated: {}", changes.join(", ")),
-            SystemEvent::QualityProfileUpdated { name, .. } => format!("Quality profile updated: {}", name),
-            SystemEvent::SystemHealth { component, status, .. } => format!("Health: {} is {}", component, status),
-            SystemEvent::ProgressUpdate { percentage, message, .. } => format!("Progress: {:.1}% - {}", percentage, message),
-            SystemEvent::OperationComplete { success, message, .. } => format!("Operation {}: {}", if *success { "completed" } else { "failed" }, message),
+            SystemEvent::MovieUpdated { changes, .. } => {
+                format!("Movie updated: {}", changes.join(", "))
+            }
+            SystemEvent::QualityProfileUpdated { name, .. } => {
+                format!("Quality profile updated: {}", name)
+            }
+            SystemEvent::SystemHealth {
+                component, status, ..
+            } => format!("Health: {} is {}", component, status),
+            SystemEvent::ProgressUpdate {
+                percentage,
+                message,
+                ..
+            } => format!("Progress: {:.1}% - {}", percentage, message),
+            SystemEvent::OperationComplete {
+                success, message, ..
+            } => format!(
+                "Operation {}: {}",
+                if *success { "completed" } else { "failed" },
+                message
+            ),
         }
     }
 }
@@ -217,17 +242,21 @@ impl EventBus {
         let envelope = EventEnvelope::new(event);
         self.publish_envelope(envelope).await
     }
-    
+
     /// Publish an event with a specific correlation ID
-    pub async fn publish_with_correlation(&self, event: SystemEvent, correlation_id: CorrelationId) -> Result<()> {
+    pub async fn publish_with_correlation(
+        &self,
+        event: SystemEvent,
+        correlation_id: CorrelationId,
+    ) -> Result<()> {
         let envelope = EventEnvelope::with_correlation(event, correlation_id);
         self.publish_envelope(envelope).await
     }
-    
+
     /// Publish an event envelope
     pub async fn publish_envelope(&self, envelope: EventEnvelope) -> Result<()> {
         debug!("Publishing event: {}", envelope.description());
-        
+
         match self.sender.send(envelope.clone()) {
             Ok(receiver_count) => {
                 if receiver_count > 0 {
@@ -289,12 +318,10 @@ impl EventSubscriber {
                 }
                 Ok(envelope)
             }
-            Err(broadcast::error::RecvError::Closed) => {
-                Err(RadarrError::ExternalServiceError {
-                    service: "event_bus".to_string(),
-                    error: "Event bus channel closed".to_string(),
-                })
-            }
+            Err(broadcast::error::RecvError::Closed) => Err(RadarrError::ExternalServiceError {
+                service: "event_bus".to_string(),
+                error: "Event bus channel closed".to_string(),
+            }),
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
                 warn!("Event subscriber lagged, skipped {} events", skipped);
                 // Continue receiving - use Box::pin to avoid infinite future
@@ -302,7 +329,7 @@ impl EventSubscriber {
             }
         }
     }
-    
+
     /// Receive just the event (for backward compatibility)
     pub async fn recv_event(&mut self) -> Result<SystemEvent> {
         let envelope = self.recv().await?;
@@ -317,19 +344,17 @@ impl EventSubscriber {
                 Ok(Some(envelope))
             }
             Err(broadcast::error::TryRecvError::Empty) => Ok(None),
-            Err(broadcast::error::TryRecvError::Closed) => {
-                Err(RadarrError::ExternalServiceError {
-                    service: "event_bus".to_string(),
-                    error: "Event bus channel closed".to_string(),
-                })
-            }
+            Err(broadcast::error::TryRecvError::Closed) => Err(RadarrError::ExternalServiceError {
+                service: "event_bus".to_string(),
+                error: "Event bus channel closed".to_string(),
+            }),
             Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
                 warn!("Event subscriber lagged, skipped {} events", skipped);
                 Ok(None)
             }
         }
     }
-    
+
     /// Try to receive just the event without blocking (for backward compatibility)
     pub fn try_recv_event(&mut self) -> Result<Option<SystemEvent>> {
         Ok(self.try_recv()?.map(|envelope| envelope.event))
@@ -373,27 +398,34 @@ impl EventProcessor {
 
     /// Start processing events (runs until the event bus is closed)
     pub async fn run(mut self) -> Result<()> {
-        info!("Starting event processor with {} handlers", self.handlers.len());
+        info!(
+            "Starting event processor with {} handlers",
+            self.handlers.len()
+        );
 
         loop {
             match self.subscriber.recv().await {
                 Ok(envelope) => {
-                    debug!("Processing event: {} with correlation_id={}", 
-                           envelope.description(), 
-                           envelope.correlation_id);
-                    
+                    debug!(
+                        "Processing event: {} with correlation_id={}",
+                        envelope.description(),
+                        envelope.correlation_id
+                    );
+
                     // Set correlation context for this processing
                     let ctx = CorrelationContext::new("event_processor");
                     crate::correlation::set_current_context(ctx);
-                    
+
                     // Process event with all interested handlers
                     for handler in &self.handlers {
                         if handler.should_handle(&envelope) {
                             if let Err(e) = handler.handle_event(&envelope).await {
-                                error!("Handler failed to process event {} with correlation_id={}: {}", 
-                                       envelope.description(), 
-                                       envelope.correlation_id, 
-                                       e);
+                                error!(
+                                    "Handler failed to process event {} with correlation_id={}: {}",
+                                    envelope.description(),
+                                    envelope.correlation_id,
+                                    e
+                                );
                                 // Continue with other handlers
                             }
                         }
@@ -446,15 +478,18 @@ mod tests {
 
         // Receive event
         let envelope = subscriber.recv().await.unwrap();
-        
+
         if let SystemEvent::DownloadQueued { title, .. } = envelope.event {
             assert_eq!(title, "Test Movie");
         } else {
             panic!("Wrong event type received");
         }
-        
+
         // Check that correlation ID was set
-        assert_ne!(envelope.correlation_id, CorrelationId::from_uuid(Uuid::nil()));
+        assert_ne!(
+            envelope.correlation_id,
+            CorrelationId::from_uuid(Uuid::nil())
+        );
     }
 
     #[tokio::test]
@@ -474,12 +509,18 @@ mod tests {
         event_bus.publish(event.clone()).await.unwrap();
 
         // Both subscribers should receive the event
-        let recv1 = timeout(Duration::from_millis(100), sub1.recv()).await.unwrap().unwrap();
-        let recv2 = timeout(Duration::from_millis(100), sub2.recv()).await.unwrap().unwrap();
+        let recv1 = timeout(Duration::from_millis(100), sub1.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let recv2 = timeout(Duration::from_millis(100), sub2.recv())
+            .await
+            .unwrap()
+            .unwrap();
 
         assert!(matches!(recv1.event, SystemEvent::SystemHealth { .. }));
         assert!(matches!(recv2.event, SystemEvent::SystemHealth { .. }));
-        
+
         // Both should have the same correlation ID
         assert_eq!(recv1.correlation_id, recv2.correlation_id);
     }
@@ -488,18 +529,15 @@ mod tests {
     async fn test_event_processor() {
         let event_bus = EventBus::new();
         let counter = Arc::new(AtomicUsize::new(0));
-        
+
         let handler = Arc::new(TestHandler {
             counter: counter.clone(),
         });
 
-        let processor = EventProcessor::new(&event_bus)
-            .add_handler(handler);
+        let processor = EventProcessor::new(&event_bus).add_handler(handler);
 
         // Start processor in background
-        let processor_handle = tokio::spawn(async move {
-            processor.run().await
-        });
+        let processor_handle = tokio::spawn(async move { processor.run().await });
 
         // Give processor time to start
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -521,7 +559,7 @@ mod tests {
 
         // Stop the processor by dropping the event bus
         drop(event_bus);
-        
+
         // Processor should shut down
         let _ = timeout(Duration::from_millis(100), processor_handle).await;
     }
@@ -529,7 +567,7 @@ mod tests {
     #[test]
     fn test_event_movie_id_extraction() {
         let movie_id = Uuid::new_v4();
-        
+
         let event = SystemEvent::DownloadComplete {
             movie_id,
             queue_item_id: Uuid::new_v4(),
@@ -551,39 +589,42 @@ mod tests {
     async fn test_correlation_id_propagation() {
         let event_bus = EventBus::new();
         let mut subscriber = event_bus.subscribe();
-        
+
         // Set a specific correlation ID
         let correlation_id = CorrelationId::new();
         let event = SystemEvent::ImportTriggered {
             movie_id: Uuid::new_v4(),
             source_path: "/downloads/movie.mkv".to_string(),
         };
-        
+
         // Publish with specific correlation ID
-        event_bus.publish_with_correlation(event, correlation_id).await.unwrap();
-        
+        event_bus
+            .publish_with_correlation(event, correlation_id)
+            .await
+            .unwrap();
+
         // Receive and verify
         let envelope = subscriber.recv().await.unwrap();
         assert_eq!(envelope.correlation_id, correlation_id);
-        
+
         // Publish another event without setting correlation ID
         let event2 = SystemEvent::ImportComplete {
             movie_id: Uuid::new_v4(),
             destination_path: "/media/movies/movie.mkv".to_string(),
             file_count: 1,
         };
-        
+
         // Set correlation context to simulate being in the same operation
         crate::correlation::set_current_context(
-            CorrelationContext::new("test").with_session("test_session")
+            CorrelationContext::new("test").with_session("test_session"),
         );
-        
+
         event_bus.publish(event2).await.unwrap();
-        
+
         let envelope2 = subscriber.recv().await.unwrap();
         // Should have a different correlation ID since we didn't propagate it
         assert_ne!(envelope2.correlation_id, correlation_id);
-        
+
         crate::correlation::clear_context();
     }
 

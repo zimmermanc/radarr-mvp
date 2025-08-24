@@ -61,10 +61,10 @@ pub enum SyncStatus {
 pub trait ListParser: Send + Sync {
     /// Parse a list and return items
     async fn parse_list(&self, list_url: &str) -> Result<Vec<ListItem>, ListParseError>;
-    
+
     /// Get the source type
     fn source_type(&self) -> ListSource;
-    
+
     /// Validate a list URL
     fn validate_url(&self, url: &str) -> bool;
 }
@@ -73,22 +73,22 @@ pub trait ListParser: Send + Sync {
 pub enum ListParseError {
     #[error("Invalid list URL: {0}")]
     InvalidUrl(String),
-    
+
     #[error("HTTP request failed: {0}")]
     HttpError(#[from] reqwest::Error),
-    
+
     #[error("Failed to parse response: {0}")]
     ParseError(String),
-    
+
     #[error("Rate limit exceeded")]
     RateLimited,
-    
+
     #[error("Authentication required")]
     AuthRequired,
-    
+
     #[error("List not found")]
     NotFound,
-    
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

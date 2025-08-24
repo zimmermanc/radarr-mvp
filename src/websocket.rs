@@ -5,17 +5,17 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Extension, Query,
     },
-    response::Response,
     http::StatusCode,
+    response::Response,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use radarr_core::{
     events::{EventBus, SystemEvent},
-    progress::{ProgressTracker, OperationType},
+    progress::{OperationType, ProgressTracker},
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
@@ -24,13 +24,9 @@ use tracing::{debug, error, info, warn};
 #[serde(tag = "type", content = "data")]
 pub enum WsMessage {
     /// Subscribe to specific operation types
-    Subscribe {
-        operations: Vec<OperationType>,
-    },
+    Subscribe { operations: Vec<OperationType> },
     /// Unsubscribe from operation types
-    Unsubscribe {
-        operations: Vec<OperationType>,
-    },
+    Unsubscribe { operations: Vec<OperationType> },
     /// Request current progress for all operations
     GetProgress,
     /// Ping to keep connection alive
@@ -60,13 +56,9 @@ pub enum WsResponse {
         message: String,
     },
     /// System event
-    Event {
-        event: SystemEvent,
-    },
+    Event { event: SystemEvent },
     /// Error message
-    Error {
-        message: String,
-    },
+    Error { message: String },
     /// Pong response
     Pong,
     /// Current progress snapshot
@@ -94,12 +86,11 @@ pub async fn websocket_handler(
     Extension(state): Extension<Arc<WsState>>,
 ) -> Result<Response, StatusCode> {
     // Verify API key
-    let expected_api_key = std::env::var("RADARR_API_KEY")
-        .map_err(|_| {
-            error!("RADARR_API_KEY environment variable not set");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    
+    let expected_api_key = std::env::var("RADARR_API_KEY").map_err(|_| {
+        error!("RADARR_API_KEY environment variable not set");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     match params.apikey {
         Some(provided_key) if provided_key == expected_api_key => {
             info!("WebSocket client authenticated successfully");
@@ -119,26 +110,26 @@ pub async fn websocket_handler(
 /// Handle WebSocket connection
 async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
     let (mut sender, mut receiver) = socket.split();
-    
+
     // Subscribe to event bus
     let mut event_receiver = state.event_bus.subscribe();
-    
+
     // Track subscribed operation types
     let mut subscribed_operations: Vec<OperationType> = vec![
         OperationType::Download,
         OperationType::Import,
         OperationType::IndexerSearch,
     ]; // Default subscriptions
-    
+
     info!("WebSocket client connected");
-    
+
     // Send initial progress snapshot
     let operations = state.progress_tracker.get_active_operations().await;
     let snapshot = WsResponse::ProgressSnapshot { operations };
     if let Ok(msg) = serde_json::to_string(&snapshot) {
         let _ = sender.send(Message::Text(msg)).await;
     }
-    
+
     // Handle WebSocket communication in a single task
     loop {
         tokio::select! {
@@ -172,12 +163,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                     Ok(envelope) => {
                         // Convert event to WsResponse
                         let response = match &envelope.event {
-                            SystemEvent::ProgressUpdate { 
-                                operation_id, 
-                                operation_type, 
-                                percentage, 
-                                message, 
-                                eta_seconds 
+                            SystemEvent::ProgressUpdate {
+                                operation_id,
+                                operation_type,
+                                percentage,
+                                message,
+                                eta_seconds
                             } => {
                                 // Check if subscribed to this operation type
                                 if subscribed_operations.contains(operation_type) {
@@ -193,11 +184,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                                     None
                                 }
                             }
-                            SystemEvent::OperationComplete { 
-                                operation_id, 
-                                operation_type, 
-                                success, 
-                                message 
+                            SystemEvent::OperationComplete {
+                                operation_id,
+                                operation_type,
+                                success,
+                                message
                             } => {
                                 if subscribed_operations.contains(operation_type) {
                                     Some(WsResponse::Complete {
@@ -215,7 +206,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
                                 Some(WsResponse::Event { event: envelope.event.clone() })
                             }
                         };
-                        
+
                         // Send response if we have one
                         if let Some(response) = response {
                             if let Ok(msg) = serde_json::to_string(&response) {
@@ -232,7 +223,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WsState>) {
             }
         }
     }
-    
+
     info!("WebSocket handler shutting down");
 }
 
@@ -254,7 +245,10 @@ async fn handle_message(
         }
         WsMessage::Unsubscribe { operations } => {
             subscribed_operations.retain(|op| !operations.contains(op));
-            debug!("Unsubscribed from operations, now subscribed to: {:?}", subscribed_operations);
+            debug!(
+                "Unsubscribed from operations, now subscribed to: {:?}",
+                subscribed_operations
+            );
         }
         WsMessage::GetProgress => {
             let operations = state.progress_tracker.get_all_operations().await;

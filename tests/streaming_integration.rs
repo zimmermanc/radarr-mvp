@@ -10,7 +10,7 @@ use common::*;
 #[tokio::test]
 async fn test_trending_movies_endpoint() {
     let app = spawn_test_app().await;
-    
+
     // Test trending movies endpoint
     let response = app
         .client
@@ -20,9 +20,9 @@ async fn test_trending_movies_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["data"]["entries"].is_array());
     assert_eq!(body["data"]["window"], "day");
@@ -31,7 +31,7 @@ async fn test_trending_movies_endpoint() {
 #[tokio::test]
 async fn test_trending_tv_shows_endpoint() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/trending/tv", &app.address))
@@ -40,9 +40,9 @@ async fn test_trending_tv_shows_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["data"]["entries"].is_array());
     assert_eq!(body["data"]["window"], "week");
@@ -51,7 +51,7 @@ async fn test_trending_tv_shows_endpoint() {
 #[tokio::test]
 async fn test_availability_endpoint() {
     let app = spawn_test_app().await;
-    
+
     // Test with a known TMDB ID (e.g., The Matrix = 603)
     let response = app
         .client
@@ -61,9 +61,9 @@ async fn test_availability_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["data"]["tmdb_id"], 603);
     assert_eq!(body["data"]["region"], "US");
@@ -73,7 +73,7 @@ async fn test_availability_endpoint() {
 #[tokio::test]
 async fn test_coming_soon_endpoint() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/coming-soon/movie", &app.address))
@@ -82,9 +82,9 @@ async fn test_coming_soon_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["data"]["media_type"], "movie");
     assert_eq!(body["data"]["region"], "US");
@@ -94,7 +94,7 @@ async fn test_coming_soon_endpoint() {
 #[tokio::test]
 async fn test_providers_endpoint() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/providers", &app.address))
@@ -103,9 +103,9 @@ async fn test_providers_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["data"]["providers"].is_array());
     assert_eq!(body["data"]["region"], "US");
@@ -114,7 +114,7 @@ async fn test_providers_endpoint() {
 #[tokio::test]
 async fn test_cache_refresh_endpoint() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .post(&format!("{}/api/streaming/cache/refresh", &app.address))
@@ -122,7 +122,7 @@ async fn test_cache_refresh_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     // Should return OK or ACCEPTED
     assert!(
         response.status() == StatusCode::OK || response.status() == StatusCode::ACCEPTED,
@@ -134,7 +134,7 @@ async fn test_cache_refresh_endpoint() {
 #[tokio::test]
 async fn test_trakt_auth_init_endpoint() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .post(&format!("{}/api/streaming/trakt/auth/init", &app.address))
@@ -142,7 +142,7 @@ async fn test_trakt_auth_init_endpoint() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     // May return OK if Trakt is configured, or an error if not
     if response.status() == StatusCode::OK {
         let body: serde_json::Value = response.json().await.expect("Failed to parse response");
@@ -155,7 +155,7 @@ async fn test_trakt_auth_init_endpoint() {
 #[tokio::test]
 async fn test_invalid_media_type() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/trending/invalid", &app.address))
@@ -163,28 +163,28 @@ async fn test_invalid_media_type() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
 async fn test_missing_api_key() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/trending/movie", &app.address))
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn test_trending_with_source_filter() {
     let app = spawn_test_app().await;
-    
+
     let response = app
         .client
         .get(&format!("{}/api/streaming/trending/movie", &app.address))
@@ -193,9 +193,9 @@ async fn test_trending_with_source_filter() {
         .send()
         .await
         .expect("Failed to execute request");
-    
+
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["data"]["source"], "tmdb");
 }

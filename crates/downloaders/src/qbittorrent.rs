@@ -4,15 +4,18 @@
 //! It handles authentication, torrent management, and progress monitoring.
 
 use std::collections::HashMap;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
-use radarr_core::{Result, RadarrError, circuit_breaker::{CircuitBreaker, CircuitBreakerConfig}};
+use radarr_core::{
+    circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
+    RadarrError, Result,
+};
 use reqwest::Client;
-use url::Url;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
+use url::Url;
 
 /// Configuration for qBittorrent client
 #[derive(Debug, Clone)]
@@ -143,8 +146,8 @@ pub struct AppPreferences {
 impl QBittorrentClient {
     /// Create a new qBittorrent client
     pub fn new(config: QBittorrentConfig) -> Result<Self> {
-        let base_url = Url::parse(&config.base_url)
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let base_url =
+            Url::parse(&config.base_url).map_err(|e| RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Invalid base URL: {}", e),
             })?;
@@ -175,9 +178,12 @@ impl QBittorrentClient {
     }
 
     /// Create a new qBittorrent client with custom circuit breaker config
-    pub fn new_with_circuit_breaker(config: QBittorrentConfig, circuit_breaker_config: CircuitBreakerConfig) -> Result<Self> {
-        let base_url = Url::parse(&config.base_url)
-            .map_err(|e| RadarrError::ExternalServiceError {
+    pub fn new_with_circuit_breaker(
+        config: QBittorrentConfig,
+        circuit_breaker_config: CircuitBreakerConfig,
+    ) -> Result<Self> {
+        let base_url =
+            Url::parse(&config.base_url).map_err(|e| RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Invalid base URL: {}", e),
             })?;
@@ -206,14 +212,14 @@ impl QBittorrentClient {
         if !state.authenticated {
             return true;
         }
-        
+
         if let Some(last_auth) = state.last_auth_time {
             last_auth.elapsed() > Duration::from_secs(30 * 60) // 30 minutes
         } else {
             true
         }
     }
-    
+
     /// Ensure we have a valid authenticated session
     async fn ensure_authenticated(&self) -> Result<()> {
         if self.needs_authentication().await {
@@ -221,14 +227,15 @@ impl QBittorrentClient {
         }
         Ok(())
     }
-    
+
     /// Login to qBittorrent and establish session
     pub async fn login(&self) -> Result<()> {
-        let login_url = self.base_url.join("api/v2/auth/login")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let login_url = self.base_url.join("api/v2/auth/login").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct login URL: {}", e),
-            })?;
+            }
+        })?;
 
         let mut form = HashMap::new();
         form.insert("username", &self.config.username);
@@ -236,7 +243,8 @@ impl QBittorrentClient {
 
         debug!("Attempting login to qBittorrent at {}", login_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(login_url)
             .form(&form)
             .send()
@@ -247,11 +255,14 @@ impl QBittorrentClient {
             })?;
 
         if response.status().is_success() {
-            let response_text = response.text().await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to read login response: {}", e),
-                })?;
+            let response_text =
+                response
+                    .text()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to read login response: {}", e),
+                    })?;
 
             if response_text.contains("Fails") || response_text.contains("fail") {
                 return Err(RadarrError::ExternalServiceError {
@@ -266,7 +277,7 @@ impl QBittorrentClient {
                 state.authenticated = true;
                 state.last_auth_time = Some(std::time::Instant::now());
             }
-            
+
             info!("Successfully logged in to qBittorrent");
             Ok(())
         } else {
@@ -283,23 +294,23 @@ impl QBittorrentClient {
         state.authenticated = false;
         state.last_auth_time = None;
     }
-    
+
     /// Check if error indicates authentication failure
     fn is_auth_error(&self, error: &RadarrError) -> bool {
         let error_str = error.to_string().to_lowercase();
-        error_str.contains("forbidden") || 
-        error_str.contains("unauthorized") || 
-        error_str.contains("403") ||
-        error_str.contains("login")
+        error_str.contains("forbidden")
+            || error_str.contains("unauthorized")
+            || error_str.contains("403")
+            || error_str.contains("login")
     }
-    
+
     /// Extract torrent hash from magnet URL
     fn extract_hash_from_magnet(&self, magnet_url: &str) -> Option<String> {
         // Look for xt=urn:btih: in the magnet URL
         if let Some(start) = magnet_url.find("xt=urn:btih:") {
             let hash_start = start + "xt=urn:btih:".len();
             let hash_part = &magnet_url[hash_start..];
-            
+
             // Find the end of the hash (next & or end of string)
             if let Some(end) = hash_part.find('&') {
                 Some(hash_part[..end].to_uppercase())
@@ -310,12 +321,12 @@ impl QBittorrentClient {
             None
         }
     }
-    
+
     /// Add a torrent to qBittorrent with retry logic
     pub async fn add_torrent(&self, params: AddTorrentParams) -> Result<String> {
         // Ensure we're authenticated before attempting
         self.ensure_authenticated().await?;
-        
+
         // Try the operation, with one retry on auth failure
         match self.add_torrent_internal(&params).await {
             Ok(result) => Ok(result),
@@ -328,14 +339,15 @@ impl QBittorrentClient {
             Err(e) => Err(e),
         }
     }
-    
+
     /// Internal implementation of add_torrent
     async fn add_torrent_internal(&self, params: &AddTorrentParams) -> Result<String> {
-        let add_url = self.base_url.join("api/v2/torrents/add")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let add_url = self.base_url.join("api/v2/torrents/add").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct add torrent URL: {}", e),
-            })?;
+            }
+        })?;
 
         let mut form = reqwest::multipart::Form::new();
 
@@ -345,13 +357,16 @@ impl QBittorrentClient {
                 form = form.text("urls", url.clone());
             }
             TorrentData::File(data) => {
-                form = form.part("torrents", reqwest::multipart::Part::bytes(data.clone())
-                    .file_name("torrent.torrent")
-                    .mime_str("application/x-bittorrent")
-                    .map_err(|e| RadarrError::ExternalServiceError {
-                        service: "qBittorrent".to_string(),
-                        error: format!("Failed to set MIME type: {}", e),
-                    })?);
+                form = form.part(
+                    "torrents",
+                    reqwest::multipart::Part::bytes(data.clone())
+                        .file_name("torrent.torrent")
+                        .mime_str("application/x-bittorrent")
+                        .map_err(|e| RadarrError::ExternalServiceError {
+                            service: "qBittorrent".to_string(),
+                            error: format!("Failed to set MIME type: {}", e),
+                        })?,
+                );
             }
         }
 
@@ -371,7 +386,8 @@ impl QBittorrentClient {
 
         debug!("Adding torrent to qBittorrent");
 
-        let response = self.client
+        let response = self
+            .client
             .post(add_url)
             .multipart(form)
             .send()
@@ -382,15 +398,18 @@ impl QBittorrentClient {
             })?;
 
         if response.status().is_success() {
-            let response_text = response.text().await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to read add torrent response: {}", e),
-                })?;
+            let response_text =
+                response
+                    .text()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to read add torrent response: {}", e),
+                    })?;
 
             if response_text.to_lowercase().contains("ok") || response_text.is_empty() {
                 info!("Successfully added torrent to qBittorrent");
-                
+
                 // qBittorrent doesn't return the hash directly, so we need to extract it
                 // For magnet links, we can extract the hash from the magnet URL
                 match &params.torrent_data {
@@ -405,7 +424,13 @@ impl QBittorrentClient {
                         // For torrent files, we'll use a hash of the file content
                         Ok(format!("file_{:x}", md5::compute(data)))
                     }
-                    _ => Ok(format!("unknown_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())),
+                    _ => Ok(format!(
+                        "unknown_{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                    )),
                 }
             } else {
                 Err(RadarrError::ExternalServiceError {
@@ -425,7 +450,7 @@ impl QBittorrentClient {
     pub async fn get_torrents(&self) -> Result<Vec<TorrentInfo>> {
         // Ensure we're authenticated before attempting
         self.ensure_authenticated().await?;
-        
+
         // Try the operation, with one retry on auth failure
         match self.get_torrents_internal().await {
             Ok(result) => Ok(result),
@@ -438,32 +463,34 @@ impl QBittorrentClient {
             Err(e) => Err(e),
         }
     }
-    
+
     /// Internal implementation of get_torrents
     async fn get_torrents_internal(&self) -> Result<Vec<TorrentInfo>> {
-        let torrents_url = self.base_url.join("api/v2/torrents/info")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let torrents_url = self.base_url.join("api/v2/torrents/info").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct torrents URL: {}", e),
-            })?;
+            }
+        })?;
 
         debug!("Fetching torrent list from qBittorrent");
 
-        let response = self.client
-            .get(torrents_url)
-            .send()
-            .await
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let response = self.client.get(torrents_url).send().await.map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Get torrents request failed: {}", e),
-            })?;
+            }
+        })?;
 
         if response.status().is_success() {
-            let torrents: Vec<TorrentInfo> = response.json().await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to parse torrents response: {}", e),
-                })?;
+            let torrents: Vec<TorrentInfo> =
+                response
+                    .json()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to parse torrents response: {}", e),
+                    })?;
 
             debug!("Retrieved {} torrents from qBittorrent", torrents.len());
             Ok(torrents)
@@ -483,11 +510,12 @@ impl QBittorrentClient {
 
     /// Delete a torrent from qBittorrent
     pub async fn delete_torrent(&self, hash: &str, delete_files: bool) -> Result<()> {
-        let delete_url = self.base_url.join("api/v2/torrents/delete")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let delete_url = self.base_url.join("api/v2/torrents/delete").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct delete URL: {}", e),
-            })?;
+            }
+        })?;
 
         let mut form = HashMap::new();
         form.insert("hashes", hash);
@@ -495,7 +523,8 @@ impl QBittorrentClient {
 
         debug!("Deleting torrent {} from qBittorrent", hash);
 
-        let response = self.client
+        let response = self
+            .client
             .post(delete_url)
             .form(&form)
             .send()
@@ -518,16 +547,18 @@ impl QBittorrentClient {
 
     /// Pause a torrent
     pub async fn pause_torrent(&self, hash: &str) -> Result<()> {
-        let pause_url = self.base_url.join("api/v2/torrents/pause")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let pause_url = self.base_url.join("api/v2/torrents/pause").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct pause URL: {}", e),
-            })?;
+            }
+        })?;
 
         let mut form = HashMap::new();
         form.insert("hashes", hash);
 
-        let response = self.client
+        let response = self
+            .client
             .post(pause_url)
             .form(&form)
             .send()
@@ -550,16 +581,18 @@ impl QBittorrentClient {
 
     /// Resume a torrent
     pub async fn resume_torrent(&self, hash: &str) -> Result<()> {
-        let resume_url = self.base_url.join("api/v2/torrents/resume")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let resume_url = self.base_url.join("api/v2/torrents/resume").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct resume URL: {}", e),
-            })?;
+            }
+        })?;
 
         let mut form = HashMap::new();
         form.insert("hashes", hash);
 
-        let response = self.client
+        let response = self
+            .client
             .post(resume_url)
             .form(&form)
             .send()
@@ -582,27 +615,29 @@ impl QBittorrentClient {
 
     /// Get application preferences
     pub async fn get_preferences(&self) -> Result<AppPreferences> {
-        let prefs_url = self.base_url.join("api/v2/app/preferences")
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let prefs_url = self.base_url.join("api/v2/app/preferences").map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Failed to construct preferences URL: {}", e),
-            })?;
+            }
+        })?;
 
-        let response = self.client
-            .get(prefs_url)
-            .send()
-            .await
-            .map_err(|e| RadarrError::ExternalServiceError {
+        let response = self.client.get(prefs_url).send().await.map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "qBittorrent".to_string(),
                 error: format!("Get preferences request failed: {}", e),
-            })?;
+            }
+        })?;
 
         if response.status().is_success() {
-            let preferences: AppPreferences = response.json().await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to parse preferences response: {}", e),
-                })?;
+            let preferences: AppPreferences =
+                response
+                    .json()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to parse preferences response: {}", e),
+                    })?;
 
             debug!("Retrieved qBittorrent preferences");
             Ok(preferences)
@@ -617,81 +652,89 @@ impl QBittorrentClient {
     /// Check if the client can connect to qBittorrent
     pub async fn test_connection(&self) -> Result<()> {
         debug!("Testing connection to qBittorrent");
-        
+
         let base_url_clone = self.base_url.clone();
         let client_clone = self.client.clone();
         let username_clone = self.config.username.clone();
         let password_clone = self.config.password.clone();
-        
+
         // Wrap the connection test in circuit breaker
-        self.circuit_breaker.call(async move {
-            // Try to login first
-            let login_url = base_url_clone.join("api/v2/auth/login")
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to construct login URL: {}", e),
+        self.circuit_breaker
+            .call(async move {
+                // Try to login first
+                let login_url = base_url_clone.join("api/v2/auth/login").map_err(|e| {
+                    RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to construct login URL: {}", e),
+                    }
                 })?;
 
-            let mut form = HashMap::new();
-            form.insert("username", &username_clone);
-            form.insert("password", &password_clone);
+                let mut form = HashMap::new();
+                form.insert("username", &username_clone);
+                form.insert("password", &password_clone);
 
-            let response = client_clone
-                .post(login_url)
-                .form(&form)
-                .send()
-                .await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Login request failed: {}", e),
+                let response = client_clone
+                    .post(login_url)
+                    .form(&form)
+                    .send()
+                    .await
+                    .map_err(|e| RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Login request failed: {}", e),
+                    })?;
+
+                if !response.status().is_success() {
+                    return Err(RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Login failed with status: {}", response.status()),
+                    });
+                }
+
+                let response_text =
+                    response
+                        .text()
+                        .await
+                        .map_err(|e| RadarrError::ExternalServiceError {
+                            service: "qBittorrent".to_string(),
+                            error: format!("Failed to read login response: {}", e),
+                        })?;
+
+                if response_text.contains("Fails") || response_text.contains("fail") {
+                    return Err(RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: "Authentication failed - invalid credentials".to_string(),
+                    });
+                }
+
+                // Test getting preferences
+                let prefs_url = base_url_clone.join("api/v2/app/preferences").map_err(|e| {
+                    RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Failed to construct preferences URL: {}", e),
+                    }
                 })?;
 
-            if !response.status().is_success() {
-                return Err(RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Login failed with status: {}", response.status()),
-                });
-            }
-
-            let response_text = response.text().await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to read login response: {}", e),
+                let prefs_response = client_clone.get(prefs_url).send().await.map_err(|e| {
+                    RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!("Get preferences request failed: {}", e),
+                    }
                 })?;
 
-            if response_text.contains("Fails") || response_text.contains("fail") {
-                return Err(RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: "Authentication failed - invalid credentials".to_string(),
-                });
-            }
-            
-            // Test getting preferences
-            let prefs_url = base_url_clone.join("api/v2/app/preferences")
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Failed to construct preferences URL: {}", e),
-                })?;
+                if !prefs_response.status().is_success() {
+                    return Err(RadarrError::ExternalServiceError {
+                        service: "qBittorrent".to_string(),
+                        error: format!(
+                            "Get preferences failed with status: {}",
+                            prefs_response.status()
+                        ),
+                    });
+                }
 
-            let prefs_response = client_clone
-                .get(prefs_url)
-                .send()
-                .await
-                .map_err(|e| RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Get preferences request failed: {}", e),
-                })?;
+                Ok(())
+            })
+            .await?;
 
-            if !prefs_response.status().is_success() {
-                return Err(RadarrError::ExternalServiceError {
-                    service: "qBittorrent".to_string(),
-                    error: format!("Get preferences failed with status: {}", prefs_response.status()),
-                });
-            }
-            
-            Ok(())
-        }).await?;
-        
         info!("qBittorrent connection test successful");
         Ok(())
     }
@@ -762,22 +805,25 @@ mod tests {
             _ => panic!("Expected File variant"),
         }
     }
-    
+
     #[test]
     fn test_extract_hash_from_magnet() {
         let config = QBittorrentConfig::default();
         let client = QBittorrentClient::new(config).unwrap();
-        
+
         // Test valid magnet URL
         let magnet = "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=example";
         let hash = client.extract_hash_from_magnet(magnet);
-        assert_eq!(hash, Some("C12FE1C06BBA254A9DC9F519B335AA7C1367A88A".to_string()));
-        
+        assert_eq!(
+            hash,
+            Some("C12FE1C06BBA254A9DC9F519B335AA7C1367A88A".to_string())
+        );
+
         // Test magnet URL without additional parameters
         let magnet_simple = "magnet:?xt=urn:btih:abc123def456";
         let hash_simple = client.extract_hash_from_magnet(magnet_simple);
         assert_eq!(hash_simple, Some("ABC123DEF456".to_string()));
-        
+
         // Test invalid magnet URL
         let invalid_magnet = "not-a-magnet-url";
         let no_hash = client.extract_hash_from_magnet(invalid_magnet);
@@ -786,7 +832,7 @@ mod tests {
 
     // Integration tests would require a running qBittorrent instance
     // These are commented out but can be used for manual testing
-    
+
     /*
     #[tokio::test]
     async fn test_qbittorrent_integration() {
@@ -798,7 +844,7 @@ mod tests {
         };
 
         let client = QBittorrentClient::new(config).unwrap();
-        
+
         // Test connection
         let result = client.test_connection().await;
         assert!(result.is_ok(), "Failed to connect: {:?}", result);

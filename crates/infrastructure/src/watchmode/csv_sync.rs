@@ -1,6 +1,6 @@
 use chrono::Utc;
 use radarr_core::{
-    streaming::{IdMapping, MediaType, traits::StreamingCacheRepository},
+    streaming::{traits::StreamingCacheRepository, IdMapping, MediaType},
     RadarrError,
 };
 use reqwest::Client;
@@ -29,15 +29,13 @@ impl WatchmodeCsvSync {
     /// Download and parse the CSV file
     pub async fn download_csv(&self) -> Result<Vec<u8>, RadarrError> {
         info!("Downloading Watchmode ID mapping CSV from {}", self.csv_url);
-        
-        let response = self.client
-            .get(&self.csv_url)
-            .send()
-            .await
-            .map_err(|e| RadarrError::ExternalServiceError {
+
+        let response = self.client.get(&self.csv_url).send().await.map_err(|e| {
+            RadarrError::ExternalServiceError {
                 service: "watchmode".to_string(),
                 error: format!("Failed to download CSV: {}", e),
-            })?;
+            }
+        })?;
 
         if !response.status().is_success() {
             return Err(RadarrError::ExternalServiceError {
@@ -46,7 +44,9 @@ impl WatchmodeCsvSync {
             });
         }
 
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "watchmode".to_string(),
                 error: format!("Failed to read CSV bytes: {}", e),
@@ -60,7 +60,7 @@ impl WatchmodeCsvSync {
     pub fn parse_csv(&self, csv_data: &[u8]) -> Result<Vec<IdMapping>, RadarrError> {
         let mut mappings = Vec::new();
         let csv_str = String::from_utf8_lossy(csv_data);
-        
+
         // Create CSV reader
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(true)
@@ -70,7 +70,9 @@ impl WatchmodeCsvSync {
             match result {
                 Ok(record) => {
                     // Only process entries with both TMDB and Watchmode IDs
-                    if let (Some(tmdb_id), Some(watchmode_id)) = (record.tmdb_id, record.watchmode_id) {
+                    if let (Some(tmdb_id), Some(watchmode_id)) =
+                        (record.tmdb_id, record.watchmode_id)
+                    {
                         let media_type = match record.title_type.as_deref() {
                             Some("movie") => MediaType::Movie,
                             Some("tv_series") | Some("tv") => MediaType::Tv,
@@ -99,18 +101,21 @@ impl WatchmodeCsvSync {
     /// Refresh the ID mappings from CSV
     pub async fn refresh_id_mappings(&self) -> Result<Vec<IdMapping>, RadarrError> {
         info!("Starting Watchmode ID mapping refresh");
-        
+
         // Download CSV
         let csv_data = self.download_csv().await?;
-        
+
         // Parse CSV
         let mappings = self.parse_csv(&csv_data)?;
-        
+
         // Store in database
         let stored_count = self.cache_repo.store_id_mappings(mappings.clone()).await?;
-        
-        info!("Successfully stored {} ID mappings in database", stored_count);
-        
+
+        info!(
+            "Successfully stored {} ID mappings in database",
+            stored_count
+        );
+
         Ok(mappings)
     }
 

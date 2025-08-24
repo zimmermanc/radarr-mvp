@@ -30,22 +30,43 @@ pub trait TraktAdapter: Send + Sync {
 #[async_trait]
 pub trait WatchmodeAdapter: Send + Sync {
     async fn refresh_id_mappings(&self) -> Result<Vec<IdMapping>, RadarrError>;
-    async fn get_watchmode_id(&self, tmdb_id: i32, media_type: MediaType) -> Result<Option<i32>, RadarrError>;
-    async fn sources_by_tmdb(&self, tmdb_id: i32, media_type: MediaType) -> Result<Availability, RadarrError>;
+    async fn get_watchmode_id(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Option<i32>, RadarrError>;
+    async fn sources_by_tmdb(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Availability, RadarrError>;
     async fn streaming_releases(&self, region: &str) -> Result<Vec<ComingSoon>, RadarrError>;
 }
 
 #[async_trait]
 pub trait StreamingCacheRepository: Send + Sync {
     async fn get_raw(&self, key: &str) -> Result<Option<serde_json::Value>, RadarrError>;
-    async fn set_raw(&self, key: &str, data: serde_json::Value, ttl_hours: i64) -> Result<(), RadarrError>;
+    async fn set_raw(
+        &self,
+        key: &str,
+        data: serde_json::Value,
+        ttl_hours: i64,
+    ) -> Result<(), RadarrError>;
     async fn delete(&self, key: &str) -> Result<(), RadarrError>;
     async fn clear_expired(&self) -> Result<usize, RadarrError>;
-    
+
     // ID mapping specific methods
     async fn store_id_mappings(&self, mappings: Vec<IdMapping>) -> Result<usize, RadarrError>;
-    async fn get_watchmode_id(&self, tmdb_id: i32, media_type: MediaType) -> Result<Option<i32>, RadarrError>;
-    async fn get_id_mapping(&self, tmdb_id: i32, media_type: MediaType) -> Result<Option<IdMapping>, RadarrError>;
+    async fn get_watchmode_id(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Option<i32>, RadarrError>;
+    async fn get_id_mapping(
+        &self,
+        tmdb_id: i32,
+        media_type: MediaType,
+    ) -> Result<Option<IdMapping>, RadarrError>;
 }
 
 #[async_trait]
@@ -98,20 +119,20 @@ pub trait StreamingAggregator: Send + Sync {
         media_type: MediaType,
         window: TimeWindow,
     ) -> Result<TrendingResponse, RadarrError>;
-    
+
     async fn get_availability(
         &self,
         tmdb_id: i32,
         media_type: MediaType,
         region: &str,
     ) -> Result<AvailabilityResponse, RadarrError>;
-    
+
     async fn get_coming_soon(
         &self,
         media_type: MediaType,
         region: &str,
     ) -> Result<ComingSoonResponse, RadarrError>;
-    
+
     async fn refresh_cache(&self) -> Result<(), RadarrError>;
 }
 
@@ -133,7 +154,7 @@ impl Default for StreamingConfig {
         cache_ttl.insert("watchmode_availability".to_string(), 12);
         cache_ttl.insert("aggregated_trending".to_string(), 1);
         cache_ttl.insert("coming_soon".to_string(), 24);
-        
+
         Self {
             tmdb_api_key: String::new(),
             trakt_client_id: String::new(),

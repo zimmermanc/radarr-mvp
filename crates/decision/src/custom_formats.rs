@@ -4,10 +4,10 @@
 //! and scoring releases based on various criteria like codecs, groups,
 //! special features, etc.
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use regex::Regex;
 
 /// Specification for a custom format rule
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +58,11 @@ impl FormatSpecification {
             _ => false,
         };
 
-        if self.negate { !result } else { result }
+        if self.negate {
+            !result
+        } else {
+            result
+        }
     }
 
     /// Match against release title using regex
@@ -113,10 +117,14 @@ impl FormatSpecification {
     fn matches_codec(&self, title: &str) -> bool {
         let title_lower = title.to_lowercase();
         let value_lower = self.value.to_lowercase();
-        
+
         match value_lower.as_str() {
             "x264" => title_lower.contains("x264") || title_lower.contains("h264"),
-            "x265" => title_lower.contains("x265") || title_lower.contains("h265") || title_lower.contains("hevc"),
+            "x265" => {
+                title_lower.contains("x265")
+                    || title_lower.contains("h265")
+                    || title_lower.contains("hevc")
+            }
             "xvid" => title_lower.contains("xvid"),
             _ => self.matches_title(title),
         }
@@ -126,9 +134,13 @@ impl FormatSpecification {
     fn matches_source(&self, title: &str) -> bool {
         let title_lower = title.to_lowercase();
         let value_lower = self.value.to_lowercase();
-        
+
         match value_lower.as_str() {
-            "bluray" => title_lower.contains("bluray") || title_lower.contains("blu-ray") || title_lower.contains("bdmv"),
+            "bluray" => {
+                title_lower.contains("bluray")
+                    || title_lower.contains("blu-ray")
+                    || title_lower.contains("bdmv")
+            }
             "webdl" => title_lower.contains("web-dl") || title_lower.contains("webdl"),
             "webrip" => title_lower.contains("webrip") || title_lower.contains("web-rip"),
             "hdtv" => title_lower.contains("hdtv"),
@@ -161,7 +173,7 @@ impl NumericCondition {
     /// Parse a numeric condition string
     pub fn parse(condition: &str) -> Result<Self, String> {
         let condition = condition.trim();
-        
+
         let (operator, value_str) = if condition.starts_with(">=") {
             (">=", &condition[2..])
         } else if condition.starts_with("<=") {
@@ -176,7 +188,8 @@ impl NumericCondition {
             ("=", condition)
         };
 
-        let value = value_str.parse::<i64>()
+        let value = value_str
+            .parse::<i64>()
             .map_err(|_| format!("Invalid numeric value: {}", value_str))?;
 
         Ok(Self {
@@ -189,7 +202,7 @@ impl NumericCondition {
     /// Parse a size condition with units (GB, MB, etc.)
     pub fn parse_size(condition: &str) -> Result<Self, String> {
         let condition = condition.trim().to_uppercase();
-        
+
         // Extract operator
         let (operator, rest) = if condition.starts_with(">=") {
             (">=", &condition[2..])
@@ -205,16 +218,17 @@ impl NumericCondition {
 
         // Extract value and unit
         let (value_str, unit) = if rest.ends_with("GB") {
-            (&rest[..rest.len()-2], Some("GB"))
+            (&rest[..rest.len() - 2], Some("GB"))
         } else if rest.ends_with("MB") {
-            (&rest[..rest.len()-2], Some("MB"))
+            (&rest[..rest.len() - 2], Some("MB"))
         } else if rest.ends_with("KB") {
-            (&rest[..rest.len()-2], Some("KB"))
+            (&rest[..rest.len() - 2], Some("KB"))
         } else {
             (rest, None)
         };
 
-        let value = value_str.parse::<i64>()
+        let value = value_str
+            .parse::<i64>()
             .map_err(|_| format!("Invalid size value: {}", value_str))?;
 
         // Convert to bytes
@@ -289,7 +303,7 @@ impl CustomFormat {
 
         for spec in &self.specifications {
             let matches = spec.matches(release_data);
-            
+
             if spec.required {
                 if !matches {
                     required_specs_met = false;
@@ -323,7 +337,7 @@ impl ReleaseData {
     pub fn from_search_result(result: &crate::engine::Release) -> Self {
         // Check if release is marked as internal
         let internal = Self::is_internal_release(&result.title, result.release_group.as_deref());
-        
+
         Self {
             title: result.title.clone(),
             size_bytes: result.size,
@@ -335,16 +349,16 @@ impl ReleaseData {
             release_group: result.release_group.clone(),
         }
     }
-    
+
     /// Check if release is marked as internal
     fn is_internal_release(title: &str, release_group: Option<&str>) -> bool {
         let title_lower = title.to_lowercase();
-        
+
         // Check for internal markers in title
         if title_lower.contains("internal") || title_lower.contains("-internal-") {
             return true;
         }
-        
+
         // Check release group
         if let Some(group) = release_group {
             let group_lower = group.to_lowercase();
@@ -352,7 +366,7 @@ impl ReleaseData {
                 return true;
             }
         }
-        
+
         false
     }
 }
@@ -382,28 +396,19 @@ impl CustomFormatEngine {
         vec![
             CustomFormat::new("Freeleech", 25)
                 .add_spec(FormatSpecification::new("indexer_flag", "freeleech")),
-            
             CustomFormat::new("Internal", 15)
                 .add_spec(FormatSpecification::new("indexer_flag", "internal")),
-            
-            CustomFormat::new("x265/HEVC", 5)
-                .add_spec(FormatSpecification::new("codec", "x265")),
-            
-            CustomFormat::new("Remux", 20)
-                .add_spec(FormatSpecification::new("source", "remux")),
-            
-            CustomFormat::new("HDR", 10)
-                .add_spec(FormatSpecification::new("release_title", "HDR|Dolby.*Vision")),
-            
+            CustomFormat::new("x265/HEVC", 5).add_spec(FormatSpecification::new("codec", "x265")),
+            CustomFormat::new("Remux", 20).add_spec(FormatSpecification::new("source", "remux")),
+            CustomFormat::new("HDR", 10).add_spec(FormatSpecification::new(
+                "release_title",
+                "HDR|Dolby.*Vision",
+            )),
             CustomFormat::new("Atmos", 5)
                 .add_spec(FormatSpecification::new("release_title", "Atmos|DTS:X")),
-            
             CustomFormat::new("Scene Release", -10)
                 .add_spec(FormatSpecification::new("release_group", "scene")),
-            
-            CustomFormat::new("Large File", -5)
-                .add_spec(FormatSpecification::new("size", ">25GB")),
-            
+            CustomFormat::new("Large File", -5).add_spec(FormatSpecification::new("size", ">25GB")),
             CustomFormat::new("High Seeders", 5)
                 .add_spec(FormatSpecification::new("seeders", ">=20")),
         ]
@@ -416,7 +421,11 @@ impl CustomFormatEngine {
         for format in &self.formats {
             if format.matches(release_data) {
                 total_score += format.score;
-                tracing::debug!("Custom format '{}' matched, added {} points", format.name, format.score);
+                tracing::debug!(
+                    "Custom format '{}' matched, added {} points",
+                    format.name,
+                    format.score
+                );
             }
         }
 
@@ -493,11 +502,11 @@ mod tests {
     #[test]
     fn test_format_specification_title_matching() {
         let spec = FormatSpecification::new("release_title", "x265|HEVC");
-        
+
         let release_x265 = create_test_release_data("Movie.2024.1080p.BluRay.x265-GROUP");
         let release_hevc = create_test_release_data("Movie.2024.1080p.BluRay.HEVC-GROUP");
         let release_x264 = create_test_release_data("Movie.2024.1080p.BluRay.x264-GROUP");
-        
+
         assert!(spec.matches(&release_x265));
         assert!(spec.matches(&release_hevc));
         assert!(!spec.matches(&release_x264));
@@ -506,12 +515,12 @@ mod tests {
     #[test]
     fn test_format_specification_freeleech_matching() {
         let spec = FormatSpecification::new("indexer_flag", "freeleech");
-        
+
         let mut release_freeleech = create_test_release_data("Movie.2024.1080p.BluRay.x264-GROUP");
         release_freeleech.freeleech = Some(true);
-        
+
         let release_normal = create_test_release_data("Movie.2024.1080p.BluRay.x264-GROUP");
-        
+
         assert!(spec.matches(&release_freeleech));
         assert!(!spec.matches(&release_normal));
     }
@@ -521,7 +530,7 @@ mod tests {
         let condition = NumericCondition::parse_size(">5GB").unwrap();
         assert_eq!(condition.operator, ">");
         assert_eq!(condition.value, 5 * 1024 * 1024 * 1024);
-        
+
         let condition2 = NumericCondition::parse_size("<=10MB").unwrap();
         assert_eq!(condition2.operator, "<=");
         assert_eq!(condition2.value, 10 * 1024 * 1024);
@@ -529,12 +538,12 @@ mod tests {
 
     #[test]
     fn test_custom_format_matching() {
-        let format = CustomFormat::new("x265 Format", 5)
-            .add_spec(FormatSpecification::new("codec", "x265"));
-        
+        let format =
+            CustomFormat::new("x265 Format", 5).add_spec(FormatSpecification::new("codec", "x265"));
+
         let release_x265 = create_test_release_data("Movie.2024.1080p.BluRay.x265-GROUP");
         let release_x264 = create_test_release_data("Movie.2024.1080p.BluRay.x264-GROUP");
-        
+
         assert!(format.matches(&release_x265));
         assert!(!format.matches(&release_x264));
     }
@@ -542,13 +551,14 @@ mod tests {
     #[test]
     fn test_custom_format_engine_scoring() {
         let engine = CustomFormatEngine::new();
-        
-        let mut release_freeleech = create_test_release_data("Movie.2024.2160p.BluRay.x265.HDR-GROUP");
+
+        let mut release_freeleech =
+            create_test_release_data("Movie.2024.2160p.BluRay.x265.HDR-GROUP");
         release_freeleech.freeleech = Some(true);
         release_freeleech.seeders = Some(25);
-        
+
         let score = engine.calculate_format_score(&release_freeleech);
-        
+
         // Should get points for: freeleech (25) + x265 (5) + HDR (10) + high seeders (5) = 45
         assert!(score >= 40, "Score was {}, expected >= 40", score);
     }
@@ -557,10 +567,10 @@ mod tests {
     fn test_format_negation() {
         let format = CustomFormat::new("No Scene", 10)
             .add_spec(FormatSpecification::new("release_group", "scene").negate(true));
-        
+
         let scene_release = create_test_release_data("Movie.2024.1080p.BluRay.x264-SCENE");
         let non_scene_release = create_test_release_data("Movie.2024.1080p.BluRay.x264-PRIVATE");
-        
+
         assert!(!format.matches(&scene_release));
         assert!(format.matches(&non_scene_release));
     }

@@ -107,7 +107,7 @@ impl ApplicationRetryConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         let mut config = Self::default();
-        
+
         // Override with environment variables if present
         if let Ok(val) = std::env::var("RETRY_MAX_ATTEMPTS") {
             if let Ok(max) = val.parse() {
@@ -116,7 +116,7 @@ impl ApplicationRetryConfig {
                 config.indexer_retries.max_attempts = max;
             }
         }
-        
+
         if let Ok(val) = std::env::var("RETRY_ENABLED") {
             let enabled = val.to_lowercase() == "true" || val == "1";
             config.api_retries.enabled = enabled;
@@ -125,14 +125,14 @@ impl ApplicationRetryConfig {
             config.import_retries.enabled = enabled;
             config.indexer_retries.enabled = enabled;
         }
-        
+
         if let Ok(val) = std::env::var("CIRCUIT_BREAKER_ENABLED") {
             config.circuit_breakers.enabled = val.to_lowercase() == "true" || val == "1";
         }
-        
+
         config
     }
-    
+
     /// Convert retry settings to core RetryConfig
     pub fn to_core_config(&self, settings: &RetrySettings) -> radarr_core::retry::RetryConfig {
         radarr_core::retry::RetryConfig {

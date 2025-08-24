@@ -42,7 +42,7 @@ where
             let correlation_id = context.correlation_id.to_string();
             let parent_id = context.parent_id.map(|id| id.to_string());
             let origin = context.origin.clone();
-            
+
             // Note: We can't directly modify the event, but we can log additional context
             tracing::trace!(
                 correlation_id = %correlation_id,
@@ -70,18 +70,20 @@ impl CorrelatedLogEntry {
     /// Create a new correlated log entry
     pub fn new(level: impl Into<String>, message: impl Into<String>) -> Self {
         let context = current_context();
-        
+
         Self {
             timestamp: chrono::Utc::now(),
             level: level.into(),
             message: message.into(),
             correlation_id: context.as_ref().map(|c| c.correlation_id.to_string()),
-            parent_id: context.as_ref().and_then(|c| c.parent_id.map(|id| id.to_string())),
+            parent_id: context
+                .as_ref()
+                .and_then(|c| c.parent_id.map(|id| id.to_string())),
             origin: context.as_ref().map(|c| c.origin.clone()),
             fields: HashMap::new(),
         }
     }
-    
+
     /// Add a field to the log entry
     pub fn with_field(mut self, key: impl Into<String>, value: impl Serialize) -> Self {
         if let Ok(json_value) = serde_json::to_value(value) {
@@ -89,36 +91,37 @@ impl CorrelatedLogEntry {
         }
         self
     }
-    
+
     /// Format the log entry for output
     pub fn format(&self) -> String {
         let mut parts = vec![
             format!("[{}]", self.timestamp.format("%Y-%m-%d %H:%M:%S%.3f")),
             format!("[{}]", self.level),
         ];
-        
+
         if let Some(ref correlation_id) = self.correlation_id {
             parts.push(format!("[correlation_id={}]", correlation_id));
         }
-        
+
         if let Some(ref parent_id) = self.parent_id {
             parts.push(format!("[parent_id={}]", parent_id));
         }
-        
+
         if let Some(ref origin) = self.origin {
             parts.push(format!("[origin={}]", origin));
         }
-        
+
         parts.push(self.message.clone());
-        
+
         if !self.fields.is_empty() {
-            let fields: Vec<String> = self.fields
+            let fields: Vec<String> = self
+                .fields
                 .iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect();
             parts.push(format!("{{ {} }}", fields.join(", ")));
         }
-        
+
         parts.join(" ")
     }
 }
@@ -150,9 +153,9 @@ pub fn init_correlated_tracing() {
         .with_target(true)
         .with_thread_ids(true)
         .with_thread_names(true);
-    
+
     let correlation_layer = CorrelationLayer::new();
-    
+
     use tracing_subscriber::prelude::*;
     tracing_subscriber::registry()
         .with(fmt_layer)
@@ -227,56 +230,59 @@ pub fn error_with_correlation(message: impl Into<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::correlation::{CorrelationContext, set_current_context};
-    
+    use crate::correlation::{set_current_context, CorrelationContext};
+
     #[test]
     fn test_correlated_log_entry() {
         let entry = CorrelatedLogEntry::new("INFO", "Test message")
             .with_field("user_id", "123")
             .with_field("action", "login");
-        
+
         assert_eq!(entry.level, "INFO");
         assert_eq!(entry.message, "Test message");
         assert_eq!(entry.fields.len(), 2);
-        
+
         let formatted = entry.format();
         assert!(formatted.contains("[INFO]"));
         assert!(formatted.contains("Test message"));
         assert!(formatted.contains("user_id"));
         assert!(formatted.contains("action"));
     }
-    
+
     #[test]
     fn test_log_entry_with_correlation_context() {
         let context = CorrelationContext::new("test-service")
             .with_user("user123")
             .with_session("session456");
-        
+
         set_current_context(context.clone());
-        
+
         let entry = CorrelatedLogEntry::new("DEBUG", "Operation completed");
-        
-        assert_eq!(entry.correlation_id, Some(context.correlation_id.to_string()));
+
+        assert_eq!(
+            entry.correlation_id,
+            Some(context.correlation_id.to_string())
+        );
         assert_eq!(entry.origin, Some("test-service".to_string()));
         assert!(entry.parent_id.is_none());
-        
+
         let formatted = entry.format();
         assert!(formatted.contains(&context.correlation_id.to_string()));
         assert!(formatted.contains("test-service"));
-        
+
         crate::correlation::clear_context();
     }
-    
+
     #[test]
     fn test_log_entry_without_correlation_context() {
         crate::correlation::clear_context();
-        
+
         let entry = CorrelatedLogEntry::new("WARN", "No correlation");
-        
+
         assert!(entry.correlation_id.is_none());
         assert!(entry.parent_id.is_none());
         assert!(entry.origin.is_none());
-        
+
         let formatted = entry.format();
         assert!(!formatted.contains("correlation_id"));
         assert!(!formatted.contains("parent_id"));

@@ -5,9 +5,8 @@ use axum::{
     Extension,
 };
 use radarr_core::streaming::{
-    traits::StreamingAggregator,
-    MediaType, TimeWindow, TrendingResponse, AvailabilityResponse, ComingSoonResponse,
-    StreamingProvider,
+    traits::StreamingAggregator, AvailabilityResponse, ComingSoonResponse, MediaType,
+    StreamingProvider, TimeWindow, TrendingResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -50,7 +49,10 @@ pub async fn get_trending(
     Query(params): Query<TrendingQuery>,
     Extension(aggregator): Extension<Arc<dyn StreamingAggregator>>,
 ) -> Result<Json<ApiResponse<TrendingResponse>>, ApiError> {
-    info!("Getting trending {} for window: {}", media_type_str, params.window);
+    info!(
+        "Getting trending {} for window: {}",
+        media_type_str, params.window
+    );
 
     // Parse media type
     let media_type = match media_type_str.as_str() {
@@ -79,7 +81,10 @@ pub async fn get_trending(
     // Get trending from aggregator
     match aggregator.get_trending(media_type, window).await {
         Ok(response) => {
-            info!("Successfully fetched {} trending entries", response.entries.len());
+            info!(
+                "Successfully fetched {} trending entries",
+                response.entries.len()
+            );
             Ok(Json(ApiResponse::success(response)))
         }
         Err(e) => {
@@ -95,22 +100,34 @@ pub async fn get_availability(
     Query(params): Query<AvailabilityQuery>,
     Extension(aggregator): Extension<Arc<dyn StreamingAggregator>>,
 ) -> Result<Json<ApiResponse<AvailabilityResponse>>, ApiError> {
-    info!("Getting availability for TMDB {} in region: {}", tmdb_id, params.region);
+    info!(
+        "Getting availability for TMDB {} in region: {}",
+        tmdb_id, params.region
+    );
 
     // For now, assume movie type (could be enhanced with a query param)
     let media_type = MediaType::Movie;
 
     // Get availability from aggregator
-    match aggregator.get_availability(tmdb_id, media_type, &params.region).await {
+    match aggregator
+        .get_availability(tmdb_id, media_type, &params.region)
+        .await
+    {
         Ok(mut response) => {
             // Add attribution for JustWatch (TMDB providers)
             if !response.availability.is_empty() {
                 // This would be added to the response headers in production
                 info!("Streaming data provided by JustWatch");
             }
-            
-            info!("Successfully fetched availability with {} services", 
-                response.availability.values().map(|v| v.len()).sum::<usize>());
+
+            info!(
+                "Successfully fetched availability with {} services",
+                response
+                    .availability
+                    .values()
+                    .map(|v| v.len())
+                    .sum::<usize>()
+            );
             Ok(Json(ApiResponse::success(response)))
         }
         Err(e) => {
@@ -126,7 +143,10 @@ pub async fn get_coming_soon(
     Query(params): Query<ComingSoonQuery>,
     Extension(aggregator): Extension<Arc<dyn StreamingAggregator>>,
 ) -> Result<Json<ApiResponse<ComingSoonResponse>>, ApiError> {
-    info!("Getting coming soon {} for region: {}", media_type_str, params.region);
+    info!(
+        "Getting coming soon {} for region: {}",
+        media_type_str, params.region
+    );
 
     // Parse media type
     let media_type = match media_type_str.as_str() {
@@ -143,7 +163,10 @@ pub async fn get_coming_soon(
     // Get coming soon from aggregator
     match aggregator.get_coming_soon(media_type, &params.region).await {
         Ok(response) => {
-            info!("Successfully fetched {} coming soon entries", response.entries.len());
+            info!(
+                "Successfully fetched {} coming soon entries",
+                response.entries.len()
+            );
             Ok(Json(ApiResponse::success(response)))
         }
         Err(e) => {
@@ -160,42 +183,58 @@ pub async fn get_providers() -> Json<ApiResponse<Vec<StreamingProviderInfo>>> {
         StreamingProviderInfo {
             id: "netflix".to_string(),
             name: "Netflix".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg".to_string()),
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/t2yyOv40HZeVlLjYsCsPHnWLk4W.jpg".to_string(),
+            ),
             service_types: vec!["subscription".to_string()],
             supported_regions: vec!["US".to_string(), "CA".to_string(), "UK".to_string()],
         },
         StreamingProviderInfo {
             id: "prime".to_string(),
             name: "Amazon Prime Video".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/emthp39XA2YScoYL1p0sdbAH2WA.jpg".to_string()),
-            service_types: vec!["subscription".to_string(), "rent".to_string(), "buy".to_string()],
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/emthp39XA2YScoYL1p0sdbAH2WA.jpg".to_string(),
+            ),
+            service_types: vec![
+                "subscription".to_string(),
+                "rent".to_string(),
+                "buy".to_string(),
+            ],
             supported_regions: vec!["US".to_string(), "CA".to_string(), "UK".to_string()],
         },
         StreamingProviderInfo {
             id: "disney".to_string(),
             name: "Disney+".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/7rwgEs15tFwyR9NPQ5vpzxTj19Q.jpg".to_string()),
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/7rwgEs15tFwyR9NPQ5vpzxTj19Q.jpg".to_string(),
+            ),
             service_types: vec!["subscription".to_string()],
             supported_regions: vec!["US".to_string(), "CA".to_string(), "UK".to_string()],
         },
         StreamingProviderInfo {
             id: "hulu".to_string(),
             name: "Hulu".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/zxrVdFjIjLqkfnwyghnfywTn3Lh.jpg".to_string()),
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/zxrVdFjIjLqkfnwyghnfywTn3Lh.jpg".to_string(),
+            ),
             service_types: vec!["subscription".to_string()],
             supported_regions: vec!["US".to_string()],
         },
         StreamingProviderInfo {
             id: "hbo".to_string(),
             name: "Max".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/6Q3ZYUNA9Hsgj6iWnVsw2gR5V6z.jpg".to_string()),
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/6Q3ZYUNA9Hsgj6iWnVsw2gR5V6z.jpg".to_string(),
+            ),
             service_types: vec!["subscription".to_string()],
             supported_regions: vec!["US".to_string()],
         },
         StreamingProviderInfo {
             id: "apple".to_string(),
             name: "Apple TV+".to_string(),
-            logo_url: Some("https://image.tmdb.org/t/p/original/6uhKBfmtzFqOcLousHwZuzcrScK.jpg".to_string()),
+            logo_url: Some(
+                "https://image.tmdb.org/t/p/original/6uhKBfmtzFqOcLousHwZuzcrScK.jpg".to_string(),
+            ),
             service_types: vec!["subscription".to_string(), "buy".to_string()],
             supported_regions: vec!["US".to_string(), "CA".to_string(), "UK".to_string()],
         },
@@ -231,7 +270,7 @@ pub async fn init_trakt_auth(
 ) -> Result<Json<ApiResponse<TraktAuthInit>>, ApiError> {
     use radarr_core::streaming::traits::TraktAdapter;
     use radarr_infrastructure::trakt::TraktClient;
-    
+
     // This is a simplified version - in production, you'd get the client from the aggregator
     Err(ApiError::NotImplemented {
         message: "Trakt authentication initialization not yet implemented in API".to_string(),

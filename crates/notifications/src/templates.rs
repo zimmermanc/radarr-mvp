@@ -11,10 +11,10 @@ pub struct NotificationTemplates {
 impl NotificationTemplates {
     pub fn new() -> Result<Self> {
         let mut handlebars = Handlebars::new();
-        
+
         // Register built-in templates
         Self::register_builtin_templates(&mut handlebars)?;
-        
+
         Ok(Self { handlebars })
     }
 
@@ -22,40 +22,47 @@ impl NotificationTemplates {
         // Movie notification templates
         hb.register_template_string(
             "movie_added",
-            "🎬 **{{title}}** ({{year}}) has been added to your library"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "🎬 **{{title}}** ({{year}}) has been added to your library",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         hb.register_template_string(
-            "movie_deleted", 
-            "🗑️ **{{title}}** has been removed from your library"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "movie_deleted",
+            "🗑️ **{{title}}** has been removed from your library",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         // Download notification templates
         hb.register_template_string(
             "download_started",
-            "⬇️ Started downloading **{{movie_title}}** ({{quality}}) from {{indexer}}"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "⬇️ Started downloading **{{movie_title}}** ({{quality}}) from {{indexer}}",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         hb.register_template_string(
             "download_completed",
-            "✅ **{{movie_title}}** ({{quality}}) download completed! Size: {{size}}"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "✅ **{{movie_title}}** ({{quality}}) download completed! Size: {{size}}",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         hb.register_template_string(
             "download_failed",
-            "❌ Download failed for **{{movie_title}}** ({{quality}})"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "❌ Download failed for **{{movie_title}}** ({{quality}})",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         // Import notification templates
         hb.register_template_string(
             "import_completed",
-            "📁 **{{movie_title}}** has been imported to your library at {{destination_path}}"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "📁 **{{movie_title}}** has been imported to your library at {{destination_path}}",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         hb.register_template_string(
             "import_failed",
-            "❌ Failed to import **{{movie_title}}** - {{error_message}}"
-        ).map_err(|e| NotificationError::TemplateError(e.to_string()))?;
+            "❌ Failed to import **{{movie_title}}** - {{error_message}}",
+        )
+        .map_err(|e| NotificationError::TemplateError(e.to_string()))?;
 
         Ok(())
     }
@@ -79,7 +86,8 @@ impl NotificationTemplates {
             crate::NotificationEventType::ImportCompleted => "import_completed",
             crate::NotificationEventType::ImportFailed => "import_failed",
             _ => "default",
-        }.to_string()
+        }
+        .to_string()
     }
 
     fn create_template_context(&self, notification: &Notification) -> serde_json::Value {

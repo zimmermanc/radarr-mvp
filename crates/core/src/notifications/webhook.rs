@@ -2,8 +2,8 @@
 //!
 //! Sends HTTP POST notifications to configured webhook URLs
 
-use super::{NotificationProvider, NotificationEvent};
-use crate::{Result, RadarrError};
+use super::{NotificationEvent, NotificationProvider};
+use crate::{RadarrError, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -39,7 +39,7 @@ impl WebhookProvider {
                 service: "webhook".to_string(),
                 error: format!("Failed to create HTTP client: {}", e),
             })?;
-            
+
         Ok(Self { config, client })
     }
 }
@@ -50,7 +50,7 @@ impl NotificationProvider for WebhookProvider {
         let payload = json!({
             "event_type": match event {
                 NotificationEvent::MovieDownloaded { .. } => "movie_downloaded",
-                NotificationEvent::DownloadStarted { .. } => "download_started", 
+                NotificationEvent::DownloadStarted { .. } => "download_started",
                 NotificationEvent::DownloadFailed { .. } => "download_failed",
                 NotificationEvent::MovieImported { .. } => "movie_imported",
                 NotificationEvent::HealthCheckFailed { .. } => "health_check_failed",
@@ -60,21 +60,24 @@ impl NotificationProvider for WebhookProvider {
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "data": event
         });
-        
-        let mut request = self.client.post(&self.config.url)
-            .json(&payload);
-            
+
+        let mut request = self.client.post(&self.config.url).json(&payload);
+
         // Add basic auth if configured
-        if let (Some(ref username), Some(ref password)) = (&self.config.username, &self.config.password) {
+        if let (Some(ref username), Some(ref password)) =
+            (&self.config.username, &self.config.password)
+        {
             request = request.basic_auth(username, Some(password));
         }
-        
-        let response = request.send().await
+
+        let response = request
+            .send()
+            .await
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "webhook".to_string(),
                 error: format!("Request failed: {}", e),
             })?;
-            
+
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
@@ -83,15 +86,15 @@ impl NotificationProvider for WebhookProvider {
                 error: format!("HTTP {}: {}", status, error_text),
             });
         }
-        
+
         Ok(())
     }
-    
+
     async fn test_notification(&self) -> Result<()> {
         let test_event = NotificationEvent::ApplicationStarted;
         self.send_notification(&test_event).await
     }
-    
+
     fn provider_name(&self) -> &'static str {
         "webhook"
     }
@@ -109,7 +112,7 @@ mod tests {
             password: Some("pass".to_string()),
             timeout: 30,
         };
-        
+
         assert_eq!(config.url, "https://example.com/webhook");
         assert_eq!(config.username, Some("user".to_string()));
         assert_eq!(config.timeout, 30);
@@ -123,7 +126,7 @@ mod tests {
             password: None,
             timeout: 30,
         };
-        
+
         let provider = WebhookProvider::new(config);
         assert!(provider.is_ok());
         assert_eq!(provider.unwrap().provider_name(), "webhook");

@@ -33,20 +33,20 @@
 //! }
 //! ```
 
-pub mod file_scanner;
 pub mod file_analyzer;
+pub mod file_scanner;
 pub mod hardlink_manager;
-pub mod rename_engine;
-pub mod pipeline;
 pub mod integration;
+pub mod pipeline;
+pub mod rename_engine;
 
 // Re-export main types for convenience
-pub use file_scanner::{FileScanner, ScanConfig, DetectedFile, MediaType};
-pub use file_analyzer::{FileAnalyzer, AnalyzedFile, QualityInfo};
-pub use hardlink_manager::{HardlinkManager, HardlinkConfig, HardlinkResult, HardlinkStats};
-pub use rename_engine::{RenameEngine, RenameConfig, RenameResult};
-pub use pipeline::{ImportPipeline, ImportConfig, ImportResult, ImportStats};
+pub use file_analyzer::{AnalyzedFile, FileAnalyzer, QualityInfo};
+pub use file_scanner::{DetectedFile, FileScanner, MediaType, ScanConfig};
+pub use hardlink_manager::{HardlinkConfig, HardlinkManager, HardlinkResult, HardlinkStats};
 pub use integration::{ImportService, IntegratedImportConfig, IntegratedImportResult};
+pub use pipeline::{ImportConfig, ImportPipeline, ImportResult, ImportStats};
+pub use rename_engine::{RenameConfig, RenameEngine, RenameResult};
 
 // Re-export core error types
 pub use radarr_core::{RadarrError, Result};

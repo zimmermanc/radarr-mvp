@@ -1,5 +1,5 @@
-pub mod oauth;
 pub mod client;
+pub mod oauth;
 
-pub use oauth::TraktOAuth;
 pub use client::TraktClient;
+pub use oauth::TraktOAuth;

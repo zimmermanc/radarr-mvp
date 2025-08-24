@@ -1,8 +1,8 @@
 //! HDBits indexer tests
 
-use super::{HDBitsConfig, HDBitsClient, MovieSearchRequest, RateLimiter};
 use super::models::{categories, HDBitsImdbSearch, HDBitsResponse};
 use super::parser::parse_quality;
+use super::{HDBitsClient, HDBitsConfig, MovieSearchRequest, RateLimiter};
 use crate::models::SearchRequest;
 
 #[test]
@@ -42,24 +42,22 @@ fn test_movie_search_request_builder() {
 
 #[test]
 fn test_imdb_id_parsing() {
-    let request = MovieSearchRequest::new()
-        .with_imdb_id("tt0133093");
+    let request = MovieSearchRequest::new().with_imdb_id("tt0133093");
     assert_eq!(request.imdb_id, Some("0133093".to_string()));
 
-    let request2 = MovieSearchRequest::new()
-        .with_imdb_id("0133093");
+    let request2 = MovieSearchRequest::new().with_imdb_id("0133093");
     assert_eq!(request2.imdb_id, Some("0133093".to_string()));
 }
 
 #[test]
 fn test_quality_parsing() {
     let quality = parse_quality("The.Matrix.1999.2160p.UHD.BluRay.x265.HDR.Atmos-GROUP");
-    
+
     assert_eq!(quality["resolution"].as_str().unwrap(), "2160p");
     assert_eq!(quality["source"].as_str().unwrap(), "BluRay");
     assert_eq!(quality["codec"].as_str().unwrap(), "x265");
     assert_eq!(quality["hdr"].as_str().unwrap(), "HDR10");
-    
+
     // Check score is reasonable for high quality release
     let score = quality["score"].as_i64().unwrap();
     assert!(score > 150); // Should be high for 4K/UHD/HDR/Atmos
@@ -68,11 +66,11 @@ fn test_quality_parsing() {
 #[test]
 fn test_quality_parsing_standard() {
     let quality = parse_quality("The.Matrix.1999.1080p.BluRay.x264.DD5.1-GROUP");
-    
+
     assert_eq!(quality["resolution"].as_str().unwrap(), "1080p");
     assert_eq!(quality["source"].as_str().unwrap(), "BluRay");
     assert_eq!(quality["codec"].as_str().unwrap(), "x264");
-    
+
     let score = quality["score"].as_i64().unwrap();
     assert!(score > 100 && score < 180); // Good quality but not premium
 }
@@ -80,10 +78,10 @@ fn test_quality_parsing_standard() {
 #[test]
 fn test_hdbits_search_request_building() {
     // SearchRequest already imported at the top
-    
+
     let config = HDBitsConfig::default();
     let client = HDBitsClient::new(config).unwrap();
-    
+
     let search_request = SearchRequest {
         query: Some("Dune".to_string()),
         imdb_id: None,
@@ -96,9 +94,9 @@ fn test_hdbits_search_request_building() {
         min_size: None,
         max_size: None,
     };
-    
+
     let api_request = client.convert_search_request(&search_request).unwrap();
-    
+
     // MovieSearchRequest doesn't have username, search, or category fields
     // Just check the fields it does have
     assert_eq!(api_request.title, Some("Dune".to_string()));
@@ -111,10 +109,10 @@ fn test_hdbits_search_request_building() {
 #[ignore = "Temporarily disabled - timeout issue"]
 fn test_hdbits_search_request_with_imdb() {
     // SearchRequest already imported at the top
-    
+
     let config = HDBitsConfig::default();
     let client = HDBitsClient::new(config).unwrap();
-    
+
     let search_request = SearchRequest {
         query: None,
         imdb_id: Some("tt0133093".to_string()),
@@ -127,9 +125,9 @@ fn test_hdbits_search_request_with_imdb() {
         min_size: None,
         max_size: None,
     };
-    
+
     let api_request = client.convert_search_request(&search_request).unwrap();
-    
+
     // Check that IMDB ID was properly converted
     assert_eq!(api_request.imdb_id, Some("tt0133093".to_string()));
 }
@@ -138,19 +136,19 @@ fn test_hdbits_search_request_with_imdb() {
 async fn test_rate_limiter() {
     // RateLimiter already imported at the top
     use std::time::Instant;
-    
+
     let limiter = RateLimiter::new(2); // 2 requests per hour
-    
+
     // First request should pass immediately
     let start = Instant::now();
     limiter.acquire().await.unwrap();
     assert!(start.elapsed().as_secs() < 1);
-    
+
     // Second request should also pass immediately
     let start = Instant::now();
     limiter.acquire().await.unwrap();
     assert!(start.elapsed().as_secs() < 1);
-    
+
     // Third request should be rate limited (but we won't wait for the full test)
     // This is more of a unit test to ensure the logic works
 }
@@ -158,10 +156,10 @@ async fn test_rate_limiter() {
 #[tokio::test]
 async fn test_indexer_client_interface() {
     use crate::models::SearchRequest;
-    
+
     let config = HDBitsConfig::default();
     let client = HDBitsClient::new(config).unwrap();
-    
+
     // Test that we can create search requests
     let request = SearchRequest {
         query: Some("Test Movie".to_string()),
@@ -175,7 +173,7 @@ async fn test_indexer_client_interface() {
         min_size: None,
         max_size: None,
     };
-    
+
     // Conversion should work (even if the actual search might fail without network)
     let movie_request = client.convert_search_request(&request).unwrap();
     assert_eq!(movie_request.title, Some("Test Movie".to_string()));
@@ -217,17 +215,21 @@ fn test_hdbits_response_deserialization() {
         }
       ]
     }"#;
-    
+
     let response: Result<HDBitsResponse, _> = serde_json::from_str(json_response);
-    assert!(response.is_ok(), "Failed to deserialize response: {:?}", response.err());
-    
+    assert!(
+        response.is_ok(),
+        "Failed to deserialize response: {:?}",
+        response.err()
+    );
+
     let response = response.unwrap();
     assert_eq!(response.status, 0);
     assert!(response.data.is_some());
-    
+
     let torrents = response.data.unwrap();
     assert_eq!(torrents.len(), 1);
-    
+
     let torrent = &torrents[0];
     assert_eq!(torrent.id, 789988);
     assert_eq!(torrent.name, "Dune 1984 1080p HD DVD VC-1 DD+ 5.1-smrdel");
@@ -242,10 +244,14 @@ fn test_hdbits_response_deserialization() {
     assert_eq!(torrent.type_origin, 0);
     assert!(!torrent.is_freeleech());
     assert!(!torrent.is_internal());
-    
+
     // Test date parsing
     let parsed_date = torrent.parsed_date();
-    assert!(parsed_date.is_some(), "Failed to parse date: {}", torrent.added);
+    assert!(
+        parsed_date.is_some(),
+        "Failed to parse date: {}",
+        torrent.added
+    );
 }
 
 #[test]
@@ -272,10 +278,10 @@ fn test_freeleech_parsing() {
         }
       ]
     }"#;
-    
+
     let response: HDBitsResponse = serde_json::from_str(json_freeleech).unwrap();
     let torrent = &response.data.unwrap()[0];
-    
+
     assert_eq!(torrent.freeleech, "yes");
     assert!(torrent.is_freeleech());
     assert!(torrent.is_internal());
@@ -283,9 +289,9 @@ fn test_freeleech_parsing() {
 
 #[test]
 fn test_infohash_deduplication() {
-    use super::models::*;
     use super::client::HDBitsClient;
-    
+    use super::models::*;
+
     // Create test torrents with duplicate InfoHashes
     let torrents = vec![
         HDBitsTorrent {
@@ -376,20 +382,20 @@ fn test_infohash_deduplication() {
             tvdb: None,
         },
     ];
-    
+
     let config = HDBitsConfig::default();
     let client = HDBitsClient::new(config).unwrap();
-    
+
     let deduplicated = client.deduplicate_by_infohash(torrents);
-    
+
     // Should have 2 results (2 unique InfoHashes)
     assert_eq!(deduplicated.len(), 2);
-    
+
     // First result should be the freeleech one (higher score)
     let first_result = deduplicated.iter().find(|t| t.hash == "ABCD1234").unwrap();
     assert_eq!(first_result.id, 2); // Should select the freeleech version
     assert!(first_result.is_freeleech());
-    
+
     // Second result should be the unique InfoHash
     let second_result = deduplicated.iter().find(|t| t.hash == "EFGH5678").unwrap();
     assert_eq!(second_result.id, 3);
@@ -397,9 +403,9 @@ fn test_infohash_deduplication() {
 
 #[test]
 fn test_movie_category_filtering() {
-    use super::models::*;
     use super::client::HDBitsClient;
-    
+    use super::models::*;
+
     let torrents = vec![
         HDBitsTorrent {
             id: 1,
@@ -460,12 +466,12 @@ fn test_movie_category_filtering() {
             tvdb: None,
         },
     ];
-    
+
     let config = HDBitsConfig::default();
     let client = HDBitsClient::new(config).unwrap();
-    
+
     let filtered = client.filter_movies_only(torrents);
-    
+
     // Should only have 1 result (movie only, TV show filtered out)
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].id, 1);
@@ -514,23 +520,27 @@ fn test_hdbits_response_with_complex_imdb() {
         }
       ]
     }"#;
-    
+
     let response: Result<HDBitsResponse, _> = serde_json::from_str(json_response);
-    assert!(response.is_ok(), "Failed to deserialize complex response: {:?}", response.err());
-    
+    assert!(
+        response.is_ok(),
+        "Failed to deserialize complex response: {:?}",
+        response.err()
+    );
+
     let response = response.unwrap();
     assert_eq!(response.status, 0);
     assert!(response.data.is_some());
-    
+
     let torrents = response.data.unwrap();
     assert_eq!(torrents.len(), 1);
-    
+
     let torrent = &torrents[0];
     assert_eq!(torrent.id, 789988);
     assert_eq!(torrent.owner, Some(12345));
     assert!(torrent.descr.is_some());
     assert!(torrent.descr.as_ref().unwrap().contains("Amazon"));
-    
+
     // Test IMDB data
     assert!(torrent.imdb.is_some());
     let imdb = torrent.imdb.as_ref().unwrap();
@@ -569,16 +579,20 @@ fn test_hdbits_response_with_malformed_descr() {
         }
       ]
     }"#;
-    
+
     let response: Result<HDBitsResponse, _> = serde_json::from_str(json_response);
-    assert!(response.is_ok(), "Failed to deserialize response with null descr: {:?}", response.err());
-    
+    assert!(
+        response.is_ok(),
+        "Failed to deserialize response with null descr: {:?}",
+        response.err()
+    );
+
     let response = response.unwrap();
     let torrent = &response.data.unwrap()[0];
     assert_eq!(torrent.descr, None);
 }
 
-// Note: Integration tests that actually call the HDBits API are excluded 
+// Note: Integration tests that actually call the HDBits API are excluded
 // from regular test runs to avoid hitting rate limits and requiring credentials.
 // Run them manually with: cargo test --release --features integration-tests
 
@@ -587,14 +601,12 @@ fn test_hdbits_response_with_malformed_descr() {
 async fn test_hdbits_real_search() {
     let config = HDBitsConfig::from_env().unwrap();
     let client = HDBitsClient::new(config).unwrap();
-    
-    let request = MovieSearchRequest::new()
-        .with_title("Dune")
-        .with_limit(1);
-        
+
+    let request = MovieSearchRequest::new().with_title("Dune").with_limit(1);
+
     let results = client.search_movies(&request).await.unwrap();
     assert!(!results.is_empty());
-    
+
     let release = &results[0];
     assert!(!release.title.is_empty());
     assert!(!release.download_url.is_empty());

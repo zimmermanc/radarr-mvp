@@ -1,64 +1,64 @@
 //! Release name parser for extracting quality information
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{json, Value};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 /// Parse quality information from release name
 pub fn parse_quality(name: &str) -> Value {
     let mut quality = HashMap::new();
-    
+
     // Resolution parsing
     if let Some(resolution) = extract_resolution(name) {
         quality.insert("resolution".to_string(), json!(resolution));
     }
-    
+
     // Source parsing
     if let Some(source) = extract_source(name) {
         quality.insert("source".to_string(), json!(source));
     }
-    
+
     // Codec parsing
     if let Some(codec) = extract_codec(name) {
         quality.insert("codec".to_string(), json!(codec));
     }
-    
+
     // Audio parsing
     if let Some(audio) = extract_audio(name) {
         quality.insert("audio".to_string(), json!(audio));
     }
-    
+
     // HDR parsing
     if let Some(hdr) = extract_hdr(name) {
         quality.insert("hdr".to_string(), json!(hdr));
     }
-    
+
     // Edition parsing
     let editions = extract_editions(name);
     if !editions.is_empty() {
         quality.insert("editions".to_string(), json!(editions));
     }
-    
+
     // Language parsing
     if let Some(language) = extract_language(name) {
         quality.insert("language".to_string(), json!(language));
     }
-    
+
     // Calculate overall quality score
     let score = calculate_quality_score(&quality);
     quality.insert("score".to_string(), json!(score));
-    
+
     json!(quality)
 }
 
 /// Extract resolution from release name
 fn extract_resolution(name: &str) -> Option<String> {
-    static RESOLUTION_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)\b(2160p|1080p|720p|576p|480p|4K|UHD)\b").unwrap()
-    });
-    
-    RESOLUTION_REGEX.find(name)
+    static RESOLUTION_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?i)\b(2160p|1080p|720p|576p|480p|4K|UHD)\b").unwrap());
+
+    RESOLUTION_REGEX
+        .find(name)
         .map(|m| normalize_resolution(m.as_str()))
 }
 
@@ -77,10 +77,14 @@ fn normalize_resolution(resolution: &str) -> String {
 /// Extract source from release name
 fn extract_source(name: &str) -> Option<String> {
     static SOURCE_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)\b(BluRay|Blu-Ray|BDRip|WEBDL|WEB-DL|WEBRip|HDTV|PDTV|DVDRip|DVD|HDDVD|HD-DVD)\b").unwrap()
+        Regex::new(
+            r"(?i)\b(BluRay|Blu-Ray|BDRip|WEBDL|WEB-DL|WEBRip|HDTV|PDTV|DVDRip|DVD|HDDVD|HD-DVD)\b",
+        )
+        .unwrap()
     });
-    
-    SOURCE_REGEX.find(name)
+
+    SOURCE_REGEX
+        .find(name)
         .map(|m| normalize_source(m.as_str()))
 }
 
@@ -105,9 +109,8 @@ fn extract_codec(name: &str) -> Option<String> {
     static CODEC_REGEX: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r"(?i)\b(x264|x265|H\.?264|H\.?265|HEVC|AVC|XviD|DivX|VC-1)\b").unwrap()
     });
-    
-    CODEC_REGEX.find(name)
-        .map(|m| normalize_codec(m.as_str()))
+
+    CODEC_REGEX.find(name).map(|m| normalize_codec(m.as_str()))
 }
 
 /// Normalize codec strings
@@ -128,9 +131,8 @@ fn extract_audio(name: &str) -> Option<String> {
     static AUDIO_REGEX: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r"(?i)\b(DTS-HD\.?MA|DTS-HD|TRUEHD|TrueHD|DD\+?5\.1|DD\+?7\.1|AC3|DTS|AAC|MP3|FLAC|ATMOS|DTS-X)\b").unwrap()
     });
-    
-    AUDIO_REGEX.find(name)
-        .map(|m| normalize_audio(m.as_str()))
+
+    AUDIO_REGEX.find(name).map(|m| normalize_audio(m.as_str()))
 }
 
 /// Normalize audio strings
@@ -155,12 +157,10 @@ fn normalize_audio(audio: &str) -> String {
 
 /// Extract HDR information from release name
 fn extract_hdr(name: &str) -> Option<String> {
-    static HDR_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)\b(HDR10\+?|HDR|Dolby\.?Vision|DV|SDR)\b").unwrap()
-    });
-    
-    HDR_REGEX.find(name)
-        .map(|m| normalize_hdr(m.as_str()))
+    static HDR_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?i)\b(HDR10\+?|HDR|Dolby\.?Vision|DV|SDR)\b").unwrap());
+
+    HDR_REGEX.find(name).map(|m| normalize_hdr(m.as_str()))
 }
 
 /// Normalize HDR strings
@@ -179,8 +179,9 @@ fn extract_editions(name: &str) -> Vec<String> {
     static EDITION_REGEX: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r"(?i)\b(Director'?s?\.?Cut|Extended\.?Cut|Theatrical\.?Cut|Unrated|IMAX|Remastered|Anniversary|Special\.?Edition|Ultimate\.?Edition|Final\.?Cut|Complete)\b").unwrap()
     });
-    
-    EDITION_REGEX.find_iter(name)
+
+    EDITION_REGEX
+        .find_iter(name)
         .map(|m| normalize_edition(m.as_str()))
         .collect()
 }
@@ -209,8 +210,9 @@ fn extract_language(name: &str) -> Option<String> {
     static LANG_REGEX: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r"(?i)\b(MULTI|DUAL|ENG|ENGLISH|FRENCH|GERMAN|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE|RUSSIAN)\b").unwrap()
     });
-    
-    LANG_REGEX.find(name)
+
+    LANG_REGEX
+        .find(name)
         .map(|m| normalize_language(m.as_str()))
 }
 
@@ -235,7 +237,7 @@ fn normalize_language(language: &str) -> String {
 /// Calculate quality score based on parsed components
 fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
     let mut score = 0;
-    
+
     // Resolution scoring
     if let Some(resolution) = quality.get("resolution").and_then(|v| v.as_str()) {
         score += match resolution {
@@ -247,7 +249,7 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             _ => 0,
         };
     }
-    
+
     // Source scoring
     if let Some(source) = quality.get("source").and_then(|v| v.as_str()) {
         score += match source {
@@ -261,7 +263,7 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             _ => 0,
         };
     }
-    
+
     // Codec scoring
     if let Some(codec) = quality.get("codec").and_then(|v| v.as_str()) {
         score += match codec {
@@ -271,7 +273,7 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             _ => 0,
         };
     }
-    
+
     // Audio scoring
     if let Some(audio) = quality.get("audio").and_then(|v| v.as_str()) {
         score += match audio {
@@ -284,7 +286,7 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             _ => 0,
         };
     }
-    
+
     // HDR scoring
     if let Some(hdr) = quality.get("hdr").and_then(|v| v.as_str()) {
         score += match hdr {
@@ -294,7 +296,7 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             _ => 0,
         };
     }
-    
+
     // Edition bonus
     if let Some(editions) = quality.get("editions").and_then(|v| v.as_array()) {
         for edition in editions {
@@ -308,14 +310,14 @@ fn calculate_quality_score(quality: &HashMap<String, Value>) -> i32 {
             }
         }
     }
-    
+
     // Freeleech bonus - check if quality metadata indicates freeleech
     if let Some(freeleech) = quality.get("freeleech").and_then(|v| v.as_bool()) {
         if freeleech {
             score += 25; // Significant bonus for freeleech torrents
         }
     }
-    
+
     score
 }
 
@@ -325,31 +327,61 @@ mod tests {
 
     #[test]
     fn test_resolution_parsing() {
-        assert_eq!(extract_resolution("Movie.2024.2160p.BluRay.x265-GROUP"), Some("2160p".to_string()));
-        assert_eq!(extract_resolution("Movie.2024.1080p.WEB-DL.x264-GROUP"), Some("1080p".to_string()));
-        assert_eq!(extract_resolution("Movie.2024.720p.HDTV.x264-GROUP"), Some("720p".to_string()));
-        assert_eq!(extract_resolution("Movie.2024.4K.UHD.BluRay.x265-GROUP"), Some("2160p".to_string()));
+        assert_eq!(
+            extract_resolution("Movie.2024.2160p.BluRay.x265-GROUP"),
+            Some("2160p".to_string())
+        );
+        assert_eq!(
+            extract_resolution("Movie.2024.1080p.WEB-DL.x264-GROUP"),
+            Some("1080p".to_string())
+        );
+        assert_eq!(
+            extract_resolution("Movie.2024.720p.HDTV.x264-GROUP"),
+            Some("720p".to_string())
+        );
+        assert_eq!(
+            extract_resolution("Movie.2024.4K.UHD.BluRay.x265-GROUP"),
+            Some("2160p".to_string())
+        );
     }
 
     #[test]
     fn test_source_parsing() {
-        assert_eq!(extract_source("Movie.2024.1080p.BluRay.x264-GROUP"), Some("BluRay".to_string()));
-        assert_eq!(extract_source("Movie.2024.1080p.WEB-DL.x264-GROUP"), Some("WEB-DL".to_string()));
-        assert_eq!(extract_source("Movie.2024.720p.HDTV.x264-GROUP"), Some("HDTV".to_string()));
+        assert_eq!(
+            extract_source("Movie.2024.1080p.BluRay.x264-GROUP"),
+            Some("BluRay".to_string())
+        );
+        assert_eq!(
+            extract_source("Movie.2024.1080p.WEB-DL.x264-GROUP"),
+            Some("WEB-DL".to_string())
+        );
+        assert_eq!(
+            extract_source("Movie.2024.720p.HDTV.x264-GROUP"),
+            Some("HDTV".to_string())
+        );
     }
 
     #[test]
     fn test_codec_parsing() {
-        assert_eq!(extract_codec("Movie.2024.1080p.BluRay.x264-GROUP"), Some("x264".to_string()));
-        assert_eq!(extract_codec("Movie.2024.2160p.BluRay.x265.HDR-GROUP"), Some("x265".to_string()));
-        assert_eq!(extract_codec("Movie.2024.1080p.BluRay.H.264-GROUP"), Some("x264".to_string()));
+        assert_eq!(
+            extract_codec("Movie.2024.1080p.BluRay.x264-GROUP"),
+            Some("x264".to_string())
+        );
+        assert_eq!(
+            extract_codec("Movie.2024.2160p.BluRay.x265.HDR-GROUP"),
+            Some("x265".to_string())
+        );
+        assert_eq!(
+            extract_codec("Movie.2024.1080p.BluRay.H.264-GROUP"),
+            Some("x264".to_string())
+        );
     }
 
     #[test]
     fn test_quality_score() {
         let quality = parse_quality("Movie.2024.2160p.BluRay.x265.TrueHD.Atmos.HDR-GROUP");
         let score = quality["score"].as_i64().unwrap() as i32;
-        
+
         // 2160p (100) + BluRay (50) + x265 (20) + TrueHD (15) + HDR10 (10) = 195+
         assert!(score > 190);
     }

@@ -1,15 +1,15 @@
 //! Hardlink manager for preserving seedbox files
-//! 
+//!
 //! This module provides functionality to create hardlinks for imported files,
 //! preserving the original files for seeding while organizing them in the
 //! media library structure.
 
-use std::path::{Path, PathBuf};
-use std::fs;
 use radarr_core::RadarrError;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use tokio::fs as async_fs;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 /// Configuration for hardlink operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,8 +90,12 @@ impl HardlinkManager {
         destination: &Path,
     ) -> Result<HardlinkResult, RadarrError> {
         let start_time = std::time::Instant::now();
-        
-        debug!("Creating hardlink: {} -> {}", source.display(), destination.display());
+
+        debug!(
+            "Creating hardlink: {} -> {}",
+            source.display(),
+            destination.display()
+        );
 
         // Validate source file exists
         if !source.exists() {
@@ -102,12 +106,13 @@ impl HardlinkManager {
         }
 
         // Get source file metadata
-        let source_metadata = async_fs::metadata(source).await.map_err(|e| {
-            RadarrError::ExternalServiceError {
-                service: "filesystem".to_string(),
-                error: format!("Failed to read source metadata: {}", e),
-            }
-        })?;
+        let source_metadata =
+            async_fs::metadata(source)
+                .await
+                .map_err(|e| RadarrError::ExternalServiceError {
+                    service: "filesystem".to_string(),
+                    error: format!("Failed to read source metadata: {}", e),
+                })?;
 
         let file_size = source_metadata.len();
 
@@ -142,7 +147,7 @@ impl HardlinkManager {
                 }
                 Err(e) => {
                     warn!("Hardlink failed: {}. Will try copy fallback.", e);
-                    
+
                     if !self.config.copy_fallback {
                         return Err(RadarrError::ExternalServiceError {
                             service: "filesystem".to_string(),
@@ -180,16 +185,21 @@ impl HardlinkManager {
         // Use tokio::task::spawn_blocking for the blocking fs::hard_link call
         let source = source.to_path_buf();
         let destination = destination.to_path_buf();
-        
-        tokio::task::spawn_blocking(move || {
-            fs::hard_link(&source, &destination)
-        }).await.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e))
-        })?
+
+        tokio::task::spawn_blocking(move || fs::hard_link(&source, &destination))
+            .await
+            .map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::Other, format!("Task join error: {}", e))
+            })?
     }
 
     /// Copy file when hardlink is not possible
-    async fn copy_file(&self, source: &Path, destination: &Path, file_size: u64) -> Result<(), RadarrError> {
+    async fn copy_file(
+        &self,
+        source: &Path,
+        destination: &Path,
+        file_size: u64,
+    ) -> Result<(), RadarrError> {
         // Check file size limits
         if self.config.max_copy_size > 0 && file_size > self.config.max_copy_size {
             return Err(RadarrError::ValidationError {
@@ -225,7 +235,8 @@ impl HardlinkManager {
                 field: "file_size".to_string(),
                 message: format!(
                     "File size mismatch: expected {} bytes, got {} bytes",
-                    expected_size, dest_metadata.len()
+                    expected_size,
+                    dest_metadata.len()
                 ),
             });
         }
@@ -241,7 +252,7 @@ impl HardlinkManager {
     ) -> Result<HardlinkStats, RadarrError> {
         let start_time = std::time::Instant::now();
         let total_files = files.len();
-        
+
         info!("Processing batch of {} files", total_files);
 
         let mut hardlinks_created = 0;
@@ -277,8 +288,10 @@ impl HardlinkManager {
             total_duration_ms,
         };
 
-        info!("Batch processing complete: {} hardlinks, {} copies, {} failures", 
-              hardlinks_created, copies_created, failed_operations);
+        info!(
+            "Batch processing complete: {} hardlinks, {} copies, {} failures",
+            hardlinks_created, copies_created, failed_operations
+        );
 
         Ok(stats)
     }
@@ -327,16 +340,24 @@ impl HardlinkManager {
     }
 
     /// Check available space at destination
-    pub async fn check_available_space(&self, destination: &Path, required_size: u64) -> Result<bool, RadarrError> {
+    pub async fn check_available_space(
+        &self,
+        destination: &Path,
+        required_size: u64,
+    ) -> Result<bool, RadarrError> {
         let dest_dir = destination.parent().unwrap_or(destination);
-        
+
         // This is a simplified check - real implementation would use
         // platform-specific APIs to get free space
         match async_fs::metadata(dest_dir).await {
             Ok(_) => {
                 // Assume we have enough space for now
                 // Real implementation would call statvfs on Unix or GetDiskFreeSpace on Windows
-                debug!("Space check passed for {} bytes at {}", required_size, dest_dir.display());
+                debug!(
+                    "Space check passed for {} bytes at {}",
+                    required_size,
+                    dest_dir.display()
+                );
                 Ok(true)
             }
             Err(e) => Err(RadarrError::ExternalServiceError {
@@ -350,23 +371,26 @@ impl HardlinkManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::io::Write;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_create_hardlink_success() {
         let temp_dir = TempDir::new().unwrap();
         let manager = HardlinkManager::default();
-        
+
         // Create source file
         let source = temp_dir.path().join("source.txt");
         let mut file = std::fs::File::create(&source).unwrap();
         file.write_all(b"test content").unwrap();
-        
+
         let destination = temp_dir.path().join("destination.txt");
-        
-        let result = manager.create_hardlink(&source, &destination).await.unwrap();
-        
+
+        let result = manager
+            .create_hardlink(&source, &destination)
+            .await
+            .unwrap();
+
         assert_eq!(result.source, source);
         assert_eq!(result.destination, destination);
         assert!(destination.exists());
@@ -382,16 +406,19 @@ mod tests {
             max_copy_size: 1024 * 1024, // 1MB limit
         };
         let manager = HardlinkManager::new(config);
-        
+
         let temp_dir = TempDir::new().unwrap();
         let source = temp_dir.path().join("source.txt");
         let mut file = std::fs::File::create(&source).unwrap();
         file.write_all(b"test content").unwrap();
-        
+
         let destination = temp_dir.path().join("destination.txt");
-        
-        let result = manager.create_hardlink(&source, &destination).await.unwrap();
-        
+
+        let result = manager
+            .create_hardlink(&source, &destination)
+            .await
+            .unwrap();
+
         assert!(!result.is_hardlink); // Should be a copy
         assert!(destination.exists());
     }
@@ -405,14 +432,14 @@ mod tests {
             max_copy_size: 5, // Very small limit
         };
         let manager = HardlinkManager::new(config);
-        
+
         let temp_dir = TempDir::new().unwrap();
         let source = temp_dir.path().join("large.txt");
         let mut file = std::fs::File::create(&source).unwrap();
         file.write_all(b"this content is too large").unwrap();
-        
+
         let destination = temp_dir.path().join("destination.txt");
-        
+
         let result = manager.create_hardlink(&source, &destination).await;
         assert!(result.is_err());
     }
@@ -421,20 +448,26 @@ mod tests {
     async fn test_batch_processing() {
         let temp_dir = TempDir::new().unwrap();
         let manager = HardlinkManager::default();
-        
+
         // Create multiple source files
         let files = vec![
-            (temp_dir.path().join("source1.txt"), temp_dir.path().join("dest1.txt")),
-            (temp_dir.path().join("source2.txt"), temp_dir.path().join("dest2.txt")),
+            (
+                temp_dir.path().join("source1.txt"),
+                temp_dir.path().join("dest1.txt"),
+            ),
+            (
+                temp_dir.path().join("source2.txt"),
+                temp_dir.path().join("dest2.txt"),
+            ),
         ];
-        
+
         for (source, _) in &files {
             let mut file = std::fs::File::create(source).unwrap();
             file.write_all(b"test").unwrap();
         }
-        
+
         let stats = manager.process_batch(&files).await.unwrap();
-        
+
         assert_eq!(stats.total_files, 2);
         assert_eq!(stats.failed_operations, 0);
         assert!(stats.hardlinks_created + stats.copies_created == 2);
@@ -444,10 +477,10 @@ mod tests {
     async fn test_nonexistent_source() {
         let temp_dir = TempDir::new().unwrap();
         let manager = HardlinkManager::default();
-        
+
         let source = temp_dir.path().join("nonexistent.txt");
         let destination = temp_dir.path().join("destination.txt");
-        
+
         let result = manager.create_hardlink(&source, &destination).await;
         assert!(result.is_err());
     }

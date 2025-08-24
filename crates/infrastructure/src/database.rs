@@ -22,11 +22,11 @@ impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
             database_url: "postgresql://radarr:radarr@localhost:5432/radarr".to_string(),
-            max_connections: 5,  // FIXED: Was 30, causing pool exhaustion
-            min_connections: 1,  // FIXED: Was 8, too many idle connections
-            acquire_timeout: Duration::from_secs(3),  // FIXED: Was 30, too long
-            idle_timeout: Duration::from_secs(10),    // FIXED: Was 300, connections lingering
-            max_lifetime: Duration::from_secs(300),   // FIXED: Was 1800, too long
+            max_connections: 5, // FIXED: Was 30, causing pool exhaustion
+            min_connections: 1, // FIXED: Was 8, too many idle connections
+            acquire_timeout: Duration::from_secs(3), // FIXED: Was 30, too long
+            idle_timeout: Duration::from_secs(10), // FIXED: Was 300, connections lingering
+            max_lifetime: Duration::from_secs(300), // FIXED: Was 1800, too long
         }
     }
 }
@@ -92,15 +92,13 @@ pub async fn migrate(pool: &DatabasePool) -> Result<()> {
         .run(pool)
         .await
         .map_err(|e| InfrastructureError::Migration(e.to_string()))?;
-    
+
     Ok(())
 }
 
 /// Test database connection
 pub async fn test_connection(pool: &DatabasePool) -> Result<()> {
-    sqlx::query("SELECT 1")
-        .fetch_one(pool)
-        .await?;
-    
+    sqlx::query("SELECT 1").fetch_one(pool).await?;
+
     Ok(())
 }

@@ -1,13 +1,9 @@
 //! API endpoints for retry and resilience status
 
-use axum::{
-    extract::Extension,
-    response::Json,
-    http::StatusCode,
-};
+use crate::retry_config::ApplicationRetryConfig;
+use axum::{extract::Extension, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::retry_config::ApplicationRetryConfig;
 
 /// Response for retry configuration status
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,11 +45,11 @@ pub struct CircuitBreakerState {
 
 /// Get current retry configuration and status
 pub async fn get_retry_status(
-    Extension(config): Extension<Arc<ApplicationRetryConfig>>
+    Extension(config): Extension<Arc<ApplicationRetryConfig>>,
 ) -> Result<Json<RetryStatusResponse>, StatusCode> {
     let response = RetryStatusResponse {
-        retry_enabled: config.api_retries.enabled 
-            || config.database_retries.enabled 
+        retry_enabled: config.api_retries.enabled
+            || config.database_retries.enabled
             || config.download_retries.enabled,
         circuit_breakers_enabled: config.circuit_breakers.enabled,
         configurations: RetryConfigurations {
@@ -98,6 +94,6 @@ pub async fn get_retry_status(
             },
         ],
     };
-    
+
     Ok(Json(response))
 }

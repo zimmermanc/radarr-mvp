@@ -1,8 +1,8 @@
 //! qBittorrent download client adapter
 
 use async_trait::async_trait;
-use radarr_core::{Result, DownloadClientService, ClientDownloadStatus};
-use radarr_downloaders::{QBittorrentClient, QBittorrentConfig, TorrentData, AddTorrentParams};
+use radarr_core::{ClientDownloadStatus, DownloadClientService, Result};
+use radarr_downloaders::{AddTorrentParams, QBittorrentClient, QBittorrentConfig, TorrentData};
 
 /// qBittorrent download client adapter
 pub struct QBittorrentDownloadClient {
@@ -32,7 +32,7 @@ impl DownloadClientService for QBittorrentDownloadClient {
             // torrent file downloads by fetching the URL and converting to bytes
             TorrentData::Url(download_url.to_string())
         };
-        
+
         let params = AddTorrentParams {
             torrent_data,
             category,
@@ -41,10 +41,10 @@ impl DownloadClientService for QBittorrentDownloadClient {
             skip_checking: false,
             priority: 0,
         };
-        
+
         self.client.add_torrent(params).await
     }
-    
+
     async fn get_download_status(&self, client_id: &str) -> Result<Option<ClientDownloadStatus>> {
         match self.client.get_torrent_status(client_id).await? {
             Some(torrent_info) => {
@@ -58,7 +58,7 @@ impl DownloadClientService for QBittorrentDownloadClient {
                     downloaded_bytes: Some(torrent_info.completed as i64),
                     upload_bytes: None, // qBittorrent doesn't provide total uploaded in TorrentInfo
                     eta_seconds: Some(torrent_info.eta),
-                    seeders: None, // Not available in TorrentInfo
+                    seeders: None,  // Not available in TorrentInfo
                     leechers: None, // Not available in TorrentInfo
                     save_path: Some(torrent_info.save_path),
                 };
@@ -67,23 +67,23 @@ impl DownloadClientService for QBittorrentDownloadClient {
             None => Ok(None),
         }
     }
-    
+
     async fn remove_download(&self, client_id: &str, delete_files: bool) -> Result<()> {
         self.client.delete_torrent(client_id, delete_files).await
     }
-    
+
     async fn pause_download(&self, client_id: &str) -> Result<()> {
         self.client.pause_torrent(client_id).await
     }
-    
+
     async fn resume_download(&self, client_id: &str) -> Result<()> {
         self.client.resume_torrent(client_id).await
     }
-    
+
     async fn get_all_downloads(&self) -> Result<Vec<ClientDownloadStatus>> {
         let torrents = self.client.get_torrents().await?;
         let mut downloads = Vec::new();
-        
+
         for torrent_info in torrents {
             let status = ClientDownloadStatus {
                 client_id: torrent_info.hash,
@@ -101,7 +101,7 @@ impl DownloadClientService for QBittorrentDownloadClient {
             };
             downloads.push(status);
         }
-        
+
         Ok(downloads)
     }
 }

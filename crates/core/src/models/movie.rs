@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Movie status in the system
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MovieStatus {
     #[default]
     Announced,
@@ -15,10 +14,8 @@ pub enum MovieStatus {
     Cancelled,
 }
 
-
 /// Minimum availability requirements
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MinimumAvailability {
     Announced,
     InCinemas,
@@ -27,36 +24,35 @@ pub enum MinimumAvailability {
     Predb,
 }
 
-
 /// Core movie entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Movie {
     pub id: Uuid,
     pub tmdb_id: i32,
     pub imdb_id: Option<String>,
-    
+
     // Basic information
     pub title: String,
     pub original_title: Option<String>,
     pub year: Option<i32>,
     pub runtime: Option<i32>, // minutes
-    
+
     // Status and monitoring
     pub status: MovieStatus,
     pub monitored: bool,
-    
+
     // Quality and availability
     pub quality_profile_id: Option<i32>,
     pub minimum_availability: MinimumAvailability,
-    
+
     // File information
     pub has_file: bool,
     pub movie_file_id: Option<Uuid>,
-    
+
     // Flexible metadata storage
     pub metadata: serde_json::Value,
     pub alternative_titles: serde_json::Value,
-    
+
     // Timestamps
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -68,7 +64,7 @@ impl Movie {
     /// Create a new Movie with the given TMDB ID and title
     pub fn new(tmdb_id: i32, title: String) -> Self {
         let now = chrono::Utc::now();
-        
+
         Self {
             id: Uuid::new_v4(),
             tmdb_id,
@@ -91,20 +87,20 @@ impl Movie {
             last_info_sync: None,
         }
     }
-    
+
     /// Update the movie's metadata
     pub fn update_metadata(&mut self, metadata: serde_json::Value) {
         self.metadata = metadata;
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Mark the movie as having a file
     pub fn set_has_file(&mut self, movie_file_id: Uuid) {
         self.has_file = true;
         self.movie_file_id = Some(movie_file_id);
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Get the movie's rating from metadata
     pub fn rating(&self) -> Option<f64> {
         self.metadata
@@ -112,7 +108,7 @@ impl Movie {
             .and_then(|tmdb| tmdb.get("vote_average"))
             .and_then(|rating| rating.as_f64())
     }
-    
+
     /// Get the movie's overview from metadata
     pub fn overview(&self) -> Option<&str> {
         self.metadata

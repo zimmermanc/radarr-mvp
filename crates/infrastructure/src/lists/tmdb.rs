@@ -15,167 +15,209 @@ impl TmdbListClient {
             tmdb_client: TmdbClient::new(api_key),
         }
     }
-    
+
     /// Get popular movies
     pub async fn get_popular(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb popular movies");
-        
-        let movies = self.tmdb_client.get_popular(Some(1))
+
+        let movies = self
+            .tmdb_client
+            .get_popular(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} popular movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get upcoming movies
     pub async fn get_upcoming(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb upcoming movies");
-        
-        let movies = self.tmdb_client.get_upcoming(Some(1))
+
+        let movies = self
+            .tmdb_client
+            .get_upcoming(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} upcoming movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get now playing movies
     pub async fn get_now_playing(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb now playing movies");
-        
-        let movies = self.tmdb_client.get_now_playing(Some(1))
+
+        let movies = self
+            .tmdb_client
+            .get_now_playing(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} now playing movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get top rated movies
     pub async fn get_top_rated(&self) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb top rated movies");
-        
-        let movies = self.tmdb_client.get_top_rated(Some(1))
+
+        let movies = self
+            .tmdb_client
+            .get_top_rated(Some(1))
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} top rated movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get movies from a collection (e.g., Marvel Cinematic Universe)
-    pub async fn get_collection(&self, collection_id: i32) -> Result<Vec<ListItem>, ListParseError> {
+    pub async fn get_collection(
+        &self,
+        collection_id: i32,
+    ) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb collection {}", collection_id);
-        
-        let movies = self.tmdb_client.get_collection(collection_id)
+
+        let movies = self
+            .tmdb_client
+            .get_collection(collection_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} collection movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get movies by a specific person (actor/director)
     pub async fn get_person_movies(&self, person_id: i32) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies for person {}", person_id);
-        
-        let movies = self.tmdb_client.get_person_movies(person_id)
+
+        let movies = self
+            .tmdb_client
+            .get_person_movies(person_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} person movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get movies by keyword
-    pub async fn get_keyword_movies(&self, keyword_id: i32) -> Result<Vec<ListItem>, ListParseError> {
+    pub async fn get_keyword_movies(
+        &self,
+        keyword_id: i32,
+    ) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies for keyword {}", keyword_id);
-        
-        let movies = self.tmdb_client.get_keyword_movies(keyword_id)
+
+        let movies = self
+            .tmdb_client
+            .get_keyword_movies(keyword_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} keyword movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get a public list
     pub async fn get_list(&self, list_id: &str) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching TMDb list {}", list_id);
-        
-        let movies = self.tmdb_client.get_list(list_id)
+
+        let movies = self
+            .tmdb_client
+            .get_list(list_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} list movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get movies from a production company
-    pub async fn get_company_movies(&self, company_id: i32) -> Result<Vec<ListItem>, ListParseError> {
+    pub async fn get_company_movies(
+        &self,
+        company_id: i32,
+    ) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies for company {}", company_id);
-        
-        let movies = self.tmdb_client.get_company_movies(company_id)
+
+        let movies = self
+            .tmdb_client
+            .get_company_movies(company_id)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} company movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Get movies using TMDb discover endpoint with filters
-    pub async fn get_discover_movies(&self, params: &[(&str, &str)]) -> Result<Vec<ListItem>, ListParseError> {
+    pub async fn get_discover_movies(
+        &self,
+        params: &[(&str, &str)],
+    ) -> Result<Vec<ListItem>, ListParseError> {
         info!("Fetching movies via discover with {} filters", params.len());
-        
-        let movies = self.tmdb_client.get_discover_movies(params)
+
+        let movies = self
+            .tmdb_client
+            .get_discover_movies(params)
             .await
             .map_err(|e| ListParseError::Unknown(e.to_string()))?;
-        
-        let items: Vec<ListItem> = movies.into_iter()
+
+        let items: Vec<ListItem> = movies
+            .into_iter()
             .map(|movie| self.movie_to_list_item(movie))
             .collect();
-            
+
         debug!("Converted {} discover movies to list items", items.len());
         Ok(items)
     }
-    
+
     /// Convert TMDb movie to ListItem
     fn convert_movie_to_item(&self, movie: serde_json::Value) -> ListItem {
         ListItem {
@@ -215,8 +257,11 @@ impl TmdbListClient {
     /// Convert Movie to ListItem
     fn movie_to_list_item(&self, movie: radarr_core::Movie) -> ListItem {
         // Extract TMDb metadata from the movie's metadata field
-        let tmdb_metadata = movie.metadata.get("tmdb").unwrap_or(&serde_json::Value::Null);
-        
+        let tmdb_metadata = movie
+            .metadata
+            .get("tmdb")
+            .unwrap_or(&serde_json::Value::Null);
+
         ListItem {
             tmdb_id: Some(movie.tmdb_id),
             imdb_id: movie.imdb_id.clone(),
@@ -228,7 +273,9 @@ impl TmdbListClient {
             release_date: tmdb_metadata["release_date"].as_str().map(String::from),
             runtime: movie.runtime,
             genres: vec![], // Genre conversion would need additional API call
-            original_language: tmdb_metadata["original_language"].as_str().map(String::from),
+            original_language: tmdb_metadata["original_language"]
+                .as_str()
+                .map(String::from),
             vote_average: tmdb_metadata["vote_average"].as_f64().map(|v| v as f32),
             vote_count: tmdb_metadata["vote_count"].as_i64().map(|v| v as i32),
             popularity: tmdb_metadata["popularity"].as_f64().map(|p| p as f32),
@@ -246,9 +293,12 @@ impl TmdbListClient {
 impl ListParser for TmdbListClient {
     async fn parse_list(&self, list_url: &str) -> Result<Vec<ListItem>, ListParseError> {
         if !self.validate_url(list_url) {
-            return Err(ListParseError::InvalidUrl(format!("Invalid TMDb URL: {}", list_url)));
+            return Err(ListParseError::InvalidUrl(format!(
+                "Invalid TMDb URL: {}",
+                list_url
+            )));
         }
-        
+
         // Parse the URL to determine list type
         if list_url.contains("popular") {
             self.get_popular().await
@@ -263,14 +313,14 @@ impl ListParser for TmdbListClient {
             self.get_list(list_url).await
         }
     }
-    
+
     fn source_type(&self) -> ListSource {
         ListSource::TMDb
     }
-    
+
     fn validate_url(&self, url: &str) -> bool {
         // Accept special keywords or TMDb URLs
-        matches!(url, "popular" | "upcoming" | "now_playing" | "top_rated") 
+        matches!(url, "popular" | "upcoming" | "now_playing" | "top_rated")
             || url.starts_with("https://www.themoviedb.org/")
             || url.starts_with("http://www.themoviedb.org/")
     }

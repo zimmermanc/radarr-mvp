@@ -1,5 +1,5 @@
 //! HDBits API models and data structures
-//! 
+//!
 //! This module contains models that match the actual HDBits API response format.
 //! Key changes made:
 //! - `id` field is now u32 (not string)
@@ -9,8 +9,8 @@
 //! - Improved date parsing to handle "+0000" timezone format
 //! - Added comprehensive deserialization tests with real API response format
 
-use chrono::{DateTime, Utc, NaiveDateTime};
-use serde::{Deserialize, Serialize, Deserializer};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// HDBits API search request
 #[derive(Debug, Clone, Serialize)]
@@ -62,7 +62,10 @@ pub struct HDBitsTorrent {
     pub added: String, // ISO date string with timezone
     #[serde(skip_serializing_if = "Option::is_none")]
     pub utadded: Option<u64>, // Unix timestamp
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_optional_string_lenient")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_optional_string_lenient"
+    )]
     pub descr: Option<String>, // Description - can be very long BBCode/HTML
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comments: Option<u32>,
@@ -74,7 +77,10 @@ pub struct HDBitsTorrent {
     pub type_codec: u32,
     pub type_medium: u32,
     pub type_origin: u32,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_u32_or_empty_object")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_u32_or_empty_object"
+    )]
     pub type_exclusive: Option<u32>,
     pub freeleech: String, // "yes" or "no"
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,29 +146,29 @@ impl MovieSearchRequest {
             min_seeders: Some(1),
         }
     }
-    
+
     pub fn with_title(mut self, title: &str) -> Self {
         self.title = Some(title.to_string());
         self
     }
-    
+
     pub fn with_year(mut self, year: u32) -> Self {
         self.year = Some(year);
         self
     }
-    
+
     pub fn with_imdb_id(mut self, imdb_id: &str) -> Self {
         // Extract numeric IMDB ID if needed
         let clean_id = imdb_id.trim_start_matches("tt");
         self.imdb_id = Some(clean_id.to_string());
         self
     }
-    
+
     pub fn with_limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
         self
     }
-    
+
     pub fn with_min_seeders(mut self, min_seeders: u32) -> Self {
         self.min_seeders = Some(min_seeders);
         self
@@ -183,44 +189,44 @@ impl HDBitsTorrent {
         // Using passkey authentication for automated downloads
         format!("https://hdbits.org/download.php/{}/{}", passkey, self.id)
     }
-    
+
     /// Get the info URL for this torrent
     pub fn info_url(&self) -> String {
         format!("https://hdbits.org/details.php?id={}", self.id)
     }
-    
+
     /// Parse the added date
     pub fn parsed_date(&self) -> Option<DateTime<Utc>> {
         // Try to parse HDBits format with +0000 timezone: "2025-08-09T09:34:25+0000"
         if let Ok(dt) = DateTime::parse_from_str(&self.added, "%Y-%m-%dT%H:%M:%S%z") {
             return Some(dt.with_timezone(&Utc));
         }
-        
+
         // Try RFC3339 format
         if let Ok(dt) = DateTime::parse_from_rfc3339(&self.added) {
             return Some(dt.with_timezone(&Utc));
         }
-        
+
         // Fallback to simple format without timezone: "2024-01-15 12:30:45"
         NaiveDateTime::parse_from_str(&self.added, "%Y-%m-%d %H:%M:%S")
             .ok()
             .map(|dt| dt.and_utc())
     }
-    
+
     /// Get size in bytes
     pub fn size_bytes(&self) -> i64 {
         self.size as i64
     }
-    
+
     /// Extract scene group from release name
     pub fn scene_group(&self) -> Option<String> {
         // Common patterns for scene group extraction
         let patterns = [
-            r"-([A-Z0-9][A-Za-z0-9_.-]+)$",  // Standard suffix: Movie.Name.2024-GROUP
+            r"-([A-Z0-9][A-Za-z0-9_.-]+)$", // Standard suffix: Movie.Name.2024-GROUP
             r"\[([A-Z0-9][A-Za-z0-9_.-]+)\]", // Bracketed: [GROUP]
             r"\{([A-Z0-9][A-Za-z0-9_.-]+)\}", // Braced: {GROUP}
         ];
-        
+
         for pattern in &patterns {
             if let Ok(re) = regex::Regex::new(pattern) {
                 if let Some(captures) = re.captures(&self.name) {
@@ -234,25 +240,25 @@ impl HDBitsTorrent {
                 }
             }
         }
-        
+
         None
     }
-    
+
     /// Get IMDB ID as string
     pub fn imdb_id(&self) -> Option<String> {
         self.imdb.as_ref().map(|imdb| format!("tt{:07}", imdb.id))
     }
-    
+
     /// Check if this is a freeleech torrent
     pub fn is_freeleech(&self) -> bool {
         self.freeleech == "yes"
     }
-    
+
     /// Check if this is an internal release
     pub fn is_internal(&self) -> bool {
         self.type_origin == origins::INTERNAL
     }
-    
+
     /// Calculate age in hours from added date
     pub fn age_hours(&self) -> Option<i32> {
         self.parsed_date().map(|added| {
@@ -266,18 +272,69 @@ impl HDBitsTorrent {
 /// Check if a suffix is likely not a scene group
 fn is_non_group_suffix(suffix: &str) -> bool {
     let non_groups = [
-        "PROPER", "REPACK", "INTERNAL", "LIMITED", "UNRATED", "DC", "EXTENDED",
-        "THEATRICAL", "DIRECTORS", "CUT", "COMPLETE", "READNFO", "READ", "NFO",
-        "x264", "x265", "H264", "H265", "HEVC", "AVC", "XVID", "DIVX",
-        "1080p", "720p", "480p", "2160p", "4K", "UHD", "HDR", "SDR",
-        "BLURAY", "BDRIP", "DVDRIP", "WEBRIP", "WEBDL", "HDTV", "PDTV",
-        "AC3", "DTS", "AAC", "MP3", "FLAC", "DD5", "DD+", "ATMOS", "TRUEHD",
-        "MULTI", "DUAL", "ENG", "FRENCH", "GERMAN", "SPANISH", "ITALIAN",
-        "SUBBED", "DUBBED", "SUBS", "NOSUBS"
+        "PROPER",
+        "REPACK",
+        "INTERNAL",
+        "LIMITED",
+        "UNRATED",
+        "DC",
+        "EXTENDED",
+        "THEATRICAL",
+        "DIRECTORS",
+        "CUT",
+        "COMPLETE",
+        "READNFO",
+        "READ",
+        "NFO",
+        "x264",
+        "x265",
+        "H264",
+        "H265",
+        "HEVC",
+        "AVC",
+        "XVID",
+        "DIVX",
+        "1080p",
+        "720p",
+        "480p",
+        "2160p",
+        "4K",
+        "UHD",
+        "HDR",
+        "SDR",
+        "BLURAY",
+        "BDRIP",
+        "DVDRIP",
+        "WEBRIP",
+        "WEBDL",
+        "HDTV",
+        "PDTV",
+        "AC3",
+        "DTS",
+        "AAC",
+        "MP3",
+        "FLAC",
+        "DD5",
+        "DD+",
+        "ATMOS",
+        "TRUEHD",
+        "MULTI",
+        "DUAL",
+        "ENG",
+        "FRENCH",
+        "GERMAN",
+        "SPANISH",
+        "ITALIAN",
+        "SUBBED",
+        "DUBBED",
+        "SUBS",
+        "NOSUBS",
     ];
-    
+
     let upper_suffix = suffix.to_uppercase();
-    non_groups.iter().any(|&non_group| upper_suffix.contains(non_group))
+    non_groups
+        .iter()
+        .any(|&non_group| upper_suffix.contains(non_group))
 }
 
 /// HDBits category constants
@@ -286,7 +343,7 @@ pub mod categories {
     pub const MOVIE: u32 = 1;
     pub const MOVIE_BD: u32 = 2;
     pub const MOVIE_UHD: u32 = 7;
-    
+
     /// All movie categories
     pub const ALL_MOVIES: &[u32] = &[MOVIE, MOVIE_BD, MOVIE_UHD];
 }
@@ -304,7 +361,7 @@ pub mod codecs {
 /// HDBits medium constants
 pub mod mediums {
     pub const BLURAY: &str = "Blu-ray";
-    pub const WEBDL: &str = "WEB-DL";  
+    pub const WEBDL: &str = "WEB-DL";
     pub const WEBRIP: &str = "WEBRip";
     pub const HDTV: &str = "HDTV";
     pub const DVD: &str = "DVD";

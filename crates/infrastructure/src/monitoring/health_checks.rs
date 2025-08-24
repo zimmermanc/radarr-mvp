@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tokio::sync::RwLock;
-use tokio::time::{interval, Duration as TokioDuration, timeout};
+use tokio::time::{interval, timeout, Duration as TokioDuration};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -30,12 +30,12 @@ impl HealthStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Healthy => "healthy",
-            Self::Degraded => "degraded", 
+            Self::Degraded => "degraded",
             Self::Unhealthy => "unhealthy",
             Self::Unknown => "unknown",
         }
     }
-    
+
     /// Get numeric score for aggregation (higher = better)
     pub fn score(&self) -> u8 {
         match self {
@@ -75,13 +75,18 @@ impl ServiceHealth {
             metadata: HashMap::new(),
         }
     }
-    
+
     /// Update health status with check result
-    pub fn update(&mut self, status: HealthStatus, response_time: Option<StdDuration>, error: Option<String>) {
+    pub fn update(
+        &mut self,
+        status: HealthStatus,
+        response_time: Option<StdDuration>,
+        error: Option<String>,
+    ) {
         self.last_checked = Utc::now();
         self.response_time_ms = response_time.map(|d| d.as_millis() as u64);
         self.error_message = error;
-        
+
         match status {
             HealthStatus::Healthy => {
                 self.consecutive_successes += 1;
@@ -93,15 +98,15 @@ impl ServiceHealth {
                 self.consecutive_successes = 0;
             }
         }
-        
+
         self.status = status;
     }
-    
+
     /// Check if service should be considered unhealthy based on failure count
     pub fn is_unhealthy_by_failures(&self, threshold: u32) -> bool {
         self.consecutive_failures >= threshold
     }
-    
+
     /// Get time since last healthy check
     pub fn time_since_healthy(&self) -> Option<Duration> {
         self.last_healthy.map(|t| Utc::now() - t)
@@ -140,15 +145,15 @@ impl Default for HealthCheckConfig {
 pub trait ServiceHealthChecker: Send + Sync {
     /// Perform a health check for the service
     async fn check_health(&self) -> HealthCheckResult;
-    
+
     /// Get the service name
     fn service_name(&self) -> &str;
-    
+
     /// Check if the service supports detailed health checks
     fn supports_detailed_check(&self) -> bool {
         false
     }
-    
+
     /// Perform a detailed health check (optional)
     async fn detailed_health_check(&self) -> HealthCheckResult {
         self.check_health().await
@@ -173,7 +178,7 @@ impl HealthCheckResult {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn degraded(response_time: StdDuration, message: impl Into<String>) -> Self {
         Self {
             status: HealthStatus::Degraded,
@@ -182,7 +187,7 @@ impl HealthCheckResult {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn unhealthy(error: impl Into<String>) -> Self {
         Self {
             status: HealthStatus::Unhealthy,
@@ -191,7 +196,7 @@ impl HealthCheckResult {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
@@ -219,14 +224,14 @@ impl HealthChecker {
     pub fn add_checker(&mut self, checker: Box<dyn ServiceHealthChecker>) {
         let service_name = checker.service_name().to_string();
         info!("Added health checker for service: {}", service_name);
-        
+
         // Initialize health status
         let health_status = self.health_status.clone();
         tokio::spawn(async move {
             let mut status_map = health_status.write().await;
             status_map.insert(service_name.clone(), ServiceHealth::new(service_name));
         });
-        
+
         self.checkers.push(checker);
     }
 
@@ -237,20 +242,22 @@ impl HealthChecker {
             timeout_secs = self.config.request_timeout.as_secs(),
             "Starting health check loop"
         );
-        
+
         let mut interval = interval(self.config.check_interval);
-        
+
         loop {
             interval.tick().await;
-            
+
             // Run health checks for all services in parallel
-            let check_futures: Vec<_> = self.checkers.iter()
+            let check_futures: Vec<_> = self
+                .checkers
+                .iter()
                 .map(|checker| self.check_service_health(checker.as_ref()))
                 .collect();
-            
+
             // Wait for all checks to complete
             futures::future::join_all(check_futures).await;
-            
+
             debug!("Completed health check cycle");
         }
     }
@@ -259,24 +266,25 @@ impl HealthChecker {
     async fn check_service_health(&self, checker: &dyn ServiceHealthChecker) {
         let service_name = checker.service_name();
         let start_time = std::time::Instant::now();
-        
+
         debug!("Checking health for service: {}", service_name);
-        
+
         let result = timeout(self.config.request_timeout, async {
             if self.config.enable_detailed_checks && checker.supports_detailed_check() {
                 checker.detailed_health_check().await
             } else {
                 checker.check_health().await
             }
-        }).await;
-        
+        })
+        .await;
+
         let check_result = match result {
             Ok(check_result) => check_result,
             Err(_) => HealthCheckResult::unhealthy("Health check timed out"),
         };
-        
+
         let elapsed = start_time.elapsed();
-        
+
         // Update service health status
         let mut health_status = self.health_status.write().await;
         if let Some(service_health) = health_status.get_mut(service_name) {
@@ -287,7 +295,7 @@ impl HealthChecker {
                 check_result.error_message.clone(),
             );
             service_health.metadata = check_result.metadata;
-            
+
             // Log status changes
             if old_status != check_result.status {
                 match check_result.status {
@@ -343,40 +351,44 @@ impl HealthChecker {
     pub async fn get_health_summary(&self) -> HealthSummary {
         let health_status = self.health_status.read().await;
         let mut summary = HealthSummary::default();
-        
+
         for (service_name, health) in health_status.iter() {
             summary.total_services += 1;
-            
+
             match health.status {
                 HealthStatus::Healthy => summary.healthy_services += 1,
                 HealthStatus::Degraded => summary.degraded_services += 1,
                 HealthStatus::Unhealthy => summary.unhealthy_services += 1,
                 HealthStatus::Unknown => summary.unknown_services += 1,
             }
-            
+
             if let Some(response_time) = health.response_time_ms {
                 summary.avg_response_time_ms += response_time as f64;
             }
-            
+
             if health.consecutive_failures > 0 {
                 summary.services_with_issues.push(service_name.clone());
             }
         }
-        
+
         if summary.total_services > 0 {
             summary.avg_response_time_ms /= summary.total_services as f64;
-            summary.overall_health_score = (
-                (summary.healthy_services * 100 + summary.degraded_services * 50 + summary.unknown_services * 25) as f64
-                / summary.total_services as f64
-            ) as u8;
+            summary.overall_health_score = ((summary.healthy_services * 100
+                + summary.degraded_services * 50
+                + summary.unknown_services * 25) as f64
+                / summary.total_services as f64) as u8;
         }
-        
+
         summary
     }
 
     /// Force a health check for a specific service
     pub async fn force_check(&self, service_name: &str) -> Option<HealthCheckResult> {
-        if let Some(checker) = self.checkers.iter().find(|c| c.service_name() == service_name) {
+        if let Some(checker) = self
+            .checkers
+            .iter()
+            .find(|c| c.service_name() == service_name)
+        {
             let result = timeout(self.config.request_timeout, checker.check_health()).await;
             match result {
                 Ok(check_result) => {
@@ -457,25 +469,24 @@ impl HttpHealthChecker {
 impl ServiceHealthChecker for HttpHealthChecker {
     async fn check_health(&self) -> HealthCheckResult {
         let start_time = std::time::Instant::now();
-        
+
         let response = match timeout(self.timeout, self.client.get(&self.url).send()).await {
             Ok(Ok(response)) => response,
-            Ok(Err(e)) => return HealthCheckResult::unhealthy(format!("HTTP request failed: {}", e)),
+            Ok(Err(e)) => {
+                return HealthCheckResult::unhealthy(format!("HTTP request failed: {}", e))
+            }
             Err(_) => return HealthCheckResult::unhealthy("Request timed out"),
         };
-        
+
         let elapsed = start_time.elapsed();
         let status_code = response.status().as_u16();
-        
+
         if status_code == self.expected_status {
             HealthCheckResult::healthy(elapsed)
                 .with_metadata("status_code", serde_json::Value::Number(status_code.into()))
         } else if status_code >= 400 && status_code < 500 {
-            HealthCheckResult::degraded(
-                elapsed,
-                format!("Unexpected status code: {}", status_code),
-            )
-            .with_metadata("status_code", serde_json::Value::Number(status_code.into()))
+            HealthCheckResult::degraded(elapsed, format!("Unexpected status code: {}", status_code))
+                .with_metadata("status_code", serde_json::Value::Number(status_code.into()))
         } else {
             HealthCheckResult::unhealthy(format!("HTTP error: {}", status_code))
         }
@@ -491,12 +502,12 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::time::sleep;
-    
+
     struct MockHealthChecker {
         name: String,
         should_fail: Arc<AtomicBool>,
     }
-    
+
     impl MockHealthChecker {
         fn new(name: impl Into<String>) -> Self {
             Self {
@@ -504,52 +515,60 @@ mod tests {
                 should_fail: Arc::new(AtomicBool::new(false)),
             }
         }
-        
+
         fn set_should_fail(&self, should_fail: bool) {
             self.should_fail.store(should_fail, Ordering::Relaxed);
         }
     }
-    
+
     #[async_trait::async_trait]
     impl ServiceHealthChecker for MockHealthChecker {
         async fn check_health(&self) -> HealthCheckResult {
             sleep(TokioDuration::from_millis(10)).await; // Simulate network delay
-            
+
             if self.should_fail.load(Ordering::Relaxed) {
                 HealthCheckResult::unhealthy("Mock failure")
             } else {
                 HealthCheckResult::healthy(StdDuration::from_millis(10))
             }
         }
-        
+
         fn service_name(&self) -> &str {
             &self.name
         }
     }
-    
+
     #[tokio::test]
     async fn test_service_health_update() {
         let mut health = ServiceHealth::new("test_service");
-        
+
         // Initially unknown
         assert_eq!(health.status, HealthStatus::Unknown);
         assert_eq!(health.consecutive_failures, 0);
         assert_eq!(health.consecutive_successes, 0);
-        
+
         // Update with healthy status
-        health.update(HealthStatus::Healthy, Some(StdDuration::from_millis(100)), None);
+        health.update(
+            HealthStatus::Healthy,
+            Some(StdDuration::from_millis(100)),
+            None,
+        );
         assert_eq!(health.status, HealthStatus::Healthy);
         assert_eq!(health.consecutive_successes, 1);
         assert_eq!(health.consecutive_failures, 0);
         assert!(health.last_healthy.is_some());
-        
+
         // Update with failure
-        health.update(HealthStatus::Unhealthy, None, Some("Test error".to_string()));
+        health.update(
+            HealthStatus::Unhealthy,
+            None,
+            Some("Test error".to_string()),
+        );
         assert_eq!(health.status, HealthStatus::Unhealthy);
         assert_eq!(health.consecutive_failures, 1);
         assert_eq!(health.consecutive_successes, 0);
     }
-    
+
     #[tokio::test]
     async fn test_health_checker_basic_functionality() {
         let config = HealthCheckConfig {
@@ -559,61 +578,63 @@ mod tests {
             recovery_threshold: 1,
             enable_detailed_checks: false,
         };
-        
+
         let mut health_checker = HealthChecker::new(config);
         let mock_checker = Box::new(MockHealthChecker::new("test_service"));
-        
+
         health_checker.add_checker(mock_checker);
-        
+
         // Give it a moment to initialize
         sleep(TokioDuration::from_millis(50)).await;
-        
+
         // Force a health check
         let result = health_checker.force_check("test_service").await;
         assert!(result.is_some());
-        
+
         let result = result.unwrap();
         assert_eq!(result.status, HealthStatus::Healthy);
-        
+
         // Check stored health status
         let health = health_checker.get_service_health("test_service").await;
         assert!(health.is_some());
-        
+
         let health = health.unwrap();
         assert_eq!(health.status, HealthStatus::Healthy);
         assert_eq!(health.consecutive_successes, 1);
     }
-    
+
     #[tokio::test]
     async fn test_health_summary() {
         let config = HealthCheckConfig::default();
         let mut health_checker = HealthChecker::new(config);
-        
+
         // Add multiple mock checkers
         let mock1 = Box::new(MockHealthChecker::new("service1"));
         let mock2 = Box::new(MockHealthChecker::new("service2"));
         let mock3 = Box::new(MockHealthChecker::new("service3"));
-        
+
         // Make service2 fail
         mock2.set_should_fail(true);
-        
+
         health_checker.add_checker(mock1);
         health_checker.add_checker(mock2);
         health_checker.add_checker(mock3);
-        
+
         // Give it time to initialize
         sleep(TokioDuration::from_millis(50)).await;
-        
+
         // Force checks for all services
         health_checker.force_check("service1").await;
         health_checker.force_check("service2").await;
         health_checker.force_check("service3").await;
-        
+
         let summary = health_checker.get_health_summary().await;
         assert_eq!(summary.total_services, 3);
         assert_eq!(summary.healthy_services, 2);
         assert_eq!(summary.unhealthy_services, 1);
         assert_eq!(summary.services_with_issues.len(), 1);
-        assert!(summary.services_with_issues.contains(&"service2".to_string()));
+        assert!(summary
+            .services_with_issues
+            .contains(&"service2".to_string()));
     }
 }

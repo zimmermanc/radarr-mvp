@@ -1,15 +1,15 @@
 //! RSS feed management API endpoints
 
+use crate::services::RssService;
 use axum::{
     extract::{Extension, Path, Query},
-    response::Json,
     http::StatusCode,
+    response::Json,
 };
+use radarr_core::rss::{CalendarEntry, RssFeed, RssItem};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
-use radarr_core::rss::{RssFeed, RssItem, CalendarEntry};
-use crate::services::RssService;
 
 /// Request to add a new RSS feed
 #[derive(Debug, Deserialize)]
@@ -71,28 +71,30 @@ pub async fn add_feed(
     Json(request): Json<AddFeedRequest>,
 ) -> Result<(StatusCode, Json<FeedResponse>), StatusCode> {
     let mut feed = RssFeed::new(&request.name, &request.url);
-    
+
     if let Some(interval) = request.interval_minutes {
         feed.interval_minutes = interval;
     }
-    
+
     if let Some(categories) = request.categories {
         feed.categories = categories;
     }
-    
+
     if let Some(profile_id) = request.quality_profile_id {
         feed.quality_profile_id = Some(profile_id);
     }
-    
+
     if let Some(tags) = request.tags {
         feed.tags = tags;
     }
-    
+
     let feed_id = feed.id;
-    
-    rss_service.add_feed(feed.clone()).await
+
+    rss_service
+        .add_feed(feed.clone())
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
     let response = FeedResponse {
         id: feed_id,
         name: feed.name,
@@ -104,7 +106,7 @@ pub async fn add_feed(
         categories: feed.categories,
         tags: feed.tags,
     };
-    
+
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -124,19 +126,22 @@ pub async fn get_feeds(
     Extension(rss_service): Extension<Arc<RssService>>,
 ) -> Result<Json<Vec<FeedResponse>>, StatusCode> {
     let feeds = rss_service.get_feeds().await;
-    
-    let responses: Vec<FeedResponse> = feeds.into_iter().map(|feed| FeedResponse {
-        id: feed.id,
-        name: feed.name,
-        url: feed.url,
-        enabled: feed.enabled,
-        interval_minutes: feed.interval_minutes,
-        last_check: feed.last_check.map(|dt| dt.to_rfc3339()),
-        last_sync: feed.last_sync.map(|dt| dt.to_rfc3339()),
-        categories: feed.categories,
-        tags: feed.tags,
-    }).collect();
-    
+
+    let responses: Vec<FeedResponse> = feeds
+        .into_iter()
+        .map(|feed| FeedResponse {
+            id: feed.id,
+            name: feed.name,
+            url: feed.url,
+            enabled: feed.enabled,
+            interval_minutes: feed.interval_minutes,
+            last_check: feed.last_check.map(|dt| dt.to_rfc3339()),
+            last_sync: feed.last_sync.map(|dt| dt.to_rfc3339()),
+            categories: feed.categories,
+            tags: feed.tags,
+        })
+        .collect();
+
     Ok(Json(responses))
 }
 
@@ -146,10 +151,11 @@ pub async fn test_feed(
     Query(params): Query<TestFeedParams>,
 ) -> Result<Json<TestFeedResponse>, StatusCode> {
     let url = params.url.ok_or(StatusCode::BAD_REQUEST)?;
-    
+
     match rss_service.test_feed(&url).await {
         Ok(items) => {
-            let item_responses: Vec<RssItemResponse> = items.into_iter()
+            let item_responses: Vec<RssItemResponse> = items
+                .into_iter()
                 .take(10) // Limit to 10 items for testing
                 .map(|item| RssItemResponse {
                     title: item.title,
@@ -159,20 +165,18 @@ pub async fn test_feed(
                     category: item.category,
                 })
                 .collect();
-            
+
             Ok(Json(TestFeedResponse {
                 success: true,
                 items: item_responses,
                 error: None,
             }))
         }
-        Err(e) => {
-            Ok(Json(TestFeedResponse {
-                success: false,
-                items: Vec::new(),
-                error: Some(e.to_string()),
-            }))
-        }
+        Err(e) => Ok(Json(TestFeedResponse {
+            success: false,
+            items: Vec::new(),
+            error: Some(e.to_string()),
+        })),
     }
 }
 
@@ -188,22 +192,26 @@ pub async fn get_calendar(
 ) -> Result<Json<Vec<CalendarResponse>>, StatusCode> {
     let days = params.days.unwrap_or(30);
     let entries = rss_service.get_upcoming(days).await;
-    
-    let responses: Vec<CalendarResponse> = entries.into_iter().map(|entry| {
-        let days_until = entry.next_search_date()
-            .map(|date| (date - chrono::Utc::now()).num_days());
-        
-        CalendarResponse {
-            movie_id: entry.movie_id,
-            title: entry.title,
-            release_date: entry.release_date.to_rfc3339(),
-            digital_release: entry.digital_release.map(|dt| dt.to_rfc3339()),
-            physical_release: entry.physical_release.map(|dt| dt.to_rfc3339()),
-            monitored: entry.monitored,
-            days_until_search: days_until,
-        }
-    }).collect();
-    
+
+    let responses: Vec<CalendarResponse> = entries
+        .into_iter()
+        .map(|entry| {
+            let days_until = entry
+                .next_search_date()
+                .map(|date| (date - chrono::Utc::now()).num_days());
+
+            CalendarResponse {
+                movie_id: entry.movie_id,
+                title: entry.title,
+                release_date: entry.release_date.to_rfc3339(),
+                digital_release: entry.digital_release.map(|dt| dt.to_rfc3339()),
+                physical_release: entry.physical_release.map(|dt| dt.to_rfc3339()),
+                monitored: entry.monitored,
+                days_until_search: days_until,
+            }
+        })
+        .collect();
+
     Ok(Json(responses))
 }
 

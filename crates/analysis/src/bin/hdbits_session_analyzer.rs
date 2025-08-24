@@ -2,12 +2,12 @@
 // Safe data collection using authenticated session cookies with strict rate limiting
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use clap::Parser;
 use std::path::PathBuf;
 use tokio;
 use tracing::{info, Level};
 use tracing_subscriber;
-use chrono::Utc;
 
 use radarr_analysis::{HDBitsSessionAnalyzer, HDBitsSessionConfig};
 
@@ -35,7 +35,7 @@ struct Cli {
     /// Dry run - test configuration without data collection
     #[arg(long)]
     dry_run: bool,
-    
+
     /// Generate only reputation system output (skip detailed analysis)
     #[arg(long)]
     reputation_only: bool,
@@ -43,11 +43,11 @@ struct Cli {
     /// Maximum pages to collect per category (default: 10 for 6 months data)
     #[arg(long, default_value = "10")]
     max_pages: u32,
-    
+
     /// Auto-confirm data collection without interactive prompt
     #[arg(long)]
     auto_confirm: bool,
-    
+
     /// Only analyze releases from last N months (default: 6 months)
     #[arg(long, default_value = "6")]
     recent_months: u32,
@@ -60,7 +60,11 @@ async fn main() -> Result<()> {
     let mut cli = Cli::parse();
 
     // Initialize logging
-    let log_level = if cli.verbose { Level::DEBUG } else { Level::INFO };
+    let log_level = if cli.verbose {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
     tracing_subscriber::fmt()
         .with_max_level(log_level)
         .with_target(false)
@@ -69,22 +73,25 @@ async fn main() -> Result<()> {
     info!("🎯 HDBits Session Cookie Scene Group Analyzer v3.0");
     info!("======================================================");
     info!("");
-    
+
     // Use default cookie if not provided
     if cli.session_cookie.is_empty() {
         info!("🔑 Using provided authenticated session cookie");
         cli.session_cookie = DEFAULT_SESSION_COOKIE.to_string();
     }
-    
+
     // Respectful rate limiting (browse.php has no API limits, but be courteous)
     let safe_rate_limit = if cli.rate_limit_seconds == 0 {
         1 // Minimum 1 second between requests to be respectful
     } else {
         cli.rate_limit_seconds
     };
-    
+
     if safe_rate_limit < 5 {
-        info!("🚀 Fast mode: {} second delays (browse.php has no rate limits)", safe_rate_limit);
+        info!(
+            "🚀 Fast mode: {} second delays (browse.php has no rate limits)",
+            safe_rate_limit
+        );
     }
 
     // Validate session cookie
@@ -96,8 +103,12 @@ async fn main() -> Result<()> {
 
     // Create configuration
     let config = HDBitsSessionConfig {
-        username: std::env::var("HDBITS_USERNAME").expect("HDBITS_USERNAME must be set").to_string(),
-        passkey: std::env::var("HDBITS_PASSKEY").expect("HDBITS_PASSKEY must be set").to_string(),
+        username: std::env::var("HDBITS_USERNAME")
+            .expect("HDBITS_USERNAME must be set")
+            .to_string(),
+        passkey: std::env::var("HDBITS_PASSKEY")
+            .expect("HDBITS_PASSKEY must be set")
+            .to_string(),
         base_url: "https://hdbits.org".to_string(),
         session_cookie: cli.session_cookie.clone(),
         max_pages: 10,
@@ -109,13 +120,20 @@ async fn main() -> Result<()> {
     // Display configuration (masking sensitive data)
     info!("📋 CONFIGURATION:");
     let cookie_preview = if cli.session_cookie.len() > 50 {
-        format!("{}...{}", &cli.session_cookie[..25], &cli.session_cookie[cli.session_cookie.len()-25..])
+        format!(
+            "{}...{}",
+            &cli.session_cookie[..25],
+            &cli.session_cookie[cli.session_cookie.len() - 25..]
+        )
     } else {
         "[session cookie provided]".to_string()
     };
     info!("   Session Cookie: {}", cookie_preview);
     info!("   Base URL: https://hdbits.org/browse.php");
-    info!("   Rate Limit: {} seconds between requests", safe_rate_limit);
+    info!(
+        "   Rate Limit: {} seconds between requests",
+        safe_rate_limit
+    );
     info!("   Max Pages per Category: {}", cli.max_pages);
     info!("   Output Directory: {}", cli.output.display());
     info!("");
@@ -123,7 +141,10 @@ async fn main() -> Result<()> {
     info!("🛡️  SAFETY FEATURES:");
     info!("   ✓ Browse interface only (no torrent downloads)");
     info!("   ✓ Conservative {} second rate limiting", safe_rate_limit);
-    info!("   ✓ Limited to {} pages maximum per category", cli.max_pages);
+    info!(
+        "   ✓ Limited to {} pages maximum per category",
+        cli.max_pages
+    );
     info!("   ✓ Internal releases focus for quality data");
     info!("   ✓ Multi-category analysis (Movies, TV, Documentaries)");
     info!("   ✓ Enhanced reputation scoring with comprehensive metrics");
@@ -146,16 +167,19 @@ async fn main() -> Result<()> {
         println!("This will:");
         println!("  • Collect scene group data from HDBits browse interface using session cookies");
         println!("  • Focus on internal releases across Movies, TV, and Documentaries");
-        println!("  • Use {}-second delays between requests for safety", safe_rate_limit);
+        println!(
+            "  • Use {}-second delays between requests for safety",
+            safe_rate_limit
+        );
         println!("  • Generate evidence-based reputation scores with enhanced metrics");
         println!("  • Analyze quality consistency, category diversity, and seeder health");
         println!("  • Estimated time: 15-20 minutes with safe rate limiting");
         println!("");
         println!("Continue? (y/N): ");
-        
+
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
-        
+
         if !input.trim().to_lowercase().starts_with('y') {
             info!("Operation cancelled by user");
             return Ok(());
@@ -167,28 +191,36 @@ async fn main() -> Result<()> {
     }
 
     // Create output directory
-    std::fs::create_dir_all(&cli.output)
-        .context("Failed to create output directory")?;
-    
+    std::fs::create_dir_all(&cli.output).context("Failed to create output directory")?;
+
     let start_time = Utc::now();
-    info!("📊 Starting HDBits comprehensive scene group analysis at {}", start_time.format("%Y-%m-%d %H:%M:%S UTC"));
+    info!(
+        "📊 Starting HDBits comprehensive scene group analysis at {}",
+        start_time.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     info!("");
 
     // Initialize analyzer
     let mut analyzer = HDBitsSessionAnalyzer::new(config);
-    
+
     // Phase 1: Session Validation
     info!("🔐 Phase 1: Validating authenticated session...");
-    
+
     // Phase 2: Data Collection
     info!("");
     info!("📥 Phase 2: Collecting release data from browse interface...");
-    info!("   Using {}-second delays between requests for community safety", safe_rate_limit);
+    info!(
+        "   Using {}-second delays between requests for community safety",
+        safe_rate_limit
+    );
     info!("   Collecting from Movies, TV, and Documentaries categories");
-    
+
     let releases = match analyzer.collect_comprehensive_data().await {
         Ok(releases) => {
-            info!("✅ Data collection complete: {} releases collected across all categories", releases.len());
+            info!(
+                "✅ Data collection complete: {} releases collected across all categories",
+                releases.len()
+            );
             releases
         }
         Err(e) => {
@@ -202,7 +234,7 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     if releases.is_empty() {
         eprintln!("⚠️  No releases found - this might indicate:");
         eprintln!("   • Session cookie expired or authentication failed");
@@ -210,92 +242,120 @@ async fn main() -> Result<()> {
         eprintln!("   • Temporary site problems");
         std::process::exit(1);
     }
-    
+
     // Phase 3: Scene Group Analysis
     info!("");
     info!("🔍 Phase 3: Analyzing scene groups and calculating comprehensive reputation scores...");
-    
-    analyzer.analyze_scene_groups(releases).context("Failed to analyze scene groups")?;
+
+    analyzer
+        .analyze_scene_groups(releases)
+        .context("Failed to analyze scene groups")?;
     let scene_groups = analyzer.get_scene_groups();
-    
+
     if scene_groups.is_empty() {
         eprintln!("⚠️  No scene groups identified from releases");
         eprintln!("   This might indicate issues with release name parsing");
         std::process::exit(1);
     }
-    
-    info!("✅ Scene group analysis complete: {} unique groups identified", scene_groups.len());
-    
+
+    info!(
+        "✅ Scene group analysis complete: {} unique groups identified",
+        scene_groups.len()
+    );
+
     // Phase 4: Report Generation
     info!("");
     info!("📋 Phase 4: Generating comprehensive analysis reports...");
-    
+
     let report = analyzer.generate_comprehensive_report(start_time);
     let timestamp = start_time.format("%Y%m%d_%H%M%S");
-    
+
     // Save detailed analysis report
-    let report_json = serde_json::to_string_pretty(&report)
-        .context("Failed to serialize analysis report")?;
-    let report_path = cli.output.join(format!("hdbits_session_analysis_{}.json", timestamp));
-    std::fs::write(&report_path, report_json)
-        .context("Failed to write analysis report")?;
+    let report_json =
+        serde_json::to_string_pretty(&report).context("Failed to serialize analysis report")?;
+    let report_path = cli
+        .output
+        .join(format!("hdbits_session_analysis_{}.json", timestamp));
+    std::fs::write(&report_path, report_json).context("Failed to write analysis report")?;
     info!("✅ Detailed analysis saved to: {}", report_path.display());
-    
+
     // Save reputation system data (for integration)
-    let reputation_json = analyzer.export_reputation_system()
+    let reputation_json = analyzer
+        .export_reputation_system()
         .context("Failed to export reputation data")?;
-    let reputation_path = cli.output.join(format!("reputation_system_session_{}.json", timestamp));
+    let reputation_path = cli
+        .output
+        .join(format!("reputation_system_session_{}.json", timestamp));
     std::fs::write(&reputation_path, reputation_json)
         .context("Failed to write reputation system data")?;
-    info!("✅ Enhanced reputation system saved to: {}", reputation_path.display());
-    
+    info!(
+        "✅ Enhanced reputation system saved to: {}",
+        reputation_path.display()
+    );
+
     if !cli.reputation_only {
         // Save CSV data for analysis
         let csv_data = analyzer.export_comprehensive_csv();
-        let csv_path = cli.output.join(format!("scene_groups_session_data_{}.csv", timestamp));
-        std::fs::write(&csv_path, csv_data)
-            .context("Failed to write CSV data")?;
+        let csv_path = cli
+            .output
+            .join(format!("scene_groups_session_data_{}.csv", timestamp));
+        std::fs::write(&csv_path, csv_data).context("Failed to write CSV data")?;
         info!("✅ Comprehensive CSV data saved to: {}", csv_path.display());
     }
-    
+
     let end_time = Utc::now();
     let duration = end_time.signed_duration_since(start_time);
-    
+
     info!("");
     info!("🎉 COMPREHENSIVE ANALYSIS COMPLETE!");
     info!("====================================");
     info!("");
-    
+
     // Display summary statistics
     info!("📊 COLLECTION SUMMARY:");
-    info!("   Total Releases Analyzed: {}", report.total_torrents_analyzed);
+    info!(
+        "   Total Releases Analyzed: {}",
+        report.total_torrents_analyzed
+    );
     info!("   Unique Scene Groups: {}", report.unique_scene_groups);
-    info!("   Internal Releases: {}", report.internal_releases_analyzed);
+    info!(
+        "   Internal Releases: {}",
+        report.internal_releases_analyzed
+    );
     info!("   Session Status: {}", report.session_status);
     info!("   Collection Duration: {} minutes", duration.num_minutes());
     info!("");
-    
+
     info!("🎯 NEXT STEPS:");
     info!("   1. Review detailed analysis: {}", report_path.display());
-    info!("   2. Integrate reputation scores: {}", reputation_path.display());
+    info!(
+        "   2. Integrate reputation scores: {}",
+        reputation_path.display()
+    );
     if !cli.reputation_only {
-        info!("   3. Analyze CSV data for insights: scene_groups_session_data_{}.csv", timestamp);
+        info!(
+            "   3. Analyze CSV data for insights: scene_groups_session_data_{}.csv",
+            timestamp
+        );
     }
     info!("   4. Update your automation system with evidence-based scores");
     info!("   5. Schedule regular analysis runs for updated data");
     info!("");
-    
+
     info!("💡 INTEGRATION EXAMPLE:");
-    info!("   Load reputation_system_session_{}.json in your automation system", timestamp);
+    info!(
+        "   Load reputation_system_session_{}.json in your automation system",
+        timestamp
+    );
     info!("   Use reputation_score >= 80.0 for premium quality filtering");
     info!("   Use reputation_score >= 70.0 for good quality filtering");
     info!("   Consider confidence_level and category_diversity for decision making");
     info!("");
-    
+
     info!("✅ Safe comprehensive data collection completed successfully!");
     info!("   All operations used browse interface with conservative rate limiting");
     info!("   HDBits community guidelines respected throughout collection");
     info!("   Enhanced multi-factor reputation scoring provides data-driven insights");
-    
+
     Ok(())
 }

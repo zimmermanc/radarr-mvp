@@ -7,8 +7,8 @@ use radarr_core::{
     models::{Download, DownloadStatus},
     Result,
 };
-use uuid::Uuid;
 use sqlx::Row;
+use uuid::Uuid;
 
 /// PostgreSQL implementation of DownloadRepository
 pub struct PostgresDownloadRepository {
@@ -29,7 +29,7 @@ impl DownloadRepository for PostgresDownloadRepository {
             "SELECT id, movie_id, download_client_id, indexer_id, download_id,
              title, category, status, size_bytes, size_left, quality,
              download_time, completion_time, error_message, imported,
-             import_time, created_at, updated_at FROM downloads WHERE id = $1"
+             import_time, created_at, updated_at FROM downloads WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -69,7 +69,7 @@ impl DownloadRepository for PostgresDownloadRepository {
              title, category, status, size_bytes, size_left, quality,
              download_time, completion_time, error_message, imported,
              import_time, created_at, updated_at FROM downloads WHERE movie_id = $1
-             ORDER BY created_at DESC"
+             ORDER BY created_at DESC",
         )
         .bind(movie_id)
         .fetch_all(&self.pool)
@@ -99,7 +99,7 @@ impl DownloadRepository for PostgresDownloadRepository {
             };
             downloads.push(download);
         }
-        
+
         Ok(downloads)
     }
 
@@ -153,7 +153,7 @@ impl DownloadRepository for PostgresDownloadRepository {
              download_id = $5, title = $6, category = $7, status = $8,
              size_bytes = $9, size_left = $10, quality = $11,
              download_time = $12, completion_time = $13, error_message = $14,
-             imported = $15, import_time = $16, updated_at = $17 WHERE id = $1"
+             imported = $15, import_time = $16, updated_at = $17 WHERE id = $1",
         )
         .bind(download.id)
         .bind(download.movie_id)
@@ -192,7 +192,7 @@ impl DownloadRepository for PostgresDownloadRepository {
              title, category, status, size_bytes, size_left, quality,
              download_time, completion_time, error_message, imported,
              import_time, created_at, updated_at FROM downloads
-             ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+             ORDER BY created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
@@ -223,7 +223,7 @@ impl DownloadRepository for PostgresDownloadRepository {
             };
             downloads.push(download);
         }
-        
+
         Ok(downloads)
     }
 

@@ -9,8 +9,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
-use validator::{Validate, ValidationError, ValidationErrors};
 use std::collections::HashMap;
+use validator::{Validate, ValidationError, ValidationErrors};
 
 /// Custom validation error response
 #[derive(Debug, serde::Serialize)]
@@ -21,10 +21,9 @@ pub struct ValidationErrorResponse {
 
 impl IntoResponse for ValidationErrorResponse {
     fn into_response(self) -> Response {
-        let body = serde_json::to_string(&self).unwrap_or_else(|_| {
-            r#"{"error":"Validation failed","details":{}}"#.to_string()
-        });
-        
+        let body = serde_json::to_string(&self)
+            .unwrap_or_else(|_| r#"{"error":"Validation failed","details":{}}"#.to_string());
+
         (StatusCode::BAD_REQUEST, body).into_response()
     }
 }
@@ -33,7 +32,7 @@ impl IntoResponse for ValidationErrorResponse {
 impl From<ValidationErrors> for ValidationErrorResponse {
     fn from(errors: ValidationErrors) -> Self {
         let mut details = HashMap::new();
-        
+
         for (field, field_errors) in errors.field_errors() {
             let error_messages: Vec<String> = field_errors
                 .iter()
@@ -44,7 +43,7 @@ impl From<ValidationErrors> for ValidationErrorResponse {
                 .collect();
             details.insert(field.to_string(), error_messages);
         }
-        
+
         Self {
             error: "Validation failed".to_string(),
             details,
@@ -62,19 +61,20 @@ where
     match payload {
         Ok(Json(data)) => {
             // Validate the data
-            data.validate()
-                .map_err(ValidationErrorResponse::from)?;
+            data.validate().map_err(ValidationErrorResponse::from)?;
             Ok(Json(data))
         }
         Err(rejection) => {
             // Handle JSON parsing errors
             let error_message = match rejection {
                 JsonRejection::JsonDataError(_) => "Invalid JSON format",
-                JsonRejection::JsonSyntaxError(_) => "Invalid JSON syntax", 
-                JsonRejection::MissingJsonContentType(_) => "Missing Content-Type: application/json header",
+                JsonRejection::JsonSyntaxError(_) => "Invalid JSON syntax",
+                JsonRejection::MissingJsonContentType(_) => {
+                    "Missing Content-Type: application/json header"
+                }
                 _ => "Invalid request body",
             };
-            
+
             Err(ValidationErrorResponse {
                 error: error_message.to_string(),
                 details: HashMap::new(),
@@ -99,7 +99,7 @@ pub fn validate_file_path(path: &str) -> Result<(), ValidationError> {
     if path.contains("..") || path.contains('\0') {
         return Err(ValidationError::new("invalid_file_path"));
     }
-    
+
     // Additional checks for common injection patterns
     let dangerous_patterns = ["../", "..\\", "/etc/", "/var/", "/usr/", "C:\\", "\\\\"];
     for pattern in &dangerous_patterns {
@@ -107,7 +107,7 @@ pub fn validate_file_path(path: &str) -> Result<(), ValidationError> {
             return Err(ValidationError::new("suspicious_file_path"));
         }
     }
-    
+
     Ok(())
 }
 
@@ -116,12 +116,12 @@ pub fn validate_quality_profile_name(name: &str) -> Result<(), ValidationError> 
     if name.is_empty() || name.len() > 100 {
         return Err(ValidationError::new("invalid_length"));
     }
-    
+
     // Allow alphanumeric, spaces, hyphens, and underscores
-    let is_valid = name.chars().all(|c| {
-        c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '.'
-    });
-    
+    let is_valid = name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '.');
+
     if is_valid {
         Ok(())
     } else {
@@ -134,15 +134,33 @@ pub fn validate_search_query(query: &str) -> Result<(), ValidationError> {
     if query.is_empty() || query.len() > 200 {
         return Err(ValidationError::new("invalid_length"));
     }
-    
+
     // Check for suspicious patterns that might indicate injection attempts
     let suspicious_patterns = [
-        "script>", "<script", "javascript:", "data:", "vbscript:", 
-        "onload=", "onerror=", "onclick=", "eval(", "expression(",
-        "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "DROP ", "UNION ",
-        "exec(", "system(", "cmd.exe", "/bin/sh", "bash", "powershell"
+        "script>",
+        "<script",
+        "javascript:",
+        "data:",
+        "vbscript:",
+        "onload=",
+        "onerror=",
+        "onclick=",
+        "eval(",
+        "expression(",
+        "SELECT ",
+        "INSERT ",
+        "UPDATE ",
+        "DELETE ",
+        "DROP ",
+        "UNION ",
+        "exec(",
+        "system(",
+        "cmd.exe",
+        "/bin/sh",
+        "bash",
+        "powershell",
     ];
-    
+
     let query_lower = query.to_lowercase();
     for pattern in &suspicious_patterns {
         if query_lower.contains(&pattern.to_lowercase()) {
@@ -150,7 +168,7 @@ pub fn validate_search_query(query: &str) -> Result<(), ValidationError> {
             return Err(ValidationError::new("suspicious_content"));
         }
     }
-    
+
     Ok(())
 }
 
@@ -159,16 +177,16 @@ pub fn validate_url(url: &str) -> Result<(), ValidationError> {
     if url.is_empty() || url.len() > 2048 {
         return Err(ValidationError::new("invalid_length"));
     }
-    
+
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(ValidationError::new("invalid_protocol"));
     }
-    
+
     // Basic URL format validation
     if let Err(_) = url::Url::parse(url) {
         return Err(ValidationError::new("invalid_url_format"));
     }
-    
+
     Ok(())
 }
 
@@ -177,12 +195,12 @@ pub fn validate_api_key(key: &str) -> Result<(), ValidationError> {
     if key.len() < 16 || key.len() > 128 {
         return Err(ValidationError::new("invalid_api_key_length"));
     }
-    
+
     let is_valid = key.chars().all(|c| c.is_alphanumeric());
     if !is_valid {
         return Err(ValidationError::new("invalid_api_key_format"));
     }
-    
+
     Ok(())
 }
 
@@ -191,16 +209,16 @@ pub fn validate_api_key(key: &str) -> Result<(), ValidationError> {
 pub struct CreateMovieRequest {
     #[validate(range(min = 1))]
     pub tmdb_id: i32,
-    
+
     #[validate(length(min = 1, max = 200))]
     pub title: String,
-    
+
     #[validate(range(min = 1900, max = 2100))]
     pub year: Option<i32>,
-    
+
     #[validate(length(min = 1, max = 100))]
     pub quality_profile: Option<String>,
-    
+
     #[validate(custom(function = "validate_file_path"))]
     pub root_folder: Option<String>,
 }
@@ -210,10 +228,10 @@ pub struct CreateMovieRequest {
 pub struct SearchRequest {
     #[validate(custom(function = "validate_search_query"))]
     pub query: String,
-    
+
     #[validate(range(min = 1, max = 100))]
     pub limit: Option<u32>,
-    
+
     #[validate(range(min = 0))]
     pub offset: Option<u32>,
 }
@@ -223,10 +241,10 @@ pub struct SearchRequest {
 pub struct ConfigUpdateRequest {
     #[validate(custom(function = "validate_url"))]
     pub base_url: Option<String>,
-    
+
     #[validate(custom(function = "validate_api_key"))]
     pub api_key: Option<String>,
-    
+
     #[validate(range(min = 1, max = 3600))]
     pub timeout_seconds: Option<u32>,
 }
@@ -297,10 +315,10 @@ mod tests {
         assert!(valid_request.validate().is_ok());
 
         let invalid_request = CreateMovieRequest {
-            tmdb_id: -1, // Invalid TMDB ID
-            title: "".to_string(), // Empty title
-            year: Some(1800), // Invalid year
-            quality_profile: Some("<script>".to_string()), // Invalid characters
+            tmdb_id: -1,                                          // Invalid TMDB ID
+            title: "".to_string(),                                // Empty title
+            year: Some(1800),                                     // Invalid year
+            quality_profile: Some("<script>".to_string()),        // Invalid characters
             root_folder: Some("../../../etc/passwd".to_string()), // Path traversal
         };
         assert!(invalid_request.validate().is_err());

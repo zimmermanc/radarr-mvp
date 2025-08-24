@@ -28,7 +28,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "SELECT id, name, implementation, settings, enabled, priority,
              enable_rss, enable_automatic_search, enable_interactive_search,
              download_client_id, created_at, updated_at
-             FROM indexers WHERE id = $1"
+             FROM indexers WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -39,7 +39,9 @@ impl IndexerRepository for PostgresIndexerRepository {
                 let indexer = Indexer {
                     id: row.try_get("id")?,
                     name: row.try_get("name")?,
-                    implementation: parse_indexer_implementation(&row.try_get::<String, _>("implementation")?)?,
+                    implementation: parse_indexer_implementation(
+                        &row.try_get::<String, _>("implementation")?,
+                    )?,
                     settings: row.try_get("settings")?,
                     enabled: row.try_get("enabled")?,
                     priority: row.try_get("priority")?,
@@ -61,7 +63,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "SELECT id, name, implementation, settings, enabled, priority,
              enable_rss, enable_automatic_search, enable_interactive_search,
              download_client_id, created_at, updated_at
-             FROM indexers WHERE name = $1"
+             FROM indexers WHERE name = $1",
         )
         .bind(name)
         .fetch_optional(&self.pool)
@@ -72,7 +74,9 @@ impl IndexerRepository for PostgresIndexerRepository {
                 let indexer = Indexer {
                     id: row.try_get("id")?,
                     name: row.try_get("name")?,
-                    implementation: parse_indexer_implementation(&row.try_get::<String, _>("implementation")?)?,
+                    implementation: parse_indexer_implementation(
+                        &row.try_get::<String, _>("implementation")?,
+                    )?,
                     settings: row.try_get("settings")?,
                     enabled: row.try_get("enabled")?,
                     priority: row.try_get("priority")?,
@@ -94,7 +98,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "SELECT id, name, implementation, settings, enabled, priority,
              enable_rss, enable_automatic_search, enable_interactive_search,
              download_client_id, created_at, updated_at
-             FROM indexers WHERE enabled = true ORDER BY priority ASC, name ASC"
+             FROM indexers WHERE enabled = true ORDER BY priority ASC, name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -104,7 +108,9 @@ impl IndexerRepository for PostgresIndexerRepository {
             let indexer = Indexer {
                 id: row.try_get("id")?,
                 name: row.try_get("name")?,
-                implementation: parse_indexer_implementation(&row.try_get::<String, _>("implementation")?)?,
+                implementation: parse_indexer_implementation(
+                    &row.try_get::<String, _>("implementation")?,
+                )?,
                 settings: row.try_get("settings")?,
                 enabled: row.try_get("enabled")?,
                 priority: row.try_get("priority")?,
@@ -125,7 +131,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "INSERT INTO indexers (name, implementation, settings, enabled, priority,
              enable_rss, enable_automatic_search, enable_interactive_search,
              download_client_id, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
         )
         .bind(&indexer.name)
         .bind(indexer.implementation.to_string())
@@ -149,7 +155,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "UPDATE indexers SET name = $2, implementation = $3, settings = $4, enabled = $5,
              priority = $6, enable_rss = $7, enable_automatic_search = $8,
              enable_interactive_search = $9, download_client_id = $10, updated_at = $11
-             WHERE id = $1"
+             WHERE id = $1",
         )
         .bind(indexer.id)
         .bind(&indexer.name)
@@ -181,7 +187,7 @@ impl IndexerRepository for PostgresIndexerRepository {
             "SELECT id, name, implementation, settings, enabled, priority,
              enable_rss, enable_automatic_search, enable_interactive_search,
              download_client_id, created_at, updated_at
-             FROM indexers ORDER BY priority ASC, name ASC"
+             FROM indexers ORDER BY priority ASC, name ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -191,7 +197,9 @@ impl IndexerRepository for PostgresIndexerRepository {
             let indexer = Indexer {
                 id: row.try_get("id")?,
                 name: row.try_get("name")?,
-                implementation: parse_indexer_implementation(&row.try_get::<String, _>("implementation")?)?,
+                implementation: parse_indexer_implementation(
+                    &row.try_get::<String, _>("implementation")?,
+                )?,
                 settings: row.try_get("settings")?,
                 enabled: row.try_get("enabled")?,
                 priority: row.try_get("priority")?,
@@ -209,20 +217,20 @@ impl IndexerRepository for PostgresIndexerRepository {
 
     async fn test_connection(&self, id: i32) -> Result<bool> {
         // Check if indexer exists and is configured
-        let row = sqlx::query(
-            "SELECT enabled, settings FROM indexers WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query("SELECT enabled, settings FROM indexers WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         match row {
             Some(row) => {
                 let enabled: bool = row.try_get("enabled")?;
                 let settings: serde_json::Value = row.try_get("settings")?;
-                
+
                 // Basic validation - check if enabled and has required settings
-                Ok(enabled && !settings.is_null() && settings.as_object().map_or(false, |obj| !obj.is_empty()))
+                Ok(enabled
+                    && !settings.is_null()
+                    && settings.as_object().map_or(false, |obj| !obj.is_empty()))
             }
             None => Ok(false),
         }

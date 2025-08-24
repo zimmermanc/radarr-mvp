@@ -1,10 +1,10 @@
 //! API request and response models
 //!
-//! This module contains all the data transfer objects (DTOs) used for 
+//! This module contains all the data transfer objects (DTOs) used for
 //! API requests and responses, implementing proper serialization and validation.
 
 use chrono::{DateTime, Utc};
-use radarr_core::{Movie, MovieStatus, MinimumAvailability, Download};
+use radarr_core::{Download, MinimumAvailability, Movie, MovieStatus};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -108,7 +108,7 @@ impl From<Movie> for MovieResponse {
     fn from(movie: Movie) -> Self {
         let rating = movie.rating();
         let overview = movie.overview().map(|s| s.to_string());
-        
+
         Self {
             id: movie.id,
             tmdb_id: movie.tmdb_id,
@@ -269,7 +269,7 @@ impl From<Download> for DownloadResponse {
     fn from(download: Download) -> Self {
         let progress = download.progress_percentage().unwrap_or(0.0);
         let eta_seconds = download.eta_seconds();
-        
+
         Self {
             id: download.id,
             movie_id: Some(download.movie_id),
@@ -332,7 +332,7 @@ impl<T> ApiResponse<T> {
             message: None,
         }
     }
-    
+
     pub fn error(message: String) -> Self {
         Self {
             success: false,

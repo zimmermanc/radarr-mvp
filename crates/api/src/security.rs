@@ -8,11 +8,11 @@ use axum::{
     middleware::from_fn,
     Router,
 };
+use std::str::FromStr;
 use tower_http::{
-    cors::{CorsLayer, Any},
+    cors::{Any, CorsLayer},
     set_header::SetResponseHeaderLayer,
 };
-use std::str::FromStr;
 
 /// Security configuration for the API
 #[derive(Debug, Clone)]
@@ -95,31 +95,31 @@ pub fn configure_cors(config: &SecurityConfig) -> CorsLayer {
     if config.environment == "development" {
         // In development, be more permissive with CORS
         let mut dev_origins = config.cors_origins.clone();
-        
+
         // Add common development origins if not already present
         let common_dev_origins = vec![
             "http://localhost:5173",
-            "http://127.0.0.1:5173", 
+            "http://127.0.0.1:5173",
             "http://0.0.0.0:5173",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
         ];
-        
+
         for origin in common_dev_origins {
             if !dev_origins.iter().any(|o| o == origin) {
                 dev_origins.push(origin.to_string());
             }
         }
-        
+
         // Also allow any localhost/127.0.0.1 origin on port 5173 for dynamic IPs
         // This handles cases where the dev server is accessed via LAN IP
         tracing::info!("Development mode: allowing configured origins plus common dev origins");
-        
+
         let origins: Result<Vec<_>, _> = dev_origins
             .iter()
             .map(|origin| origin.parse::<HeaderValue>())
             .collect();
-        
+
         match origins {
             Ok(origins) => cors = cors.allow_origin(origins),
             Err(e) => {
@@ -134,12 +134,13 @@ pub fn configure_cors(config: &SecurityConfig) -> CorsLayer {
         }
     } else {
         // In production, strictly validate origins
-        let origins: Result<Vec<_>, _> = config.cors_origins
+        let origins: Result<Vec<_>, _> = config
+            .cors_origins
             .iter()
             .filter(|origin| !origin.contains("localhost") && !origin.contains("127.0.0.1"))
             .map(|origin| origin.parse::<HeaderValue>())
             .collect();
-        
+
         match origins {
             Ok(origins) if !origins.is_empty() => cors = cors.allow_origin(origins),
             _ => {
@@ -159,37 +160,40 @@ pub fn security_headers(config: &SecurityConfig) -> Vec<SetResponseHeaderLayer<H
         // Prevent clickjacking
         SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,
-            HeaderValue::from_static("DENY")
+            HeaderValue::from_static("DENY"),
         ),
         // Prevent MIME type sniffing
         SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,
-            HeaderValue::from_static("nosniff")
+            HeaderValue::from_static("nosniff"),
         ),
         // XSS protection (legacy but still useful)
         SetResponseHeaderLayer::overriding(
             header::HeaderName::from_static("x-xss-protection"),
-            HeaderValue::from_static("1; mode=block")
+            HeaderValue::from_static("1; mode=block"),
         ),
         // Referrer policy for privacy
         SetResponseHeaderLayer::overriding(
             header::REFERRER_POLICY,
-            HeaderValue::from_static("strict-origin-when-cross-origin")
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
         ),
     ];
 
     // Add HSTS header if enabled (typically for production)
     if config.enable_hsts {
         let hsts_value = if config.environment == "production" {
-            format!("max-age={}; includeSubDomains; preload", config.hsts_max_age)
+            format!(
+                "max-age={}; includeSubDomains; preload",
+                config.hsts_max_age
+            )
         } else {
             format!("max-age={}", config.hsts_max_age)
         };
-        
+
         if let Ok(hsts_header_value) = HeaderValue::from_str(&hsts_value) {
             headers.push(SetResponseHeaderLayer::overriding(
                 header::STRICT_TRANSPORT_SECURITY,
-                hsts_header_value
+                hsts_header_value,
             ));
         }
     }
@@ -198,34 +202,34 @@ pub fn security_headers(config: &SecurityConfig) -> Vec<SetResponseHeaderLayer<H
     if let Ok(csp_header_value) = HeaderValue::from_str(&config.csp_policy) {
         headers.push(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
-            csp_header_value
+            csp_header_value,
         ));
     }
 
     // Add security-focused cache control for API responses
     headers.push(SetResponseHeaderLayer::overriding(
         header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache, must-revalidate, private")
+        HeaderValue::from_static("no-store, no-cache, must-revalidate, private"),
     ));
 
     headers
 }
 
 /// Apply comprehensive security configuration to a router
-pub fn apply_security<S>(router: Router<S>, config: SecurityConfig) -> Router<S> 
+pub fn apply_security<S>(router: Router<S>, config: SecurityConfig) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
     let cors_layer = configure_cors(&config);
     let header_layers = security_headers(&config);
-    
+
     let mut secured_router = router.layer(cors_layer);
-    
+
     // Apply all security headers
     for header_layer in header_layers {
         secured_router = secured_router.layer(header_layer);
     }
-    
+
     secured_router
 }
 
@@ -249,7 +253,7 @@ mod tests {
             environment: "development".to_string(),
             ..Default::default()
         };
-        
+
         let cors_layer = configure_cors(&config);
         // CORS layer is configured - actual testing would require integration tests
         assert!(true);
@@ -262,7 +266,7 @@ mod tests {
             environment: "production".to_string(),
             ..Default::default()
         };
-        
+
         let cors_layer = configure_cors(&config);
         // CORS layer is configured - actual testing would require integration tests
         assert!(true);
@@ -272,7 +276,7 @@ mod tests {
     fn test_security_headers_generation() {
         let config = SecurityConfig::default();
         let headers = security_headers(&config);
-        
+
         // Should have at least basic security headers
         assert!(headers.len() >= 5);
     }

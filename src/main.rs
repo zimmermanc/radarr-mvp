@@ -12,40 +12,36 @@ use axum::{
     http::StatusCode,
     middleware,
     response::Json,
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Router,
 };
+use radarr_api::{
+    create_simple_api_router, init_telemetry, middleware::require_api_key, shutdown_telemetry,
+    MetricsCollector, SimpleApiState, TelemetryConfig,
+};
 use radarr_core::{RadarrError, Result};
-use radarr_infrastructure::{create_pool, DatabaseConfig};
-use radarr_indexers::{ProwlarrClient, IndexerClient};
 use radarr_downloaders::QBittorrentClient;
 use radarr_import::ImportPipeline;
-use radarr_api::{
-    SimpleApiState, create_simple_api_router, middleware::require_api_key,
-    TelemetryConfig, init_telemetry, shutdown_telemetry, MetricsCollector
-};
+use radarr_indexers::{IndexerClient, ProwlarrClient};
+use radarr_infrastructure::{create_pool, DatabaseConfig};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 use tower::ServiceBuilder;
-use tower_http::{
-    cors::CorsLayer,
-    trace::TraceLayer,
-    timeout::TimeoutLayer,
-};
-use tracing::{info, warn, debug, instrument};
+use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
+use tracing::{debug, info, instrument, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod api;
 mod config;
 mod services;
 mod websocket;
-mod api;
 
+use config::retry_config;
 use config::AppConfig;
 use services::RssServiceConfig;
-use config::retry_config as retry_config;
 use services::{AppServices, ServiceBuilder as AppServiceBuilder};
 
 /// Application state shared across all handlers
@@ -96,24 +92,25 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
     info!("🌐 Starting HTTP server on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await
-        .map_err(|e| RadarrError::ExternalServiceError {
+    let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+        RadarrError::ExternalServiceError {
             service: "http_server".to_string(),
             error: format!("Failed to bind to address: {}", e),
-        })?;
-    
+        }
+    })?;
+
     // FIXED: Configure TCP keepalive and connection limits
     let tcp_nodelay = true;
     let _tcp_keepalive = Some(Duration::from_secs(60));
-    
+
     // Create server with proper configuration
     let server = axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<SocketAddr>()
+        app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .tcp_nodelay(tcp_nodelay)
     .with_graceful_shutdown(shutdown_signal());
-    
+
     // Run server with timeout protection
     tokio::select! {
         result = server => {
@@ -128,25 +125,24 @@ async fn main() -> Result<()> {
     }
 
     info!("👋 Radarr MVP application shutting down");
-    
+
     // Shutdown telemetry gracefully
     shutdown_telemetry();
-    
+
     Ok(())
 }
 
 /// Initialize telemetry (tracing, metrics, and logging) using OpenTelemetry
 async fn init_logging() -> Result<()> {
     debug!("Initializing telemetry stack");
-    
+
     let telemetry_config = TelemetryConfig::default();
-    
-    init_telemetry(telemetry_config)
-        .map_err(|e| RadarrError::ExternalServiceError {
-            service: "telemetry".to_string(),
-            error: format!("Failed to initialize telemetry: {}", e),
-        })?;
-    
+
+    init_telemetry(telemetry_config).map_err(|e| RadarrError::ExternalServiceError {
+        service: "telemetry".to_string(),
+        error: format!("Failed to initialize telemetry: {}", e),
+    })?;
+
     debug!("Telemetry stack initialized successfully");
     Ok(())
 }
@@ -154,20 +150,22 @@ async fn init_logging() -> Result<()> {
 /// Load configuration from environment and validate
 async fn load_config() -> Result<AppConfig> {
     debug!("Loading configuration from environment");
-    
+
     let config = AppConfig::from_env()?;
     config.validate()?;
-    
-    debug!("Configuration loaded and validated: server={}:{}, db_max_conn={}", 
-           config.server.host, config.server.port, config.database.max_connections);
-    
+
+    debug!(
+        "Configuration loaded and validated: server={}:{}, db_max_conn={}",
+        config.server.host, config.server.port, config.database.max_connections
+    );
+
     Ok(config)
 }
 
 /// Run database migrations
 async fn run_migrations(config: &AppConfig) -> Result<()> {
     debug!("Running database migrations");
-    
+
     let db_config = DatabaseConfig {
         database_url: config.database.url.clone(),
         max_connections: 1, // Single connection for migrations
@@ -199,7 +197,10 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
         ..DatabaseConfig::default()
     };
     let database_pool = create_pool(db_config).await?;
-    info!("✅ Database pool created with {} max connections", config.database.max_connections);
+    info!(
+        "✅ Database pool created with {} max connections",
+        config.database.max_connections
+    );
 
     // Initialize Prowlarr client (convert config)
     let prowlarr_config = radarr_indexers::ProwlarrConfig {
@@ -210,14 +211,16 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
         user_agent: config.prowlarr.user_agent.clone(),
         verify_ssl: config.prowlarr.verify_ssl,
     };
-    let prowlarr_client = Arc::new(
-        ProwlarrClient::new(prowlarr_config)
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "prowlarr".to_string(),
-                error: format!("Failed to create Prowlarr client: {}", e),
-            })?
-    ) as Arc<dyn IndexerClient + Send + Sync>;
-    info!("✅ Prowlarr client initialized: {}", config.prowlarr.base_url);
+    let prowlarr_client = Arc::new(ProwlarrClient::new(prowlarr_config).map_err(|e| {
+        RadarrError::ExternalServiceError {
+            service: "prowlarr".to_string(),
+            error: format!("Failed to create Prowlarr client: {}", e),
+        }
+    })?) as Arc<dyn IndexerClient + Send + Sync>;
+    info!(
+        "✅ Prowlarr client initialized: {}",
+        config.prowlarr.base_url
+    );
 
     // Initialize qBittorrent client (convert config)
     let qbittorrent_config = radarr_downloaders::QBittorrentConfig {
@@ -226,14 +229,16 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
         password: config.qbittorrent.password.clone(),
         timeout: config.qbittorrent.timeout,
     };
-    let qbittorrent_client = Arc::new(
-        QBittorrentClient::new(qbittorrent_config.clone())
-            .map_err(|e| RadarrError::ExternalServiceError {
-                service: "qbittorrent".to_string(),
-                error: format!("Failed to create qBittorrent client: {}", e),
-            })?
+    let qbittorrent_client = Arc::new(QBittorrentClient::new(qbittorrent_config.clone()).map_err(
+        |e| RadarrError::ExternalServiceError {
+            service: "qbittorrent".to_string(),
+            error: format!("Failed to create qBittorrent client: {}", e),
+        },
+    )?);
+    info!(
+        "✅ qBittorrent client initialized: {}",
+        config.qbittorrent.base_url
     );
-    info!("✅ qBittorrent client initialized: {}", config.qbittorrent.base_url);
 
     // Initialize import pipeline (convert config)
     let import_config = radarr_import::ImportConfig {
@@ -268,20 +273,20 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
     // Start queue processor
     services.start_queue_processor().await?;
     info!("✅ Queue processor started");
-    
+
     // Initialize and start RSS service
     services.initialize_rss_service(RssServiceConfig::default())?;
     services.start_rss_service().await?;
     info!("✅ RSS monitoring service started");
-    
+
     // Initialize streaming aggregator
     services.initialize_streaming_aggregator()?;
     info!("✅ Streaming service aggregator initialized");
-    
+
     // Initialize list sync monitor
     services.initialize_list_sync_monitor().await?;
     info!("✅ List sync monitor initialized");
-    
+
     // Start list sync monitor
     services.start_list_sync_monitor().await?;
     info!("✅ List sync monitor started");
@@ -293,25 +298,26 @@ async fn initialize_services(config: &AppConfig) -> Result<AppServices> {
 fn build_router(app_state: AppState) -> Router {
     // Initialize metrics collector
     let metrics = Arc::new(MetricsCollector::new().expect("Failed to create metrics collector"));
-    
+
     // Create WebSocket state
     let ws_state = Arc::new(websocket::WsState {
         event_bus: app_state.event_bus.clone(),
         progress_tracker: app_state.progress_tracker.clone(),
     });
-    
+
     // Create retry config state
     let retry_config = Arc::new(retry_config::ApplicationRetryConfig::from_env());
-    
+
     // Get RSS service if available
     let rss_service = app_state.services.rss_service.clone();
-    
+
     // Get streaming aggregator if available
     let streaming_aggregator = app_state.services.streaming_aggregator.clone();
-    
+
     // Create TMDB client if configured
-    let tmdb_client = if app_state.config.tmdb.enabled && !app_state.config.tmdb.api_key.is_empty() {
-        use radarr_infrastructure::{TmdbClient, CachedTmdbClient};
+    let tmdb_client = if app_state.config.tmdb.enabled && !app_state.config.tmdb.api_key.is_empty()
+    {
+        use radarr_infrastructure::{CachedTmdbClient, TmdbClient};
         let tmdb = TmdbClient::new(app_state.config.tmdb.api_key.clone());
         let cached_tmdb = CachedTmdbClient::new(tmdb);
         Some(Arc::new(cached_tmdb))
@@ -324,12 +330,12 @@ fn build_router(app_state: AppState) -> Router {
     let mut simple_api_state = SimpleApiState::new(app_state.services.database_pool.clone())
         .with_indexer_client(app_state.services.indexer_client.clone())
         .with_metrics_collector(metrics.clone());
-        
+
     // Add TMDB client if available
     if let Some(tmdb) = tmdb_client {
         simple_api_state = simple_api_state.with_tmdb_client(tmdb);
     }
-    
+
     // Build the base router with all endpoints
     let mut router = create_simple_api_router(simple_api_state)
         // Add legacy health check endpoints
@@ -346,7 +352,10 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/rss/feeds", get(api::get_feeds).post(api::add_feed))
         .route("/api/rss/feeds/:id", delete(api::remove_feed))
         .route("/api/rss/test", get(api::test_feed))
-        .route("/api/rss/calendar", get(api::get_calendar).post(api::add_calendar_entry))
+        .route(
+            "/api/rss/calendar",
+            get(api::get_calendar).post(api::add_calendar_entry),
+        )
         // Add v3 movie endpoints using AppServices (will override simple_api routes)
         .route("/api/v3/movie", get(api::list_movies))
         .route("/api/v3/movie/:id", get(api::get_movie))
@@ -356,53 +365,62 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/v3/movie/lookup", get(api::lookup_movies))
         .route("/api/v3/movies/:id/search", get(api::search_movie_releases))
         .route("/api/v3/movies/download", post(api::download_release))
-        .route("/api/v3/movies/bulk", axum::routing::put(api::bulk_update_movies))
+        .route(
+            "/api/v3/movies/bulk",
+            axum::routing::put(api::bulk_update_movies),
+        )
         .route("/api/v3/qualityprofile", get(api::list_quality_profiles))
         .route("/api/v3/qualityprofile/:id", get(api::get_quality_profile))
         // Add Prometheus metrics endpoint (this will be replaced by monitoring routes)
         .route("/legacy-metrics", get(metrics_endpoint))
-        
         // Add metrics collector and services to extensions
         .layer(axum::Extension(metrics))
         .layer(axum::Extension(Arc::new(app_state.services.clone())))
         .layer(axum::Extension(ws_state))
         .layer(axum::Extension(retry_config));
-    
+
     // Add RSS service if available
     if let Some(rss) = rss_service {
         router = router.layer(axum::Extension(rss));
     }
-    
+
     // Add streaming routes if aggregator is available
     if let Some(aggregator) = streaming_aggregator {
         use radarr_api::routes::streaming::streaming_routes;
         router = router.nest("/api/streaming", streaming_routes(aggregator));
         info!("Streaming routes added to API");
     }
-    
+
     // Add monitoring routes with optional monitor extension
     use radarr_api::routes::create_monitoring_routes;
     let mut monitoring_router = create_monitoring_routes();
-    
+
     // Add ListSyncMonitor as extension if available
     if let Some(monitor) = &app_state.services.list_sync_monitor {
         monitoring_router = monitoring_router.layer(axum::Extension(monitor.clone()));
         info!("ListSyncMonitor added to monitoring routes");
     }
-    
+
     router = router.merge(monitoring_router);
     info!("Monitoring routes added to API");
-    
+
     router
-        
         // Add CORS layer first (before auth) to handle preflight
         .layer(
             CorsLayer::new()
                 .allow_origin([
-                    "http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://127.0.0.1:5173".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://0.0.0.0:5173".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://172.19.118.188:5173".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://localhost:5173"
+                        .parse::<axum::http::HeaderValue>()
+                        .unwrap(),
+                    "http://127.0.0.1:5173"
+                        .parse::<axum::http::HeaderValue>()
+                        .unwrap(),
+                    "http://0.0.0.0:5173"
+                        .parse::<axum::http::HeaderValue>()
+                        .unwrap(),
+                    "http://172.19.118.188:5173"
+                        .parse::<axum::http::HeaderValue>()
+                        .unwrap(),
                 ])
                 .allow_methods([
                     axum::http::Method::GET,
@@ -425,7 +443,7 @@ fn build_router(app_state: AppState) -> Router {
                 .expose_headers([
                     axum::http::header::CONTENT_TYPE,
                     axum::http::header::CONTENT_LENGTH,
-                ])
+                ]),
         )
         // Add other middleware layers (auth middleware now handles static files properly)
         .layer(
@@ -448,9 +466,7 @@ async fn health_check() -> Json<Value> {
 
 /// Detailed health check that tests all components
 #[instrument(skip(state))]
-async fn detailed_health_check(
-    State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+async fn detailed_health_check(State(state): State<AppState>) -> impl axum::response::IntoResponse {
     let mut status = json!({
         "status": "healthy",
         "service": "radarr-mvp",
@@ -495,9 +511,7 @@ async fn detailed_health_check(
 }
 
 /// System status endpoint
-async fn system_status(
-    State(state): State<AppState>,
-) -> Json<Value> {
+async fn system_status(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "service": "radarr-mvp",
         "version": "1.0.0",
@@ -517,9 +531,7 @@ async fn system_status(
 
 /// Test connectivity to all external services
 #[instrument(skip(state))]
-async fn test_connectivity(
-    State(state): State<AppState>,
-) -> impl axum::response::IntoResponse {
+async fn test_connectivity(State(state): State<AppState>) -> impl axum::response::IntoResponse {
     info!("Testing connectivity to all external services");
 
     let mut results = json!({
@@ -575,12 +587,14 @@ async fn test_database_health(state: &AppState) -> Result<()> {
 /// Test Prowlarr health
 async fn test_prowlarr_health(state: &AppState) -> Result<()> {
     debug!("Testing Prowlarr connectivity");
-    
+
     // Use the media service to test Prowlarr via the service layer
     match tokio::time::timeout(
         Duration::from_secs(10),
-        state.services.media_service.test_indexer_connectivity()
-    ).await {
+        state.services.media_service.test_indexer_connectivity(),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => Err(RadarrError::ExternalServiceError {
             service: "prowlarr".to_string(),
@@ -592,12 +606,14 @@ async fn test_prowlarr_health(state: &AppState) -> Result<()> {
 /// Test qBittorrent health
 async fn test_qbittorrent_health(state: &AppState) -> Result<()> {
     debug!("Testing qBittorrent connectivity");
-    
+
     // Use the media service to test qBittorrent via the service layer
     match tokio::time::timeout(
         Duration::from_secs(10),
-        state.services.media_service.test_downloader_connectivity()
-    ).await {
+        state.services.media_service.test_downloader_connectivity(),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_) => Err(RadarrError::ExternalServiceError {
             service: "qbittorrent".to_string(),
@@ -637,15 +653,18 @@ async fn shutdown_signal() {
 
 /// Simplified health check endpoint for simple API
 async fn detailed_health_check_simple() -> impl axum::response::IntoResponse {
-    (StatusCode::OK, Json(json!({
-        "status": "healthy",
-        "service": "radarr-mvp",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "components": {
-            "database": {"status": "healthy"},
-            "api": {"status": "healthy"}
-        }
-    })))
+    (
+        StatusCode::OK,
+        Json(json!({
+            "status": "healthy",
+            "service": "radarr-mvp",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "components": {
+                "database": {"status": "healthy"},
+                "api": {"status": "healthy"}
+            }
+        })),
+    )
 }
 
 /// Simplified system status endpoint
@@ -666,13 +685,16 @@ async fn system_status_simple() -> Json<Value> {
 
 /// Simplified connectivity test endpoint
 async fn test_connectivity_simple() -> impl axum::response::IntoResponse {
-    (StatusCode::OK, Json(json!({
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "tests": {
-            "api": {"success": true, "error": null}
-        },
-        "overall_success": true
-    })))
+    (
+        StatusCode::OK,
+        Json(json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "tests": {
+                "api": {"success": true, "error": null}
+            },
+            "overall_success": true
+        })),
+    )
 }
 
 /// Queue status endpoint to check if queue processor is running
@@ -688,15 +710,18 @@ async fn queue_status(
     } else {
         json!({
             "running": false,
-            "status": "inactive", 
+            "status": "inactive",
             "message": "Queue processor is not initialized"
         })
     };
-    
-    (StatusCode::OK, Json(json!({
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "queue_processor": status
-    })))
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "queue_processor": status
+        })),
+    )
 }
 
 /// Prometheus metrics endpoint
@@ -704,13 +729,11 @@ async fn metrics_endpoint(
     metrics: axum::extract::Extension<Arc<MetricsCollector>>,
 ) -> impl axum::response::IntoResponse {
     match metrics.export_prometheus() {
-        Ok(metrics_text) => {
-            (
-                StatusCode::OK,
-                [("content-type", "text/plain; version=0.0.4")],
-                metrics_text,
-            )
-        }
+        Ok(metrics_text) => (
+            StatusCode::OK,
+            [("content-type", "text/plain; version=0.0.4")],
+            metrics_text,
+        ),
         Err(e) => {
             tracing::error!("Failed to export Prometheus metrics: {}", e);
             (
@@ -747,13 +770,13 @@ mod tests {
         // Test that configuration can be loaded from environment
         std::env::set_var("RADARR_PORT", "8080");
         std::env::set_var("DATABASE_URL", "sqlite::memory:");
-        
+
         let config = load_config().await;
         assert!(config.is_ok());
-        
+
         let config = config.unwrap();
         assert_eq!(config.server.port, 8080);
-        
+
         std::env::remove_var("RADARR_PORT");
         std::env::remove_var("DATABASE_URL");
     }

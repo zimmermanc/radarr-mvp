@@ -9,9 +9,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use chrono::{DateTime, NaiveDate, Utc};
 use radarr_core::{Movie, Result};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, NaiveDate};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,11 +54,12 @@ pub struct CalendarEntry {
 impl From<Movie> for CalendarEntry {
     fn from(movie: Movie) -> Self {
         // Generate TMDB poster URL if poster_path exists in metadata
-        let poster_url = movie.metadata
+        let poster_url = movie
+            .metadata
             .get("poster_path")
             .and_then(|v| v.as_str())
             .map(|poster_path| format!("https://image.tmdb.org/t/p/w500{}", poster_path));
-        
+
         Self {
             id: movie.id.to_string(),
             title: movie.title,
@@ -83,7 +84,7 @@ pub async fn get_calendar(
 ) -> std::result::Result<Json<Vec<CalendarEntry>>, StatusCode> {
     // For MVP, return mock calendar data
     // In production, this would query the database with date filters
-    
+
     let calendar_entries = vec![
         CalendarEntry {
             id: "8c09a7b1-a772-4835-8e09-cdfa9ecefc54".to_string(),
@@ -94,7 +95,9 @@ pub async fn get_calendar(
             physical_release: Some(Utc::now()),
             digital_release: Some(Utc::now()),
             in_theaters: Some(Utc::now()),
-            poster_url: Some("https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg".to_string()),
+            poster_url: Some(
+                "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg".to_string(),
+            ),
             status: "released".to_string(),
         },
         CalendarEntry {
@@ -106,11 +109,13 @@ pub async fn get_calendar(
             physical_release: Some(Utc::now()),
             digital_release: Some(Utc::now()),
             in_theaters: Some(Utc::now()),
-            poster_url: Some("https://image.tmdb.org/t/p/w500/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg".to_string()),
+            poster_url: Some(
+                "https://image.tmdb.org/t/p/w500/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg".to_string(),
+            ),
             status: "released".to_string(),
         },
     ];
-    
+
     Ok(Json(calendar_entries))
 }
 
@@ -150,11 +155,17 @@ pub async fn get_ical_feed(
         Utc::now().format("%Y%m%dT%H%M%S"),
         Utc::now().format("%Y%m%dT%H%M%S"),
     );
-    
+
     let mut headers = HeaderMap::new();
-    headers.insert("content-type", "text/calendar; charset=utf-8".parse().unwrap());
-    headers.insert("content-disposition", "attachment; filename=radarr.ics".parse().unwrap());
-    
+    headers.insert(
+        "content-type",
+        "text/calendar; charset=utf-8".parse().unwrap(),
+    );
+    headers.insert(
+        "content-disposition",
+        "attachment; filename=radarr.ics".parse().unwrap(),
+    );
+
     (headers, ical_content)
 }
 
@@ -170,7 +181,7 @@ mod tests {
         movie.imdb_id = Some("tt1234567".to_string());
         movie.status = radarr_core::MovieStatus::Released;
         movie.minimum_availability = radarr_core::MinimumAvailability::Released;
-        
+
         let entry = CalendarEntry::from(movie);
         assert_eq!(entry.title, "Test Movie");
         assert_eq!(entry.year, Some(2023));
@@ -186,7 +197,7 @@ mod tests {
             end: Some("2023-01-31".to_string()),
             unmonitored: Some(false),
         };
-        
+
         assert_eq!(params.start, Some("2023-01-01".to_string()));
         assert_eq!(params.end, Some("2023-01-31".to_string()));
         assert_eq!(params.unmonitored, Some(false));

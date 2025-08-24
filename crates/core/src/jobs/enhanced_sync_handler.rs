@@ -4,8 +4,7 @@
 //! conflict resolution strategies, and comprehensive audit logging.
 
 use crate::jobs::list_sync::{
-    ConflictResolution, SyncError, SyncHandler, SyncJob, SyncResult, SyncStatus,
-    MovieProvenance,
+    ConflictResolution, MovieProvenance, SyncError, SyncHandler, SyncJob, SyncResult, SyncStatus,
 };
 use crate::models::Movie;
 use chrono::Utc;
@@ -89,7 +88,6 @@ pub struct PerformanceTracker {
     batch_times: Vec<Duration>,
 }
 
-
 impl PerformanceTracker {
     fn start_sync(&mut self) {
         self.sync_start = Some(Instant::now());
@@ -131,7 +129,8 @@ impl PerformanceTracker {
     }
 
     fn get_metrics(&self) -> PerformanceMetrics {
-        let duration = self.sync_start
+        let duration = self
+            .sync_start
             .map(|start| start.elapsed())
             .unwrap_or_default();
 
@@ -141,7 +140,8 @@ impl PerformanceTracker {
             0.0
         };
 
-        let memory_peak = self.memory_samples
+        let memory_peak = self
+            .memory_samples
             .iter()
             .map(|(_, mem)| *mem)
             .fold(0.0f64, f64::max);
@@ -157,7 +157,11 @@ impl PerformanceTracker {
         PerformanceMetrics {
             duration_ms: duration.as_millis() as i64,
             items_per_second,
-            memory_peak_mb: if memory_peak > 0.0 { Some(memory_peak) } else { None },
+            memory_peak_mb: if memory_peak > 0.0 {
+                Some(memory_peak)
+            } else {
+                None
+            },
             network_requests: self.api_requests as i32,
             cache_hit_rate,
             error_rate,
@@ -189,11 +193,7 @@ impl ConflictResolver {
     }
 
     /// Resolve conflicts between existing and new movie data
-    pub async fn resolve_conflict(
-        &self,
-        existing: &Movie,
-        new: &Movie,
-    ) -> ConflictResolution {
+    pub async fn resolve_conflict(&self, existing: &Movie, new: &Movie) -> ConflictResolution {
         match self.strategy {
             ConflictStrategy::KeepExisting => ConflictResolution::Keep,
             ConflictStrategy::UseNew => ConflictResolution::Update,
@@ -204,7 +204,7 @@ impl ConflictResolver {
 
     async fn intelligent_resolve(&self, existing: &Movie, new: &Movie) -> ConflictResolution {
         // Intelligent conflict resolution based on data quality and recency
-        
+
         // Calculate quality scores for both datasets
         let existing_score = self.calculate_data_quality_score(existing);
         let new_score = self.calculate_data_quality_score(new);
@@ -268,48 +268,97 @@ impl ConflictResolver {
         let mut score = 0.0;
 
         // Basic required fields (40% of score)
-        if !movie.title.is_empty() { score += 0.1; }
+        if !movie.title.is_empty() {
+            score += 0.1;
+        }
         score += 0.1; // tmdb_id is always present (required field)
-        if movie.year.is_some() { score += 0.1; }
-        
+        if movie.year.is_some() {
+            score += 0.1;
+        }
+
         // Check for release date in metadata
-        if movie.metadata.get("tmdb").and_then(|t| t.get("release_date")).is_some() { score += 0.1; }
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("release_date"))
+            .is_some()
+        {
+            score += 0.1;
+        }
 
         // Enhanced metadata (30% of score)
-        if movie.overview().is_some() { score += 0.1; }
-        if movie.runtime.is_some() && movie.runtime.unwrap() > 0 { score += 0.05; }
-        
-        // Check for genres in metadata
-        if movie.metadata.get("tmdb").and_then(|t| t.get("genres"))
-            .and_then(|g| g.as_array()).map(|arr| !arr.is_empty()).unwrap_or(false) { 
-            score += 0.05; 
+        if movie.overview().is_some() {
+            score += 0.1;
         }
-        
-        if movie.rating().is_some() && movie.rating().unwrap() > 0.0 { score += 0.05; }
-        
+        if movie.runtime.is_some() && movie.runtime.unwrap() > 0 {
+            score += 0.05;
+        }
+
+        // Check for genres in metadata
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("genres"))
+            .and_then(|g| g.as_array())
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false)
+        {
+            score += 0.05;
+        }
+
+        if movie.rating().is_some() && movie.rating().unwrap() > 0.0 {
+            score += 0.05;
+        }
+
         // Check vote count in metadata
-        if movie.metadata.get("tmdb").and_then(|t| t.get("vote_count"))
-            .and_then(|v| v.as_u64()).map(|c| c > 10).unwrap_or(false) { 
-            score += 0.05; 
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("vote_count"))
+            .and_then(|v| v.as_u64())
+            .map(|c| c > 10)
+            .unwrap_or(false)
+        {
+            score += 0.05;
         }
 
         // Visual assets (20% of score)
-        if movie.metadata.get("tmdb").and_then(|t| t.get("poster_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false) { 
-            score += 0.1; 
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("poster_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            score += 0.1;
         }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("backdrop_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false) { 
-            score += 0.1; 
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("backdrop_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            score += 0.1;
         }
 
         // Technical metadata (10% of score)
-        if movie.original_title.is_some() { score += 0.05; }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("popularity"))
-            .and_then(|p| p.as_f64()).map(|p| p > 0.0).unwrap_or(false) { 
-            score += 0.05; 
+        if movie.original_title.is_some() {
+            score += 0.05;
+        }
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("popularity"))
+            .and_then(|p| p.as_f64())
+            .map(|p| p > 0.0)
+            .unwrap_or(false)
+        {
+            score += 0.05;
         }
 
         score
@@ -319,54 +368,132 @@ impl ConflictResolver {
         let total_fields = 15.0; // Total number of metadata fields we care about
         let mut complete_fields = 0.0;
 
-        if !movie.title.is_empty() { complete_fields += 1.0; }
+        if !movie.title.is_empty() {
+            complete_fields += 1.0;
+        }
         complete_fields += 1.0; // tmdb_id is always present (required field)
-        if movie.imdb_id.as_ref().map(|s| !s.is_empty()).unwrap_or(false) { complete_fields += 1.0; }
-        if movie.year.is_some() { complete_fields += 1.0; }
-        
+        if movie
+            .imdb_id
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            complete_fields += 1.0;
+        }
+        if movie.year.is_some() {
+            complete_fields += 1.0;
+        }
+
         // Check metadata fields
-        if movie.metadata.get("tmdb").and_then(|t| t.get("release_date")).is_some() { complete_fields += 1.0; }
-        if movie.overview().is_some() { complete_fields += 1.0; }
-        if movie.runtime.is_some() && movie.runtime.unwrap() > 0 { complete_fields += 1.0; }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("genres"))
-            .and_then(|g| g.as_array()).map(|arr| !arr.is_empty()).unwrap_or(false) { 
-            complete_fields += 1.0; 
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("release_date"))
+            .is_some()
+        {
+            complete_fields += 1.0;
         }
-        
-        if movie.rating().is_some() { complete_fields += 1.0; }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("vote_count")).is_some() { complete_fields += 1.0; }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("poster_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false) { 
-            complete_fields += 1.0; 
+        if movie.overview().is_some() {
+            complete_fields += 1.0;
         }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("backdrop_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false) { 
-            complete_fields += 1.0; 
+        if movie.runtime.is_some() && movie.runtime.unwrap() > 0 {
+            complete_fields += 1.0;
         }
-        
-        if movie.original_title.is_some() { complete_fields += 1.0; }
-        
-        if movie.metadata.get("tmdb").and_then(|t| t.get("popularity")).is_some() { complete_fields += 1.0; }
-        
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("genres"))
+            .and_then(|g| g.as_array())
+            .map(|arr| !arr.is_empty())
+            .unwrap_or(false)
+        {
+            complete_fields += 1.0;
+        }
+
+        if movie.rating().is_some() {
+            complete_fields += 1.0;
+        }
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("vote_count"))
+            .is_some()
+        {
+            complete_fields += 1.0;
+        }
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("poster_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            complete_fields += 1.0;
+        }
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("backdrop_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            complete_fields += 1.0;
+        }
+
+        if movie.original_title.is_some() {
+            complete_fields += 1.0;
+        }
+
+        if movie
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("popularity"))
+            .is_some()
+        {
+            complete_fields += 1.0;
+        }
+
         complete_fields += 1.0; // status is always present
 
         complete_fields / total_fields
     }
 
     fn has_higher_quality_images(&self, movie1: &Movie, movie2: &Movie) -> bool {
-        let movie1_poster = movie1.metadata.get("tmdb").and_then(|t| t.get("poster_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
-        let movie1_backdrop = movie1.metadata.get("tmdb").and_then(|t| t.get("backdrop_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
-            
-        let movie2_poster = movie2.metadata.get("tmdb").and_then(|t| t.get("poster_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
-        let movie2_backdrop = movie2.metadata.get("tmdb").and_then(|t| t.get("backdrop_path"))
-            .and_then(|p| p.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
+        let movie1_poster = movie1
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("poster_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        let movie1_backdrop = movie1
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("backdrop_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+
+        let movie2_poster = movie2
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("poster_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        let movie2_backdrop = movie2
+            .metadata
+            .get("tmdb")
+            .and_then(|t| t.get("backdrop_path"))
+            .and_then(|p| p.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
 
         // Simple heuristic: movie1 has higher quality if it has more images
         let movie1_count = movie1_poster as u8 + movie1_backdrop as u8;
@@ -387,7 +514,11 @@ pub trait MovieRepository: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait ListSyncRepository: Send + Sync {
-    async fn start_sync(&self, list_id: Uuid, metadata: Option<serde_json::Value>) -> Result<Uuid, SyncError>;
+    async fn start_sync(
+        &self,
+        list_id: Uuid,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<Uuid, SyncError>;
     async fn complete_sync(
         &self,
         sync_id: Uuid,
@@ -400,7 +531,11 @@ pub trait ListSyncRepository: Send + Sync {
         error_message: Option<String>,
         error_details: Option<serde_json::Value>,
     ) -> Result<(), SyncError>;
-    async fn record_performance_metrics(&self, metrics: &PerformanceMetrics, list_id: Uuid) -> Result<(), SyncError>;
+    async fn record_performance_metrics(
+        &self,
+        metrics: &PerformanceMetrics,
+        list_id: Uuid,
+    ) -> Result<(), SyncError>;
 }
 
 #[async_trait::async_trait]
@@ -426,7 +561,7 @@ impl EnhancedSyncHandler {
         config: SyncHandlerConfig,
     ) -> Self {
         let conflict_resolver = Arc::new(ConflictResolver::new(config.conflict_strategy.clone()));
-        
+
         Self {
             movie_repository,
             list_sync_repository,
@@ -442,7 +577,7 @@ impl EnhancedSyncHandler {
 impl SyncHandler for EnhancedSyncHandler {
     async fn execute_sync(&self, job: &SyncJob) -> Result<SyncResult, SyncError> {
         let start_time = Utc::now();
-        
+
         // Initialize performance tracking
         {
             let mut tracker = self.performance_tracker.write().await;
@@ -450,7 +585,8 @@ impl SyncHandler for EnhancedSyncHandler {
         }
 
         // Start sync in repository
-        let sync_id = self.list_sync_repository
+        let sync_id = self
+            .list_sync_repository
             .start_sync(job.list_id, None)
             .await
             .map_err(|e| SyncError::DatabaseError(e.to_string()))?;
@@ -471,7 +607,8 @@ impl SyncHandler for EnhancedSyncHandler {
 
         // Record performance metrics
         if self.config.enable_performance_tracking {
-            if let Err(e) = self.list_sync_repository
+            if let Err(e) = self
+                .list_sync_repository
                 .record_performance_metrics(&performance_metrics, job.list_id)
                 .await
             {
@@ -505,17 +642,7 @@ impl SyncHandler for EnhancedSyncHandler {
             }
             Err(e) => {
                 self.list_sync_repository
-                    .complete_sync(
-                        sync_id,
-                        "failed",
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        Some(e.to_string()),
-                        None,
-                    )
+                    .complete_sync(sync_id, "failed", 0, 0, 0, 0, 0, Some(e.to_string()), None)
                     .await
                     .map_err(|e| warn!("Failed to complete failed sync in repository: {}", e))
                     .ok();
@@ -544,9 +671,11 @@ impl SyncHandler for EnhancedSyncHandler {
     }
 
     async fn store_results(&self, results: &SyncResult) -> Result<(), SyncError> {
-        debug!("Storing sync results for job {}: {} items processed", 
-               results.job_id, results.items_found);
-        
+        debug!(
+            "Storing sync results for job {}: {} items processed",
+            results.job_id, results.items_found
+        );
+
         // The results are already stored via the enhanced repository integration
         // This method could be used for additional result storage if needed
         Ok(())
@@ -554,12 +683,16 @@ impl SyncHandler for EnhancedSyncHandler {
 }
 
 impl EnhancedSyncHandler {
-    async fn execute_sync_internal(&self, job: &SyncJob, _sync_id: Uuid) -> Result<SyncResult, SyncError> {
+    async fn execute_sync_internal(
+        &self,
+        job: &SyncJob,
+        _sync_id: Uuid,
+    ) -> Result<SyncResult, SyncError> {
         // This would contain the actual sync logic specific to each source type
         // For now, we'll return a mock result
-        
+
         let start_time = Utc::now();
-        
+
         // Simulate sync work with performance tracking
         {
             let mut tracker = self.performance_tracker.write().await;
@@ -585,16 +718,14 @@ impl EnhancedSyncHandler {
             items_excluded: 3,
             items_conflicted: 1,
             error_message: None,
-            provenance: vec![
-                MovieProvenance {
-                    movie_id: Uuid::new_v4(),
-                    list_id: job.list_id,
-                    list_name: job.list_name.clone(),
-                    source_type: job.source_type.clone(),
-                    added_at: start_time,
-                    metadata: serde_json::json!({}),
-                }
-            ],
+            provenance: vec![MovieProvenance {
+                movie_id: Uuid::new_v4(),
+                list_id: job.list_id,
+                list_name: job.list_name.clone(),
+                source_type: job.source_type.clone(),
+                added_at: start_time,
+                metadata: serde_json::json!({}),
+            }],
         })
     }
 }

@@ -45,10 +45,12 @@ impl TrendingAggregator {
         window: TimeWindow,
     ) -> Result<Vec<TrendingEntry>, RadarrError> {
         let cache_key = format!("aggregated_trending:{}:{}", media_type, window);
-        
+
         // Check cache first
         if let Some(cached_value) = self.cache.get_raw(&cache_key).await? {
-            if let Ok(cache_entry) = serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value) {
+            if let Ok(cache_entry) =
+                serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value)
+            {
                 if !cache_entry.is_expired() {
                     debug!("Using cached aggregated trending data");
                     return Ok(cache_entry.data);
@@ -74,10 +76,12 @@ impl TrendingAggregator {
 
         // Merge and deduplicate by TMDB ID
         let mut merged = self.merge_trending_entries(tmdb_entries, trakt_entries);
-        
+
         // Sort by aggregated score
         merged.sort_by(|a, b| {
-            b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Update ranks
@@ -86,9 +90,16 @@ impl TrendingAggregator {
         }
 
         // Cache the aggregated results
-        let ttl = self.config.cache_ttl_hours.get("aggregated_trending").copied().unwrap_or(1);
+        let ttl = self
+            .config
+            .cache_ttl_hours
+            .get("aggregated_trending")
+            .copied()
+            .unwrap_or(1);
         let cache_entry = CacheEntry::new(cache_key.clone(), merged.clone(), ttl);
-        self.cache.set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl).await?;
+        self.cache
+            .set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl)
+            .await?;
 
         // Store in database
         self.trending_repo.store_trending(merged.clone()).await?;
@@ -102,10 +113,12 @@ impl TrendingAggregator {
         window: TimeWindow,
     ) -> Result<Vec<TrendingEntry>, RadarrError> {
         let cache_key = format!("tmdb_trending:{}:{}", media_type, window);
-        
+
         // Check cache
         if let Some(cached_value) = self.cache.get_raw(&cache_key).await? {
-            if let Ok(cache_entry) = serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value) {
+            if let Ok(cache_entry) =
+                serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value)
+            {
                 if !cache_entry.is_expired() {
                     return Ok(cache_entry.data);
                 }
@@ -119,9 +132,16 @@ impl TrendingAggregator {
         };
 
         // Cache the results
-        let ttl = self.config.cache_ttl_hours.get("tmdb_trending").copied().unwrap_or(3);
+        let ttl = self
+            .config
+            .cache_ttl_hours
+            .get("tmdb_trending")
+            .copied()
+            .unwrap_or(3);
         let cache_entry = CacheEntry::new(cache_key.clone(), entries.clone(), ttl);
-        self.cache.set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl).await?;
+        self.cache
+            .set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl)
+            .await?;
 
         Ok(entries)
     }
@@ -132,10 +152,12 @@ impl TrendingAggregator {
         window: TimeWindow,
     ) -> Result<Vec<TrendingEntry>, RadarrError> {
         let cache_key = format!("trakt_trending:{}:{}", media_type, window);
-        
+
         // Check cache
         if let Some(cached_value) = self.cache.get_raw(&cache_key).await? {
-            if let Ok(cache_entry) = serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value) {
+            if let Ok(cache_entry) =
+                serde_json::from_value::<CacheEntry<Vec<TrendingEntry>>>(cached_value)
+            {
                 if !cache_entry.is_expired() {
                     return Ok(cache_entry.data);
                 }
@@ -149,9 +171,16 @@ impl TrendingAggregator {
         };
 
         // Cache the results
-        let ttl = self.config.cache_ttl_hours.get("trakt_trending").copied().unwrap_or(1);
+        let ttl = self
+            .config
+            .cache_ttl_hours
+            .get("trakt_trending")
+            .copied()
+            .unwrap_or(1);
         let cache_entry = CacheEntry::new(cache_key.clone(), entries.clone(), ttl);
-        self.cache.set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl).await?;
+        self.cache
+            .set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl)
+            .await?;
 
         Ok(entries)
     }
@@ -162,23 +191,23 @@ impl TrendingAggregator {
         trakt_entries: Vec<TrendingEntry>,
     ) -> Vec<TrendingEntry> {
         let mut merged_map: HashMap<i32, TrendingEntry> = HashMap::new();
-        
+
         // Process TMDB entries
         for (index, entry) in tmdb_entries.into_iter().enumerate() {
             let mut aggregated = entry.clone();
             aggregated.source = TrendingSource::Aggregated;
-            
+
             // Calculate TMDB score (0-50 based on rank)
             let tmdb_score = 50.0 - (index as f32 * 50.0 / 20.0).min(50.0);
             aggregated.score = Some(tmdb_score);
-            
+
             merged_map.insert(entry.tmdb_id, aggregated);
         }
-        
+
         // Process Trakt entries
         for (index, entry) in trakt_entries.into_iter().enumerate() {
             let trakt_score = 50.0 - (index as f32 * 50.0 / 20.0).min(50.0);
-            
+
             merged_map
                 .entry(entry.tmdb_id)
                 .and_modify(|e| {
@@ -194,7 +223,7 @@ impl TrendingAggregator {
                     aggregated
                 });
         }
-        
+
         merged_map.into_values().collect()
     }
 
@@ -207,22 +236,30 @@ impl TrendingAggregator {
             debug!("Watchmode not configured, skipping availability enrichment");
             return Ok(());
         }
-        
+
         let watchmode = self.watchmode.as_ref().unwrap();
-        
+
         for entry in entries.iter_mut() {
             // Get availability data (this will be cached internally)
-            match watchmode.sources_by_tmdb(entry.tmdb_id, entry.media_type.clone()).await {
+            match watchmode
+                .sources_by_tmdb(entry.tmdb_id, entry.media_type.clone())
+                .await
+            {
                 Ok(availability) => {
                     // Store availability in repository
-                    self.availability_repo.store_availability(availability.items).await?;
+                    self.availability_repo
+                        .store_availability(availability.items)
+                        .await?;
                 }
                 Err(e) => {
-                    debug!("Failed to get availability for TMDB {}: {}", entry.tmdb_id, e);
+                    debug!(
+                        "Failed to get availability for TMDB {}: {}",
+                        entry.tmdb_id, e
+                    );
                 }
             }
         }
-        
+
         Ok(())
     }
 }
@@ -235,12 +272,15 @@ impl StreamingAggregator for TrendingAggregator {
         window: TimeWindow,
     ) -> Result<TrendingResponse, RadarrError> {
         info!("Fetching trending {} for {}", media_type, window);
-        
-        let mut entries = self.fetch_and_merge_trending(media_type.clone(), window.clone()).await?;
-        
+
+        let mut entries = self
+            .fetch_and_merge_trending(media_type.clone(), window.clone())
+            .await?;
+
         // Enrich with availability if configured
-        self.enrich_with_availability(&mut entries, &self.config.default_region).await?;
-        
+        self.enrich_with_availability(&mut entries, &self.config.default_region)
+            .await?;
+
         let now = Utc::now();
         Ok(TrendingResponse {
             media_type,
@@ -252,7 +292,7 @@ impl StreamingAggregator for TrendingAggregator {
             expires_at: now + chrono::Duration::hours(1),
         })
     }
-    
+
     async fn get_availability(
         &self,
         tmdb_id: i32,
@@ -260,21 +300,26 @@ impl StreamingAggregator for TrendingAggregator {
         region: &str,
     ) -> Result<AvailabilityResponse, RadarrError> {
         info!("Fetching availability for TMDB {} in {}", tmdb_id, region);
-        
+
         let cache_key = format!("availability:{}:{}:{}", tmdb_id, media_type, region);
-        
+
         // Check cache
         if let Some(cached_value) = self.cache.get_raw(&cache_key).await? {
-            if let Ok(cache_entry) = serde_json::from_value::<CacheEntry<AvailabilityResponse>>(cached_value) {
+            if let Ok(cache_entry) =
+                serde_json::from_value::<CacheEntry<AvailabilityResponse>>(cached_value)
+            {
                 if !cache_entry.is_expired() {
                     return Ok(cache_entry.data);
                 }
             }
         }
-        
+
         // Get from TMDB watch providers
-        let tmdb_availability = self.tmdb.watch_providers(tmdb_id, media_type.clone(), region).await?;
-        
+        let tmdb_availability = self
+            .tmdb
+            .watch_providers(tmdb_id, media_type.clone(), region)
+            .await?;
+
         // Get from Watchmode if available
         let mut all_items = tmdb_availability.items;
         if let Some(watchmode) = &self.watchmode {
@@ -287,7 +332,7 @@ impl StreamingAggregator for TrendingAggregator {
                 }
             }
         }
-        
+
         // Group by service type
         let mut grouped: HashMap<String, Vec<AvailabilityItem>> = HashMap::new();
         for item in all_items {
@@ -296,13 +341,13 @@ impl StreamingAggregator for TrendingAggregator {
                 .or_default()
                 .push(item);
         }
-        
+
         // Deduplicate within each group
         for items in grouped.values_mut() {
             items.sort_by_key(|i| i.service_name.clone());
             items.dedup_by_key(|i| i.service_name.clone());
         }
-        
+
         let now = Utc::now();
         let response = AvailabilityResponse {
             tmdb_id,
@@ -313,39 +358,48 @@ impl StreamingAggregator for TrendingAggregator {
             fetched_at: now,
             expires_at: now + chrono::Duration::hours(24),
         };
-        
+
         // Cache the response
-        let ttl = self.config.cache_ttl_hours.get("tmdb_providers").copied().unwrap_or(24);
+        let ttl = self
+            .config
+            .cache_ttl_hours
+            .get("tmdb_providers")
+            .copied()
+            .unwrap_or(24);
         let cache_entry = CacheEntry::new(cache_key.clone(), response.clone(), ttl);
-        self.cache.set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl).await?;
-        
+        self.cache
+            .set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl)
+            .await?;
+
         Ok(response)
     }
-    
+
     async fn get_coming_soon(
         &self,
         media_type: MediaType,
         region: &str,
     ) -> Result<ComingSoonResponse, RadarrError> {
         info!("Fetching coming soon {} for {}", media_type, region);
-        
+
         let cache_key = format!("coming_soon:{}:{}", media_type, region);
-        
+
         // Check cache
         if let Some(cached_value) = self.cache.get_raw(&cache_key).await? {
-            if let Ok(cache_entry) = serde_json::from_value::<CacheEntry<ComingSoonResponse>>(cached_value) {
+            if let Ok(cache_entry) =
+                serde_json::from_value::<CacheEntry<ComingSoonResponse>>(cached_value)
+            {
                 if !cache_entry.is_expired() {
                     return Ok(cache_entry.data);
                 }
             }
         }
-        
+
         // Fetch from TMDB
         let mut entries = match media_type {
             MediaType::Movie => self.tmdb.upcoming_movies().await?,
             MediaType::Tv => self.tmdb.on_the_air().await?,
         };
-        
+
         // Add Watchmode coming soon if available
         if let Some(watchmode) = &self.watchmode {
             match watchmode.streaming_releases(region).await {
@@ -362,14 +416,14 @@ impl StreamingAggregator for TrendingAggregator {
                 }
             }
         }
-        
+
         // Deduplicate by TMDB ID
         let mut seen = HashSet::new();
         entries.retain(|e| seen.insert(e.tmdb_id));
-        
+
         // Sort by release date
         entries.sort_by_key(|e| e.release_date);
-        
+
         let now = Utc::now();
         let response = ComingSoonResponse {
             media_type,
@@ -379,28 +433,35 @@ impl StreamingAggregator for TrendingAggregator {
             fetched_at: now,
             expires_at: now + chrono::Duration::hours(24),
         };
-        
+
         // Cache the response
-        let ttl = self.config.cache_ttl_hours.get("coming_soon").copied().unwrap_or(24);
+        let ttl = self
+            .config
+            .cache_ttl_hours
+            .get("coming_soon")
+            .copied()
+            .unwrap_or(24);
         let cache_entry = CacheEntry::new(cache_key.clone(), response.clone(), ttl);
-        self.cache.set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl).await?;
-        
+        self.cache
+            .set_raw(&cache_key, serde_json::to_value(cache_entry)?, ttl)
+            .await?;
+
         Ok(response)
     }
-    
+
     async fn refresh_cache(&self) -> Result<(), RadarrError> {
         info!("Refreshing streaming cache");
-        
+
         // Clear expired entries
         let expired_cache = self.cache.clear_expired().await?;
         let expired_trending = self.trending_repo.clear_expired_trending().await?;
         let expired_availability = self.availability_repo.clear_expired_availability().await?;
-        
+
         info!(
             "Cleared {} expired cache entries, {} trending, {} availability",
             expired_cache, expired_trending, expired_availability
         );
-        
+
         // Refresh ID mappings if Watchmode is configured
         if let Some(watchmode) = &self.watchmode {
             match watchmode.refresh_id_mappings().await {
@@ -413,7 +474,7 @@ impl StreamingAggregator for TrendingAggregator {
                 }
             }
         }
-        
+
         Ok(())
     }
 }

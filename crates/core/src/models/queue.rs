@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Status of a queue item
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum QueueStatus {
     /// Item is in queue waiting to be processed
     #[default]
@@ -26,10 +25,8 @@ pub enum QueueStatus {
     Seeding,
 }
 
-
 /// Priority level for queue items
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum QueuePriority {
     Low,
     #[default]
@@ -38,30 +35,29 @@ pub enum QueuePriority {
     VeryHigh,
 }
 
-
 /// A download queue item
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueItem {
     pub id: Uuid,
     pub movie_id: Uuid,
     pub release_id: Uuid,
-    
+
     // Download information
     pub title: String,
     pub download_url: String,
     pub magnet_url: Option<String>,
     pub size_bytes: Option<i64>,
-    
+
     // Status tracking
     pub status: QueueStatus,
     pub priority: QueuePriority,
     pub progress: f64, // 0.0 to 1.0
-    
+
     // Download client information
     pub download_client_id: Option<String>, // ID from download client (e.g., torrent hash)
     pub download_path: Option<String>,
     pub category: Option<String>,
-    
+
     // Progress tracking
     pub downloaded_bytes: Option<i64>,
     pub upload_bytes: Option<i64>,
@@ -70,12 +66,12 @@ pub struct QueueItem {
     pub eta_seconds: Option<i64>,    // estimated time remaining
     pub seeders: Option<i32>,
     pub leechers: Option<i32>,
-    
+
     // Error information
     pub error_message: Option<String>,
     pub retry_count: i32,
     pub max_retries: i32,
-    
+
     // Timestamps
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -85,14 +81,9 @@ pub struct QueueItem {
 
 impl QueueItem {
     /// Create a new queue item
-    pub fn new(
-        movie_id: Uuid,
-        release_id: Uuid,
-        title: String,
-        download_url: String,
-    ) -> Self {
+    pub fn new(movie_id: Uuid, release_id: Uuid, title: String, download_url: String) -> Self {
         let now = chrono::Utc::now();
-        
+
         Self {
             id: Uuid::new_v4(),
             movie_id,
@@ -123,12 +114,12 @@ impl QueueItem {
             completed_at: None,
         }
     }
-    
+
     /// Update the queue item status
     pub fn update_status(&mut self, status: QueueStatus) {
         self.status = status;
         self.updated_at = chrono::Utc::now();
-        
+
         // Set timestamps based on status
         match status {
             QueueStatus::Downloading => {
@@ -148,7 +139,7 @@ impl QueueItem {
             _ => {}
         }
     }
-    
+
     /// Update download progress
     pub fn update_progress(
         &mut self,
@@ -163,7 +154,7 @@ impl QueueItem {
         self.eta_seconds = eta_seconds;
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Update seeding information
     pub fn update_seeding_info(
         &mut self,
@@ -178,7 +169,7 @@ impl QueueItem {
         self.leechers = leechers;
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Set error message and increment retry count
     pub fn set_error(&mut self, error_message: String) {
         self.error_message = Some(error_message);
@@ -186,12 +177,12 @@ impl QueueItem {
         self.retry_count += 1;
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Check if the item can be retried
     pub fn can_retry(&self) -> bool {
         self.status == QueueStatus::Failed && self.retry_count < self.max_retries
     }
-    
+
     /// Reset for retry
     pub fn reset_for_retry(&mut self) {
         self.status = QueueStatus::Queued;
@@ -204,63 +195,63 @@ impl QueueItem {
         self.updated_at = chrono::Utc::now();
         // Don't reset started_at to preserve first attempt time
     }
-    
+
     /// Set download client ID
     pub fn set_download_client_id(&mut self, client_id: String) {
         self.download_client_id = Some(client_id);
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Set download path and category
     pub fn set_download_info(&mut self, path: Option<String>, category: Option<String>) {
         self.download_path = path;
         self.category = category;
         self.updated_at = chrono::Utc::now();
     }
-    
+
     /// Get human readable size
     pub fn human_readable_size(&self) -> Option<String> {
         self.size_bytes.map(|bytes| {
             const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
             let mut size = bytes as f64;
             let mut unit_index = 0;
-            
+
             while size >= 1024.0 && unit_index < UNITS.len() - 1 {
                 size /= 1024.0;
                 unit_index += 1;
             }
-            
+
             format!("{:.1} {}", size, UNITS[unit_index])
         })
     }
-    
+
     /// Get human readable download speed
     pub fn human_readable_download_speed(&self) -> Option<String> {
         self.download_speed.map(|speed| {
             const UNITS: &[&str] = &["B/s", "KB/s", "MB/s", "GB/s"];
             let mut size = speed as f64;
             let mut unit_index = 0;
-            
+
             while size >= 1024.0 && unit_index < UNITS.len() - 1 {
                 size /= 1024.0;
                 unit_index += 1;
             }
-            
+
             format!("{:.1} {}", size, UNITS[unit_index])
         })
     }
-    
+
     /// Get human readable ETA
     pub fn human_readable_eta(&self) -> Option<String> {
         self.eta_seconds.and_then(|eta| {
             if eta <= 0 {
                 return None;
             }
-            
+
             let hours = eta / 3600;
             let minutes = (eta % 3600) / 60;
             let seconds = eta % 60;
-            
+
             if hours > 0 {
                 Some(format!("{}h {}m", hours, minutes))
             } else if minutes > 0 {
@@ -270,7 +261,7 @@ impl QueueItem {
             }
         })
     }
-    
+
     /// Check if the download is active
     pub fn is_active(&self) -> bool {
         matches!(
@@ -278,12 +269,12 @@ impl QueueItem {
             QueueStatus::Queued | QueueStatus::Downloading | QueueStatus::Seeding
         )
     }
-    
+
     /// Check if the download is completed
     pub fn is_completed(&self) -> bool {
         matches!(self.status, QueueStatus::Completed | QueueStatus::Seeding)
     }
-    
+
     /// Check if the download has failed
     pub fn is_failed(&self) -> bool {
         self.status == QueueStatus::Failed
@@ -291,8 +282,7 @@ impl QueueItem {
 }
 
 /// Queue statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct QueueStats {
     /// Total number of items in queue
     pub total_count: i64,
@@ -315,7 +305,6 @@ pub struct QueueStats {
     /// Total downloaded bytes across all items
     pub total_downloaded_bytes: i64,
 }
-
 
 // Implement Display for enum serialization to string
 impl std::fmt::Display for QueueStatus {

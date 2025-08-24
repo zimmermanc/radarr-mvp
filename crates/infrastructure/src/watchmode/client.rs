@@ -3,7 +3,7 @@ use chrono::{NaiveDate, Utc};
 use radarr_core::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerConfig},
     streaming::{
-        traits::{WatchmodeAdapter, StreamingCacheRepository},
+        traits::{StreamingCacheRepository, WatchmodeAdapter},
         Availability, AvailabilityItem, ComingSoon, IdMapping, MediaType, ServiceType,
     },
     RadarrError,
@@ -28,18 +28,15 @@ pub struct WatchmodeClient {
 }
 
 impl WatchmodeClient {
-    pub fn new(
-        api_key: Option<String>,
-        cache_repo: Arc<dyn StreamingCacheRepository>,
-    ) -> Self {
+    pub fn new(api_key: Option<String>, cache_repo: Arc<dyn StreamingCacheRepository>) -> Self {
         let csv_sync = WatchmodeCsvSync::new(cache_repo.clone());
-        
+
         let circuit_breaker_config = CircuitBreakerConfig::new("Watchmode")
             .with_failure_threshold(3) // Lower threshold due to strict rate limits
             .with_timeout(Duration::from_secs(60))
             .with_request_timeout(Duration::from_secs(15))
             .with_success_threshold(1);
-        
+
         Self {
             client: Client::new(),
             api_key,
@@ -53,8 +50,10 @@ impl WatchmodeClient {
 
     /// Check if we're approaching the daily rate limit (33 requests/day for free tier)
     fn check_rate_limit(&self) -> Result<(), RadarrError> {
-        let current_count = self.daily_request_count.load(std::sync::atomic::Ordering::Relaxed);
-        
+        let current_count = self
+            .daily_request_count
+            .load(std::sync::atomic::Ordering::Relaxed);
+
         // Free tier limit is 1000/month ≈ 33/day
         // Be conservative and limit to 30/day
         if current_count >= 30 {
@@ -64,7 +63,7 @@ impl WatchmodeClient {
                 retry_after: Some(86400), // Retry after 24 hours
             });
         }
-        
+
         Ok(())
     }
 
@@ -76,25 +75,29 @@ impl WatchmodeClient {
     ) -> Result<T, RadarrError> {
         // Check rate limit first
         self.check_rate_limit()?;
-        
-        let api_key = self.api_key.as_ref()
+
+        let api_key = self
+            .api_key
+            .as_ref()
             .ok_or_else(|| RadarrError::ConfigurationError {
                 field: "watchmode_api_key".to_string(),
                 message: "Watchmode API key not configured".to_string(),
             })?;
-        
+
         let url = format!("{}{}", self.base_url, endpoint);
-        
+
         // Add API key to params
         let mut all_params = params;
         all_params.push(("apiKey", api_key.clone()));
-        
+
         debug!("Making Watchmode API request to {}", endpoint);
-        
+
         // Increment request counter
-        self.daily_request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        
-        let response = self.client
+        self.daily_request_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let response = self
+            .client
             .get(&url)
             .query(&all_params)
             .send()
@@ -122,7 +125,9 @@ impl WatchmodeClient {
             });
         }
 
-        response.json().await
+        response
+            .json()
+            .await
             .map_err(|e| RadarrError::ExternalServiceError {
                 service: "watchmode".to_string(),
                 error: e.to_string(),
@@ -153,9 +158,12 @@ impl WatchmodeAdapter for WatchmodeClient {
     ) -> Result<Availability, RadarrError> {
         // First get Watchmode ID from mapping
         let watchmode_id = self.get_watchmode_id(tmdb_id, media_type.clone()).await?;
-        
+
         if watchmode_id.is_none() {
-            debug!("No Watchmode ID found for TMDB {} ({})", tmdb_id, media_type);
+            debug!(
+                "No Watchmode ID found for TMDB {} ({})",
+                tmdb_id, media_type
+            );
             return Ok(Availability {
                 tmdb_id,
                 media_type,
@@ -165,18 +173,19 @@ impl WatchmodeAdapter for WatchmodeClient {
                 expires_at: Utc::now() + chrono::Duration::hours(24),
             });
         }
-        
+
         let watchmode_id = watchmode_id.unwrap();
-        
+
         // Make API request for sources
         let endpoint = format!("/title/{}/sources/", watchmode_id);
-        let params = vec![
-            ("regions", "US".to_string()),
-        ];
-        
+        let params = vec![("regions", "US".to_string())];
+
         info!("Fetching Watchmode sources for ID {}", watchmode_id);
-        
-        match self.make_request::<Vec<WatchmodeSource>>(&endpoint, params).await {
+
+        match self
+            .make_request::<Vec<WatchmodeSource>>(&endpoint, params)
+            .await
+        {
             Ok(sources) => {
                 let items: Vec<AvailabilityItem> = sources
                     .into_iter()
@@ -189,7 +198,7 @@ impl WatchmodeAdapter for WatchmodeClient {
                             Some("tve") | Some("tveverywhere") => ServiceType::Subscription,
                             _ => ServiceType::Subscription,
                         };
-                        
+
                         let mut item = AvailabilityItem::new(
                             tmdb_id,
                             media_type.clone(),
@@ -197,14 +206,14 @@ impl WatchmodeAdapter for WatchmodeClient {
                             source.name,
                             service_type,
                         );
-                        
+
                         item.deep_link = source.web_url;
                         item.price_amount = source.price.and_then(|p| p.parse::<f32>().ok());
-                        
+
                         item
                     })
                     .collect();
-                
+
                 Ok(Availability {
                     tmdb_id,
                     media_type,
@@ -236,28 +245,33 @@ impl WatchmodeAdapter for WatchmodeClient {
             ("types", "movie,tv_series".to_string()),
             ("limit", "20".to_string()),
         ];
-        
+
         info!("Fetching Watchmode streaming releases for {}", region);
-        
-        match self.make_request::<WatchmodeReleasesResponse>(&endpoint, params).await {
+
+        match self
+            .make_request::<WatchmodeReleasesResponse>(&endpoint, params)
+            .await
+        {
             Ok(response) => {
-                let entries: Vec<ComingSoon> = response.releases
+                let entries: Vec<ComingSoon> = response
+                    .releases
                     .into_iter()
                     .filter_map(|release| {
                         // Parse release date
-                        let release_date = release.release_date
+                        let release_date = release
+                            .release_date
                             .and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())?;
-                        
+
                         let media_type = match release.type_.as_deref() {
                             Some("movie") => MediaType::Movie,
                             Some("tv_series") | Some("tv") => MediaType::Tv,
                             _ => return None,
                         };
-                        
+
                         // Try to get TMDB ID from our mappings
                         // This is a limitation - we'd need reverse lookup
                         let tmdb_id = release.tmdb_id.unwrap_or(0);
-                        
+
                         let mut entry = ComingSoon::new(
                             tmdb_id,
                             media_type,
@@ -265,14 +279,14 @@ impl WatchmodeAdapter for WatchmodeClient {
                             release_date,
                             "watchmode".to_string(),
                         );
-                        
+
                         entry.region = region.to_string();
                         entry.streaming_services = release.source_names.unwrap_or_default();
-                        
+
                         Some(entry)
                     })
                     .collect();
-                
+
                 Ok(entries)
             }
             Err(e) => {

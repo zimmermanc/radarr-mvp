@@ -4,7 +4,7 @@
 //! with passkey authentication. Includes rate limiting, error handling,
 //! and quality parsing from release names.
 
-use radarr_core::{Result, RadarrError};
+use radarr_core::{RadarrError, Result};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -25,7 +25,7 @@ pub use models::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HDBitsConfig {
     pub username: String,
-    pub passkey: String,  // API key for automated indexer access
+    pub passkey: String, // API key for automated indexer access
     pub rate_limit_per_hour: u32,
     pub timeout_seconds: u64,
 }
@@ -44,18 +44,18 @@ impl Default for HDBitsConfig {
 impl HDBitsConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Result<Self> {
-        let username = std::env::var("HDBITS_USERNAME")
-            .map_err(|_| RadarrError::ConfigurationError {
+        let username =
+            std::env::var("HDBITS_USERNAME").map_err(|_| RadarrError::ConfigurationError {
                 field: "HDBITS_USERNAME".to_string(),
                 message: "HDBITS_USERNAME environment variable not set".to_string(),
             })?;
-        
-        let passkey = std::env::var("HDBITS_PASSKEY")
-            .map_err(|_| RadarrError::ConfigurationError {
+
+        let passkey =
+            std::env::var("HDBITS_PASSKEY").map_err(|_| RadarrError::ConfigurationError {
                 field: "HDBITS_PASSKEY".to_string(),
                 message: "HDBITS_PASSKEY environment variable not set".to_string(),
             })?;
-            
+
         let rate_limit_per_hour: u32 = std::env::var("HDBITS_RATE_LIMIT")
             .unwrap_or_else(|_| "150".to_string())
             .parse()
@@ -79,7 +79,7 @@ impl HDBitsConfig {
             timeout_seconds,
         })
     }
-    
+
     /// Validate configuration
     pub fn validate(&self) -> Result<()> {
         if self.username.is_empty() {
@@ -88,21 +88,21 @@ impl HDBitsConfig {
                 message: "Username cannot be empty".to_string(),
             });
         }
-        
+
         if self.passkey.is_empty() {
             return Err(RadarrError::ConfigurationError {
                 field: "passkey".to_string(),
                 message: "Passkey cannot be empty".to_string(),
             });
         }
-        
+
         if self.rate_limit_per_hour == 0 {
             return Err(RadarrError::ConfigurationError {
                 field: "rate_limit_per_hour".to_string(),
                 message: "Rate limit must be greater than 0".to_string(),
             });
         }
-        
+
         Ok(())
     }
 }
@@ -125,22 +125,22 @@ impl RateLimiter {
             last_failure: Mutex::new(None),
         }
     }
-    
+
     /// Wait if necessary to respect rate limits
     pub async fn acquire(&self) -> Result<()> {
         loop {
             let mut requests = self.requests.lock().await;
             let now = Instant::now();
             let one_hour_ago = now - Duration::from_secs(3600);
-            
+
             // Remove requests older than 1 hour
             requests.retain(|&timestamp| timestamp > one_hour_ago);
-            
+
             // Check if we've hit the rate limit
             if requests.len() >= self.max_requests_per_hour as usize {
                 let oldest_request = requests[0];
                 let wait_time = oldest_request + Duration::from_secs(3600) - now;
-                
+
                 if wait_time > Duration::from_secs(0) {
                     warn!(
                         "Rate limit exceeded, waiting {} seconds",
@@ -151,54 +151,57 @@ impl RateLimiter {
                     continue; // Retry
                 }
             }
-            
+
             // Record this request
             requests.push(now);
-            debug!("Rate limiter: {}/{} requests in last hour", 
-                   requests.len(), self.max_requests_per_hour);
-            
+            debug!(
+                "Rate limiter: {}/{} requests in last hour",
+                requests.len(),
+                self.max_requests_per_hour
+            );
+
             break;
         }
-        
+
         Ok(())
     }
-    
+
     /// Record a successful request (resets failure count)
     pub async fn record_success(&self) {
         let mut failure_count = self.failure_count.lock().await;
         *failure_count = 0;
         debug!("Request succeeded, reset failure count");
     }
-    
+
     /// Record a failed request and apply exponential backoff
     pub async fn record_failure(&self) -> Result<()> {
         let mut failure_count = self.failure_count.lock().await;
         let mut last_failure = self.last_failure.lock().await;
-        
+
         *failure_count += 1;
         *last_failure = Some(Instant::now());
-        
+
         let failures = *failure_count;
         drop(failure_count);
         drop(last_failure);
-        
+
         if failures > 0 {
             // Exponential backoff: 2^failures seconds, max 300 seconds (5 minutes)
             let backoff_seconds = (2_u64.pow(failures.min(8))).min(300);
-            
+
             warn!("HDBits request failed (failure #{failures}), backing off for {backoff_seconds} seconds");
-            
+
             tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if we should skip requests due to recent failures
     pub async fn should_skip_due_to_failures(&self) -> bool {
         let failure_count = self.failure_count.lock().await;
         let last_failure = self.last_failure.lock().await;
-        
+
         // Skip if we have 5+ consecutive failures and last failure was within 10 minutes
         if *failure_count >= 5 {
             if let Some(last_fail_time) = *last_failure {
@@ -207,7 +210,7 @@ impl RateLimiter {
                 }
             }
         }
-        
+
         false
     }
 }

@@ -8,9 +8,12 @@ use radarr_core::{
     rss::{RssFeed, RssItem, RssMonitor, RssParser, CalendarEntry},
     events::{EventBus, SystemEvent},
     progress::{ProgressTracker, OperationType},
+    models::{Movie, QueueItem, QueuePriority},
+    domain::repositories::{MovieRepository, QueueRepository},
 };
 use radarr_indexers::IndexerClient;
 use radarr_infrastructure::DatabasePool;
+use radarr_decision::{DecisionEngine, Release};
 use tracing::{info, warn, error, debug};
 use uuid::Uuid;
 use chrono::Utc;
@@ -48,6 +51,9 @@ pub struct RssService {
     event_bus: Option<Arc<EventBus>>,
     progress_tracker: Option<Arc<ProgressTracker>>,
     processed_items: Arc<RwLock<Vec<String>>>, // Track processed GUIDs
+    movie_repository: Arc<dyn MovieRepository + Send + Sync>,
+    queue_repository: Arc<dyn QueueRepository + Send + Sync>,
+    decision_engine: Option<DecisionEngine>,
 }
 
 impl RssService {
@@ -56,6 +62,8 @@ impl RssService {
         config: RssServiceConfig,
         indexer_client: Arc<dyn IndexerClient + Send + Sync>,
         database_pool: DatabasePool,
+        movie_repository: Arc<dyn MovieRepository + Send + Sync>,
+        queue_repository: Arc<dyn QueueRepository + Send + Sync>,
     ) -> Self {
         Self {
             config,
@@ -65,6 +73,9 @@ impl RssService {
             event_bus: None,
             progress_tracker: None,
             processed_items: Arc::new(RwLock::new(Vec::new())),
+            movie_repository,
+            queue_repository,
+            decision_engine: None,
         }
     }
     
@@ -77,6 +88,12 @@ impl RssService {
     /// Set progress tracker
     pub fn with_progress_tracker(mut self, tracker: Arc<ProgressTracker>) -> Self {
         self.progress_tracker = Some(tracker);
+        self
+    }
+    
+    /// Set decision engine for quality evaluation
+    pub fn with_decision_engine(mut self, engine: DecisionEngine) -> Self {
+        self.decision_engine = Some(engine);
         self
     }
     
@@ -212,6 +229,101 @@ impl RssService {
         Ok(new_count)
     }
     
+    /// Find a matching movie for a release title
+    async fn find_matching_movie(&self, release_title: &str) -> Result<Option<Movie>> {
+        // Extract movie title from release name (remove quality, year, etc.)
+        let cleaned_title = self.extract_movie_title(release_title);
+        
+        // Search for movies with similar titles
+        match self.movie_repository.search_by_title(&cleaned_title, 10).await {
+            Ok(movies) => {
+                // Find best match based on title similarity
+                for movie in movies {
+                    if self.titles_match(&movie.title, &cleaned_title) {
+                        return Ok(Some(movie));
+                    }
+                }
+                Ok(None)
+            }
+            Err(e) => {
+                error!("Failed to search movies by title '{}': {}", cleaned_title, e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Extract movie title from release name
+    fn extract_movie_title(&self, release_name: &str) -> String {
+        // Basic title extraction - remove common patterns
+        let title = release_name
+            // Remove file extensions
+            .replace(".mkv", "")
+            .replace(".mp4", "")
+            .replace(".avi", "")
+            // Replace dots and underscores with spaces
+            .replace('.', " ")
+            .replace('_', " ")
+            // Remove year patterns (4 digits)
+            .split_whitespace()
+            .take_while(|word| !word.chars().all(|c| c.is_ascii_digit() && word.len() == 4))
+            .collect::<Vec<_>>()
+            .join(" ")
+            // Remove quality indicators
+            .split_whitespace()
+            .take_while(|word| {
+                let word_lower = word.to_lowercase();
+                !word_lower.contains("1080p") &&
+                !word_lower.contains("720p") &&
+                !word_lower.contains("2160p") &&
+                !word_lower.contains("4k") &&
+                !word_lower.contains("bluray") &&
+                !word_lower.contains("web-dl") &&
+                !word_lower.contains("hdtv")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string();
+            
+        if title.is_empty() {
+            release_name.to_string()
+        } else {
+            title
+        }
+    }
+    
+    /// Check if two movie titles match (case-insensitive, flexible matching)
+    fn titles_match(&self, movie_title: &str, extracted_title: &str) -> bool {
+        let movie_lower = movie_title.to_lowercase();
+        let extracted_lower = extracted_title.to_lowercase();
+        
+        // Exact match
+        if movie_lower == extracted_lower {
+            return true;
+        }
+        
+        // Check if one contains the other
+        if movie_lower.contains(&extracted_lower) || extracted_lower.contains(&movie_lower) {
+            return true;
+        }
+        
+        // Check word-by-word matching (allow some flexibility)
+        let movie_words: Vec<&str> = movie_lower.split_whitespace().collect();
+        let extracted_words: Vec<&str> = extracted_lower.split_whitespace().collect();
+        
+        // If most words match, consider it a match
+        let matching_words = movie_words.iter()
+            .filter(|word| extracted_words.contains(word))
+            .count();
+            
+        let total_words = movie_words.len().min(extracted_words.len());
+        if total_words > 0 && matching_words as f32 / total_words as f32 > 0.7 {
+            return true;
+        }
+        
+        false
+    }
+    
     /// Check if an RSS item should be processed
     async fn should_process_item(&self, item: &RssItem, feed: &RssFeed) -> bool {
         // Check category filter
@@ -229,25 +341,121 @@ impl RssService {
             return false;
         }
         
-        // TODO: Check if movie exists and is monitored
-        // TODO: Check quality requirements
+        // Check if we have a decision engine for quality evaluation
+        let decision_engine = match &self.decision_engine {
+            Some(engine) => engine,
+            None => {
+                warn!("No decision engine configured, accepting all items");
+                return true;
+            }
+        };
         
-        true
+        // Parse release information from the title
+        let release = Release::from_title(item.title.clone(), item.url.clone());
+        
+        // Check if the release meets quality requirements
+        if decision_engine.evaluate_release(&release).is_none() {
+            debug!("RSS item '{}' doesn't meet quality requirements", item.title);
+            return false;
+        }
+        
+        // Check if movie exists and is monitored by searching monitored movies
+        // This is a basic implementation - in production you'd want more sophisticated matching
+        match self.find_matching_movie(&item.title).await {
+            Ok(Some(movie)) => {
+                if movie.monitored {
+                    debug!("Found monitored movie '{}' for RSS item '{}'", movie.title, item.title);
+                    true
+                } else {
+                    debug!("Found movie '{}' but it's not monitored", movie.title);
+                    false
+                }
+            }
+            Ok(None) => {
+                debug!("No matching movie found for RSS item '{}'", item.title);
+                false
+            }
+            Err(e) => {
+                error!("Error searching for movie: {}", e);
+                false
+            }
+        }
     }
     
     /// Process an RSS item
     async fn process_rss_item(&self, item: &RssItem, feed: &RssFeed) -> Result<()> {
         info!("Processing RSS item: {}", item.title);
         
-        // TODO: Parse release name to identify movie
-        // TODO: Check if quality meets requirements
-        // TODO: Add to download queue
+        // Parse release name to create a Release object
+        let mut release = Release::from_title(item.title.clone(), item.url.clone());
         
-        // Emit event
+        // Set additional release information if available
+        if let Some(size) = item.size {
+            release = release.with_size(size);
+        }
+        if let Some(seeders) = item.seeders {
+            release = release.with_seeders(seeders);
+        }
+        if let Some(leechers) = item.leechers {
+            release = release.with_leechers(leechers);
+        }
+        
+        // Calculate age in hours
+        let age = Utc::now() - item.pub_date;
+        let age_hours = age.num_hours().max(0) as u32;
+        release = release.with_age_hours(age_hours);
+        
+        // Find the matching movie
+        let movie = match self.find_matching_movie(&item.title).await? {
+            Some(movie) => movie,
+            None => {
+                warn!("No matching movie found for RSS item: {}", item.title);
+                return Ok(()); // Skip this item
+            }
+        };
+        
+        // Verify quality requirements one more time with decision engine
+        if let Some(decision_engine) = &self.decision_engine {
+            if decision_engine.evaluate_release(&release).is_none() {
+                warn!("RSS item '{}' failed quality check during processing", item.title);
+                return Ok(());
+            }
+        }
+        
+        // Create queue item
+        let mut queue_item = QueueItem::new(
+            movie.id,
+            Uuid::new_v4(), // Release ID (generated for RSS items)
+            item.title.clone(),
+            item.url.clone(),
+        );
+        
+        // Set optional queue item properties
+        if let Some(size) = item.size {
+            queue_item.size_bytes = Some(size as i64);
+        }
+        
+        // Set priority based on feed configuration or movie preferences
+        queue_item.priority = QueuePriority::Normal;
+        
+        // Set category from feed if specified
+        if !feed.categories.is_empty() {
+            queue_item.category = Some(feed.categories[0].clone());
+        }
+        
+        // Add to download queue
+        self.queue_repository.add_queue_item(&queue_item).await.map_err(|e| {
+            error!("Failed to add RSS item to queue: {}", e);
+            e
+        })?;
+        
+        info!("Successfully queued RSS item '{}' for movie '{}'", item.title, movie.title);
+        
+        // Emit event with actual movie ID
         if let Some(bus) = &self.event_bus {
             let _ = bus.publish(SystemEvent::DownloadQueued {
-                movie_id: Uuid::new_v4(), // TODO: Get actual movie ID
-                release_id: Uuid::new_v4(),
+                movie_id: movie.id,
+                release_id: queue_item.release_id,
                 download_url: item.url.clone(),
                 title: item.title.clone(),
             }).await;

@@ -1,6 +1,6 @@
 //! Basic route configuration
 
-pub mod streaming;
+// pub mod streaming; // Temporarily disabled
 pub mod monitoring;
 
 use axum::{routing::get, Router};

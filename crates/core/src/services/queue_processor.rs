@@ -4,7 +4,8 @@
 //! monitor download progress, and sync with download clients.
 
 use crate::services::{QueueRepository, DownloadClientService};
-use crate::{Result, RadarrError};
+use crate::Result;
+// use crate::RadarrError; // Currently unused
 use crate::retry::{retry_with_backoff, RetryConfig, RetryPolicy, CircuitBreaker};
 use crate::progress::{ProgressTracker, OperationType};
 use crate::events::{EventBus, SystemEvent};
@@ -13,7 +14,7 @@ use std::time::Duration;
 use tokio::time;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+// use uuid::Uuid; // Currently unused
 
 /// Configuration for queue processor
 #[derive(Debug, Clone)]
@@ -245,7 +246,7 @@ where
         });
         
         for item in sorted_items.iter().take(slots_available) {
-            match self.start_download(&item).await {
+            match self.start_download(item).await {
                 Ok(()) => {
                     processed_count += 1;
                     info!("Started download for: {}", item.title);
@@ -359,7 +360,7 @@ where
                 match self.download_client.get_download_status(client_id).await? {
                     Some(status) => {
                         let old_progress = item.progress;
-                        let old_status = item.status.clone();
+                        let old_status = item.status;
                         
                         self.update_queue_item_from_client_status(&mut item, &status)?;
                         
@@ -409,7 +410,7 @@ where
             "paused_dl" | "paused_up" => QueueStatus::Paused,
             "error" => QueueStatus::Failed,
             "stalled" | "stalled_up" => QueueStatus::Stalled,
-            _ => queue_item.status.clone(),
+            _ => queue_item.status,
         };
         
         queue_item.update_status(new_status);

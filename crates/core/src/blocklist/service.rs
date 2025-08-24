@@ -6,8 +6,10 @@ use crate::blocklist::repository::{BlocklistRepository, BlocklistStatistics, Fai
 use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
-use tracing::{debug, info, warn, error};
+use chrono::{Utc, Duration};
+// use chrono::DateTime; // Currently unused
+use tracing::{debug, info, warn};
+// use tracing::error; // Currently unused
 use std::collections::HashMap;
 
 /// Service for managing blocked releases and failure handling
@@ -347,7 +349,7 @@ impl<R: BlocklistRepository> BlocklistService<R> {
             RadarrError::AuthenticationRequired { .. } => FailureReason::AuthenticationFailed,
             RadarrError::RateLimited { .. } => FailureReason::RateLimited,
             RadarrError::SerializationError(_) => FailureReason::ParseError,
-            RadarrError::ExternalServiceError { service, error } => {
+            RadarrError::ExternalServiceError { service: _, error } => {
                 // Try to classify based on service and error message
                 let error_lower = error.to_lowercase();
                 

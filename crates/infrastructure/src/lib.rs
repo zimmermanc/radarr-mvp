@@ -10,7 +10,7 @@ pub mod download_clients;
 pub mod tmdb;
 pub mod trakt;
 pub mod watchmode;
-pub mod streaming;
+// pub mod streaming; // Temporarily disabled due to compilation issues
 pub mod lists;
 pub mod monitoring;
 

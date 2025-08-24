@@ -5,8 +5,10 @@ use uuid::Uuid;
 
 /// Status of a queue item
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum QueueStatus {
     /// Item is in queue waiting to be processed
+    #[default]
     Queued,
     /// Item is currently being downloaded
     Downloading,
@@ -24,26 +26,18 @@ pub enum QueueStatus {
     Seeding,
 }
 
-impl Default for QueueStatus {
-    fn default() -> Self {
-        QueueStatus::Queued
-    }
-}
 
 /// Priority level for queue items
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum QueuePriority {
     Low,
+    #[default]
     Normal,
     High,
     VeryHigh,
 }
 
-impl Default for QueuePriority {
-    fn default() -> Self {
-        QueuePriority::Normal
-    }
-}
 
 /// A download queue item
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,6 +292,7 @@ impl QueueItem {
 
 /// Queue statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct QueueStats {
     /// Total number of items in queue
     pub total_count: i64,
@@ -321,22 +316,6 @@ pub struct QueueStats {
     pub total_downloaded_bytes: i64,
 }
 
-impl Default for QueueStats {
-    fn default() -> Self {
-        Self {
-            total_count: 0,
-            downloading_count: 0,
-            queued_count: 0,
-            completed_count: 0,
-            failed_count: 0,
-            paused_count: 0,
-            total_download_speed: 0,
-            total_upload_speed: 0,
-            total_size_bytes: 0,
-            total_downloaded_bytes: 0,
-        }
-    }
-}
 
 // Implement Display for enum serialization to string
 impl std::fmt::Display for QueueStatus {

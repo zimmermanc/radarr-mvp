@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 /// Movie status in the system
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MovieStatus {
+    #[default]
     Announced,
     InProduction,
     PostProduction,
@@ -13,26 +15,18 @@ pub enum MovieStatus {
     Cancelled,
 }
 
-impl Default for MovieStatus {
-    fn default() -> Self {
-        MovieStatus::Announced
-    }
-}
 
 /// Minimum availability requirements
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MinimumAvailability {
     Announced,
     InCinemas,
+    #[default]
     Released,
     Predb,
 }
 
-impl Default for MinimumAvailability {
-    fn default() -> Self {
-        MinimumAvailability::Released
-    }
-}
 
 /// Core movie entity
 #[derive(Debug, Clone, Serialize, Deserialize)]

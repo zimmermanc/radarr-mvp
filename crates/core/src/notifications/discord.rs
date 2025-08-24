@@ -2,7 +2,7 @@
 //!
 //! Sends notifications to Discord channels via webhook URLs
 
-use super::{NotificationProvider, NotificationEvent, NotificationService};
+use super::{NotificationProvider, NotificationEvent};
 use crate::{Result, RadarrError, Movie};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -219,7 +219,7 @@ impl NotificationProvider for DiscordProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
+    use crate::NotificationService;
 
     fn create_test_movie() -> Movie {
         let mut movie = Movie::new(12345, "Test Movie".to_string());

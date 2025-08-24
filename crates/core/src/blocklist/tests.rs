@@ -607,7 +607,7 @@ mod tests {
         let service = create_test_service();
         
         // Test report_failure
-        let error = RadarrError::ConnectionTimeout { operation: "test".to_string() };
+        let error = RadarrError::Timeout { operation: "test".to_string() };
         service.report_failure("test-release", "test-indexer", &error, "Test Release", None).await.unwrap();
         
         // Should be blocked now

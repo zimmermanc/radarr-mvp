@@ -9,7 +9,8 @@
 //! - Half-Open: Testing recovery, single request allowed through
 
 use crate::{RadarrError, Result};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
+// use std::sync::atomic::AtomicUsize; // Currently unused
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;

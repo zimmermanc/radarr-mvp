@@ -6,7 +6,6 @@
 use crate::models::{QueueItem, QueueStatus, QueuePriority, QueueStats, Release, Movie};
 use crate::{Result, RadarrError};
 use uuid::Uuid;
-use std::collections::HashMap;
 use async_trait::async_trait;
 
 /// Repository trait for queue data persistence
@@ -234,7 +233,7 @@ impl<Q: QueueRepository, D: DownloadClientService> QueueService<Q, D> {
             if let Some(client_id) = &item.download_client_id {
                 match self.download_client.get_download_status(client_id).await? {
                     Some(status) => {
-                        let old_status = item.status.clone();
+                        let old_status = item.status;
                         self.update_queue_item_from_client_status(&mut item, &status)?;
                         
                         if item.status != old_status || item.progress != status.progress {
@@ -274,7 +273,7 @@ impl<Q: QueueRepository, D: DownloadClientService> QueueService<Q, D> {
             "pausedDL" | "pausedUP" => QueueStatus::Paused,
             "error" => QueueStatus::Failed,
             "stalled" | "stalledUP" => QueueStatus::Stalled,
-            _ => queue_item.status.clone(),
+            _ => queue_item.status,
         };
         
         queue_item.update_status(new_status);
@@ -442,6 +441,7 @@ impl<Q: QueueRepository, D: DownloadClientService> QueueService<Q, D> {
 mod tests {
     use super::*;
     use crate::models::{Movie, Release, ReleaseProtocol};
+    use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
     

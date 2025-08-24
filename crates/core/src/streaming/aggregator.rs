@@ -62,7 +62,7 @@ impl TrendingAggregator {
             self.fetch_trakt_trending(media_type.clone(), window.clone())
         );
 
-        let mut tmdb_entries = tmdb_result.unwrap_or_else(|e| {
+        let tmdb_entries = tmdb_result.unwrap_or_else(|e| {
             warn!("Failed to fetch TMDB trending: {}", e);
             Vec::new()
         });
@@ -200,8 +200,8 @@ impl TrendingAggregator {
 
     async fn enrich_with_availability(
         &self,
-        entries: &mut Vec<TrendingEntry>,
-        region: &str,
+        entries: &mut [TrendingEntry],
+        _region: &str,
     ) -> Result<(), RadarrError> {
         if self.watchmode.is_none() {
             debug!("Watchmode not configured, skipping availability enrichment");
@@ -293,7 +293,7 @@ impl StreamingAggregator for TrendingAggregator {
         for item in all_items {
             grouped
                 .entry(item.service_type.as_str().to_string())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(item);
         }
         

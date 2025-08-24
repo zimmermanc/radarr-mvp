@@ -5,9 +5,10 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::models::Movie;
-    use chrono::{NaiveDate, Utc};
+    use crate::jobs::enhanced_sync_handler::{MovieRepository, ListSyncRepository, SyncMonitoring, ConflictStrategy, PerformanceMetrics, ConflictResolver, EnhancedSyncHandler, SyncHandlerConfig, PerformanceTracker};
+    use crate::jobs::list_sync::{SyncError, SyncStatus, ConflictResolution, SyncJob, SyncHandler};
+    use chrono::{DateTime, Utc};
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
@@ -28,10 +29,9 @@ mod tests {
         }
 
         async fn add_movie(&self, movie: Movie) {
-            if let Some(tmdb_id) = movie.tmdb_id {
-                let mut movies = self.movies.write().await;
-                movies.insert(tmdb_id, movie);
-            }
+            let tmdb_id = movie.tmdb_id;
+            let mut movies = self.movies.write().await;
+            movies.insert(tmdb_id, movie);
         }
     }
 
@@ -51,18 +51,16 @@ mod tests {
         }
 
         async fn create(&self, movie: &Movie) -> Result<Movie, SyncError> {
-            if let Some(tmdb_id) = movie.tmdb_id {
-                let mut movies = self.movies.write().await;
-                movies.insert(tmdb_id, movie.clone());
-            }
+            let tmdb_id = movie.tmdb_id;
+            let mut movies = self.movies.write().await;
+            movies.insert(tmdb_id, movie.clone());
             Ok(movie.clone())
         }
 
         async fn update(&self, movie: &Movie) -> Result<Movie, SyncError> {
-            if let Some(tmdb_id) = movie.tmdb_id {
-                let mut movies = self.movies.write().await;
-                movies.insert(tmdb_id, movie.clone());
-            }
+            let tmdb_id = movie.tmdb_id;
+            let mut movies = self.movies.write().await;
+            movies.insert(tmdb_id, movie.clone());
             Ok(movie.clone())
         }
     }
@@ -252,53 +250,48 @@ mod tests {
     /// Create a test movie with specified quality level
     fn create_test_movie(tmdb_id: i32, quality_level: &str) -> Movie {
         match quality_level {
-            "high" => Movie {
-                id: Uuid::new_v4(),
-                title: "High Quality Movie".to_string(),
-                tmdb_id: Some(tmdb_id),
-                imdb_id: Some(format!("tt{:07}", tmdb_id)),
-                year: Some(2023),
-                overview: Some("This is a high quality movie with complete metadata".to_string()),
-                poster_path: Some("/high-quality-poster.jpg".to_string()),
-                backdrop_path: Some("/high-quality-backdrop.jpg".to_string()),
-                release_date: Some(NaiveDate::from_ymd_opt(2023, 6, 15).unwrap()),
-                runtime: Some(120),
-                genres: vec!["Action".to_string(), "Drama".to_string(), "Thriller".to_string()],
-                vote_average: Some(8.7),
-                vote_count: Some(15420),
-                popularity: Some(125.8),
-                original_language: Some("en".to_string()),
-                status: Some("Released".to_string()),
-                updated_at: Some(Utc::now()),
-                ..Default::default()
+            "high" => {
+                let mut movie = Movie::new(tmdb_id, "High Quality Movie".to_string());
+                movie.imdb_id = Some(format!("tt{:07}", tmdb_id));
+                movie.year = Some(2023);
+                movie.runtime = Some(120);
+                movie.status = crate::models::MovieStatus::Released;
+                movie.metadata = serde_json::json!({
+                    "tmdb": {
+                        "overview": "This is a high quality movie with complete metadata",
+                        "poster_path": "/high-quality-poster.jpg",
+                        "backdrop_path": "/high-quality-backdrop.jpg",
+                        "vote_average": 8.7,
+                        "vote_count": 15420,
+                        "popularity": 125.8,
+                        "original_language": "en",
+                        "genres": ["Action", "Drama", "Thriller"]
+                    }
+                });
+                movie
             },
-            "medium" => Movie {
-                id: Uuid::new_v4(),
-                title: "Medium Quality Movie".to_string(),
-                tmdb_id: Some(tmdb_id),
-                year: Some(2023),
-                overview: Some("Medium quality metadata".to_string()),
-                poster_path: Some("/medium-poster.jpg".to_string()),
-                runtime: Some(95),
-                genres: vec!["Comedy".to_string()],
-                vote_average: Some(7.2),
-                vote_count: Some(832),
-                updated_at: Some(Utc::now() - chrono::Duration::days(30)),
-                ..Default::default()
+            "medium" => {
+                let mut movie = Movie::new(tmdb_id, "Medium Quality Movie".to_string());
+                movie.year = Some(2023);
+                movie.runtime = Some(95);
+                movie.updated_at = Utc::now() - chrono::Duration::days(30);
+                movie.metadata = serde_json::json!({
+                    "tmdb": {
+                        "overview": "Medium quality metadata",
+                        "poster_path": "/medium-poster.jpg",
+                        "vote_average": 7.2,
+                        "vote_count": 832,
+                        "genres": ["Comedy"]
+                    }
+                });
+                movie
             },
-            "low" => Movie {
-                id: Uuid::new_v4(),
-                title: "Low Quality Movie".to_string(),
-                tmdb_id: Some(tmdb_id),
-                updated_at: Some(Utc::now() - chrono::Duration::days(90)),
-                ..Default::default()
+            "low" => {
+                let mut movie = Movie::new(tmdb_id, "Low Quality Movie".to_string());
+                movie.updated_at = Utc::now() - chrono::Duration::days(90);
+                movie
             },
-            _ => Movie {
-                id: Uuid::new_v4(),
-                title: "Default Movie".to_string(),
-                tmdb_id: Some(tmdb_id),
-                ..Default::default()
-            }
+            _ => Movie::new(tmdb_id, "Default Movie".to_string())
         }
     }
 
@@ -415,25 +408,23 @@ mod tests {
             config,
         );
 
-        let existing_with_images = Movie {
-            id: Uuid::new_v4(),
-            title: "Movie with Images".to_string(),
-            tmdb_id: Some(12345),
-            poster_path: Some("/poster.jpg".to_string()),
-            backdrop_path: Some("/backdrop.jpg".to_string()),
-            year: Some(2020),
-            ..Default::default()
-        };
+        let mut existing_with_images = Movie::new(12345, "Movie with Images".to_string());
+        existing_with_images.year = Some(2020);
+        existing_with_images.metadata = serde_json::json!({
+            "tmdb": {
+                "poster_path": "/poster.jpg",
+                "backdrop_path": "/backdrop.jpg"
+            }
+        });
 
-        let new_without_images = Movie {
-            id: Uuid::new_v4(),
-            title: "Movie without Images".to_string(),
-            tmdb_id: Some(12345),
-            overview: Some("New detailed overview".to_string()),
-            runtime: Some(120),
-            genres: vec!["Action".to_string(), "Drama".to_string()],
-            ..Default::default()
-        };
+        let mut new_without_images = Movie::new(12345, "Movie without Images".to_string());
+        new_without_images.runtime = Some(120);
+        new_without_images.metadata = serde_json::json!({
+            "tmdb": {
+                "overview": "New detailed overview",
+                "genres": ["Action", "Drama"]
+            }
+        });
 
         let resolution = handler.resolve_conflict(&existing_with_images, &new_without_images).await;
         

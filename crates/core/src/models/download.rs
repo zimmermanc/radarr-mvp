@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 /// Download status in the system
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DownloadStatus {
+    #[default]
     Queued,
     Downloading,
     Completed,
@@ -17,11 +19,6 @@ pub enum DownloadStatus {
     Removed,
 }
 
-impl Default for DownloadStatus {
-    fn default() -> Self {
-        DownloadStatus::Queued
-    }
-}
 
 impl std::fmt::Display for DownloadStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

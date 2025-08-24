@@ -32,10 +32,7 @@ impl CorrelationId {
         self.0
     }
 
-    /// Convert to a hyphenated string
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
-    }
+    // Note: to_string() is provided by Display trait implementation
 
     /// Convert to a simple string (no hyphens)
     pub fn to_simple(&self) -> String {
@@ -143,9 +140,8 @@ impl CorrelationContext {
     }
 }
 
-/// Thread-local storage for the current correlation context
 thread_local! {
-    static CURRENT_CONTEXT: std::cell::RefCell<Option<CorrelationContext>> = std::cell::RefCell::new(None);
+    static CURRENT_CONTEXT: std::cell::RefCell<Option<CorrelationContext>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Set the current correlation context for this thread
@@ -166,7 +162,7 @@ pub fn current_correlation_id() -> CorrelationId {
         c.borrow()
             .as_ref()
             .map(|ctx| ctx.correlation_id)
-            .unwrap_or_else(CorrelationId::new)
+            .unwrap_or_default()
     })
 }
 

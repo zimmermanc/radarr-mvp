@@ -8,13 +8,15 @@ use crate::jobs::list_sync::{
     MovieProvenance,
 };
 use crate::models::Movie;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
+// use chrono::DateTime; // Currently unused
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+// use std::collections::HashMap; // Currently unused
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
+// use tracing::error; // Currently unused
 use uuid::Uuid;
 
 /// Enhanced sync handler with performance tracking and sophisticated conflict resolution
@@ -75,7 +77,7 @@ pub enum ConflictStrategy {
 }
 
 /// Performance tracking for sync operations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PerformanceTracker {
     sync_start: Option<Instant>,
     items_processed: usize,
@@ -87,20 +89,6 @@ pub struct PerformanceTracker {
     batch_times: Vec<Duration>,
 }
 
-impl Default for PerformanceTracker {
-    fn default() -> Self {
-        Self {
-            sync_start: None,
-            items_processed: 0,
-            memory_samples: Vec::new(),
-            api_requests: 0,
-            cache_hits: 0,
-            cache_misses: 0,
-            errors: Vec::new(),
-            batch_times: Vec::new(),
-        }
-    }
-}
 
 impl PerformanceTracker {
     fn start_sync(&mut self) {
@@ -566,7 +554,7 @@ impl SyncHandler for EnhancedSyncHandler {
 }
 
 impl EnhancedSyncHandler {
-    async fn execute_sync_internal(&self, job: &SyncJob, sync_id: Uuid) -> Result<SyncResult, SyncError> {
+    async fn execute_sync_internal(&self, job: &SyncJob, _sync_id: Uuid) -> Result<SyncResult, SyncError> {
         // This would contain the actual sync logic specific to each source type
         // For now, we'll return a mock result
         

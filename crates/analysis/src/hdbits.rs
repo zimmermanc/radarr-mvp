@@ -744,8 +744,8 @@ mod tests {
             release_history.push(ReleaseMetric {
                 torrent_id: format!("torrent_{}", i),
                 name: format!("Test.Movie.{}.1080p.BluRay-TEST", 2020 + i),
-                seeders: 20 + i as u32,
-                leechers: 2 + (i % 3) as u32,
+                seeders: (20 + i as u32) as i32,
+                leechers: (2 + (i % 3) as u32) as i32,
                 size_gb: 18.0 + (i as f64 * 0.5),
                 completion_rate: 0.75 + (i as f64 * 0.02),
                 is_internal: i % 2 == 0,

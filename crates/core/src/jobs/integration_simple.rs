@@ -5,7 +5,8 @@
 
 use crate::jobs::{
     EnhancedSyncHandler, ListSyncScheduler, SyncHandlerConfig, ConflictStrategy,
-    SyncJob, SyncError, SyncResult, SyncStatus, ConflictResolution,
+    SyncJob, SyncError, ConflictResolution,
+    // SyncResult, SyncStatus, // Currently unused
     enhanced_sync_handler::{MovieRepository, ListSyncRepository, SyncMonitoring, PerformanceMetrics},
 };
 use crate::models::Movie;
@@ -39,7 +40,7 @@ pub struct MockMonitoring {
 }
 
 #[derive(Debug, Clone)]
-struct SyncRecord {
+pub struct SyncRecord {
     id: Uuid,
     list_id: Uuid,
     status: String,
@@ -159,6 +160,12 @@ impl SyncMonitoring for MockMonitoring {
     async fn record_cache_access(&self, cache_type: &str, hit: bool) {
         let mut ops = self.operations.lock().await;
         ops.push(format!("Cache {}: hit={}", cache_type, hit));
+    }
+}
+
+impl Default for MockSetup {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

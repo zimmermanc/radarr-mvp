@@ -139,17 +139,15 @@ serial_test = "3.0"
 axum-test = "15.0"
 wiremock = "0.6"
 
-[workspace.dev-dependencies]
-
+# Note: workspace.dev-dependencies is not currently used
+# [workspace.dev-dependencies]
 # Performance benchmarking
-criterion = { version = "0.5", features = ["html_reports"] }
-
+# criterion = { version = "0.5", features = ["html_reports"] }
 # HTTP testing
-axum-test = "15.0"
-tower-test = "0.4"
-
+# axum-test = "15.0"
+# tower-test = "0.4"
 # Test containers
-testcontainers = "0.20"
+# testcontainers = "0.20"
 
 [profile.release]
 opt-level = 3

@@ -3,10 +3,12 @@
 //! This module provides enhanced tracing functionality that automatically
 //! includes correlation IDs in all log messages for distributed tracing.
 
-use crate::correlation::{current_correlation_id, current_context, CorrelationId};
+use crate::correlation::current_context;
+// use crate::correlation::{current_correlation_id, CorrelationId}; // Currently unused
 use serde::Serialize;
 use std::collections::HashMap;
-use tracing::{Event, Metadata, Subscriber};
+use tracing::{Event, Subscriber};
+// use tracing::Metadata; // Currently unused
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     layer::{Context, Layer},
@@ -15,6 +17,12 @@ use tracing_subscriber::{
 
 /// A tracing layer that adds correlation IDs to all events
 pub struct CorrelationLayer;
+
+impl Default for CorrelationLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CorrelationLayer {
     /// Create a new correlation layer
@@ -27,7 +35,7 @@ impl<S> Layer<S> for CorrelationLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
+    fn on_event(&self, _event: &Event<'_>, _ctx: Context<'_, S>) {
         // Get the current correlation ID if available
         if let Some(context) = current_context() {
             // Add correlation ID to the event's fields

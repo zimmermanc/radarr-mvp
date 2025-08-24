@@ -53,6 +53,12 @@ pub struct CalendarEntry {
 
 impl From<Movie> for CalendarEntry {
     fn from(movie: Movie) -> Self {
+        // Generate TMDB poster URL if poster_path exists in metadata
+        let poster_url = movie.metadata
+            .get("poster_path")
+            .and_then(|v| v.as_str())
+            .map(|poster_path| format!("https://image.tmdb.org/t/p/w500{}", poster_path));
+        
         Self {
             id: movie.id.to_string(),
             title: movie.title,
@@ -60,10 +66,11 @@ impl From<Movie> for CalendarEntry {
             tmdb_id: Some(movie.tmdb_id),
             monitored: movie.monitored,
             // For MVP, we'll use creation date as placeholder
+            // In production, these would be extracted from movie metadata or separate release date fields
             physical_release: Some(movie.created_at),
             digital_release: Some(movie.created_at),
             in_theaters: Some(movie.created_at),
-            poster_url: None, // TODO: Get from TMDB integration
+            poster_url,
             status: format!("{:?}", movie.status),
         }
     }

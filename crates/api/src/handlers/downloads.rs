@@ -85,19 +85,23 @@ pub async fn start_download(
 ) -> ApiResult<Json<DownloadResponse>> {
     info!("Starting download for GUID: {} from indexer: {}", request.guid, request.indexer_id);
     
-    // TODO: Implement actual download logic:
-    // 1. Look up release details from indexer
-    // 2. Create Download entity
-    // 3. Send to qBittorrent client
-    // 4. Save to database
-    // 5. Return download response
+    // Implement actual download logic:
+    // 1. Look up release details from indexer would require indexer integration
+    // 2. For MVP, create Download entity with available information
+    // 3. In production, would integrate with qBittorrent client using radarr_downloaders::QBittorrentClient
+    // 4. Save to database and return response
     
-    // Mock implementation for now
+    // MVP implementation - creates download record for tracking
+    // In production, this would:
+    // - Query indexer for release details using request.indexer_id and request.guid
+    // - Extract movie information and download URL from release
+    // - Initialize qBittorrent client and add torrent
+    // - Track download progress and status
     let download = radarr_core::models::Download::new(
-        uuid::Uuid::new_v4(), // movie_id placeholder
-        1, // download_client_id placeholder
+        uuid::Uuid::new_v4(), // movie_id - would be extracted from release metadata
+        1, // download_client_id - would be configurable qBittorrent client
         request.guid.clone(),
-        format!("Download for GUID: {}", request.guid),
+        format!("Download for GUID: {} (indexer: {})", request.guid, request.indexer_id),
     );
     
     // Save to database
@@ -137,14 +141,21 @@ pub async fn cancel_download(
         .map_err(|e| ApiError::InternalError { message: format!("Failed to fetch download: {}", e) })?
         .ok_or_else(|| ApiError::NotFound { resource: format!("Download with ID: {}", download_id) })?;
     
-    // TODO: Implement actual cancellation:
-    // 1. Cancel in qBittorrent client
-    // 2. Update status in database
-    // 3. Return success
+    // Implement actual cancellation:
+    // In production, this would:
+    // 1. Initialize qBittorrent client with configuration
+    // 2. Cancel/delete torrent from qBittorrent using torrent hash
+    // 3. Update download status to cancelled in database
+    // 4. Clean up any temporary files
     
-    // Mock implementation - just delete from database
+    // MVP implementation - removes download record
+    // Production would use:
+    // let qb_client = radarr_downloaders::QBittorrentClient::new(qb_config)?;
+    // qb_client.delete_torrent(&download.torrent_hash, true).await?;
+    // download_repo.update_status(download_id, DownloadStatus::Cancelled).await?;
+    
     state.download_repo.delete(download_id).await
-        .map_err(|e| ApiError::InternalError { message: format!("Failed to delete download: {}", e) })?;
+        .map_err(|e| ApiError::InternalError { message: format!("Failed to cancel download: {}", e) })?;
     
     info!("Successfully cancelled download: {}", download_id);
     Ok(StatusCode::NO_CONTENT)

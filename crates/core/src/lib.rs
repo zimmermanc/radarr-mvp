@@ -26,6 +26,7 @@ pub use error::*;
 pub use notifications::*;
 pub use services::*;
 pub use events::*;
-pub use retry::*;
-pub use circuit_breaker::*;
+// Selective re-exports to avoid naming conflicts
+pub use retry::{retry_with_backoff, RetryConfig, RetryPolicy};
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerMetrics};
 pub use blocklist::*;

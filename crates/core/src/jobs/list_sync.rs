@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{interval, Duration as TokioDuration};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
+// use tracing::debug; // Currently unused
 use uuid::Uuid;
 
 /// List synchronization scheduler that manages periodic syncs
@@ -80,7 +81,7 @@ pub enum SyncStatus {
 }
 
 /// How to resolve conflicts when a movie already exists
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConflictResolution {
     Keep,         // Keep existing movie unchanged
     Update,       // Update with new information

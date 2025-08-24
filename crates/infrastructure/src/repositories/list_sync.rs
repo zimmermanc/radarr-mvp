@@ -174,7 +174,7 @@ impl PostgresListSyncRepository {
         metrics: &SyncPerformanceMetrics,
     ) -> Result<(), InfrastructureError> {
         let metrics_json = serde_json::to_value(metrics)
-            .map_err(InfrastructureError::Serialization)?
+            .map_err(InfrastructureError::Serialization)?;
 
         // Store in sync_metadata of the most recent sync for this list
         sqlx::query!(
@@ -209,7 +209,7 @@ impl PostgresListSyncRepository {
         }
 
         let conflicts_json = serde_json::to_value(conflicts)
-            .map_err(InfrastructureError::Serialization)?
+            .map_err(InfrastructureError::Serialization)?;
 
         sqlx::query!(
             r#"

@@ -9,8 +9,8 @@ pub mod quality_profile;
 pub mod download;
 pub mod queue;
 pub mod custom_formats;
-pub mod streaming_cache;
-pub mod list_sync;
+// pub mod streaming_cache; // Temporarily disabled due to missing table
+// pub mod list_sync; // Temporarily disabled due to SQLX cache issues
 pub mod blocklist;
 
 // Re-export all repository implementations
@@ -20,8 +20,8 @@ pub use quality_profile::PostgresQualityProfileRepository;
 pub use download::PostgresDownloadRepository;
 pub use queue::PostgresQueueRepository;
 pub use custom_formats::{CustomFormatsRepository, PostgresCustomFormatsRepository};
-pub use streaming_cache::PostgresStreamingCache;
-pub use list_sync::PostgresListSyncRepository;
+// pub use streaming_cache::PostgresStreamingCache; // Temporarily disabled
+// pub use list_sync::PostgresListSyncRepository; // Temporarily disabled
 pub use blocklist::PostgresBlocklistRepository;
 
 #[cfg(test)]

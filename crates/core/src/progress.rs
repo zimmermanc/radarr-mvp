@@ -1,7 +1,8 @@
 //! Progress tracking for long-running operations
 
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// use std::time::Instant; // Currently unused
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
@@ -100,7 +101,7 @@ impl ProgressInfo {
     
     /// Update progress percentage and message
     pub fn update(&mut self, percentage: f32, message: impl Into<String>) {
-        self.percentage = percentage.min(100.0).max(0.0);
+        self.percentage = percentage.clamp(0.0, 100.0);
         self.message = message.into();
         self.updated_at = Utc::now();
         self.status = OperationStatus::InProgress;

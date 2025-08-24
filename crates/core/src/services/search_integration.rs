@@ -2,7 +2,8 @@
 
 use crate::models::{Movie, Release, QueuePriority};
 use crate::services::{QueueService, QueueRepository, DownloadClientService};
-use crate::{Result, RadarrError};
+use crate::Result;
+// use crate::RadarrError; // Currently unused
 use uuid::Uuid;
 
 /// Service for integrating search results with download queue
@@ -127,7 +128,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
             // Reasonable size ranges by resolution
             let size_score = if title_lower.contains("2160p") || title_lower.contains("4k") {
                 // 4K: prefer 15-50GB
-                if size_gb >= 15.0 && size_gb <= 50.0 {
+                if (15.0..=50.0).contains(&size_gb) {
                     prefs.size_preference_bonus
                 } else if size_gb < 8.0 {
                     -10.0 // Probably low quality
@@ -136,7 +137,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 }
             } else if title_lower.contains("1080p") {
                 // 1080p: prefer 5-15GB  
-                if size_gb >= 5.0 && size_gb <= 15.0 {
+                if (5.0..=15.0).contains(&size_gb) {
                     prefs.size_preference_bonus
                 } else if size_gb < 2.0 {
                     -5.0 // Probably low quality
@@ -145,7 +146,7 @@ impl<Q: QueueRepository, D: DownloadClientService> SearchIntegrationService<Q, D
                 }
             } else {
                 // 720p and below: prefer 2-8GB
-                if size_gb >= 2.0 && size_gb <= 8.0 {
+                if (2.0..=8.0).contains(&size_gb) {
                     prefs.size_preference_bonus
                 } else if size_gb < 1.0 {
                     -3.0 // Probably low quality

@@ -9,7 +9,8 @@ use radarr_core::{
     events::{EventBus, SystemEvent},
     progress::{ProgressTracker, OperationType},
     models::{Movie, QueueItem, QueuePriority},
-    domain::repositories::{MovieRepository, QueueRepository},
+    domain::repositories::MovieRepository,
+    services::QueueRepository,
 };
 use radarr_indexers::{IndexerClient, SearchRequest};
 use radarr_infrastructure::DatabasePool;

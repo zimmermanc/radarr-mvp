@@ -144,6 +144,38 @@ impl TmdbListClient {
         Ok(items)
     }
     
+    /// Get movies from a production company
+    pub async fn get_company_movies(&self, company_id: i32) -> Result<Vec<ListItem>, ListParseError> {
+        info!("Fetching movies for company {}", company_id);
+        
+        let movies = self.tmdb_client.get_company_movies(company_id)
+            .await
+            .map_err(|e| ListParseError::Unknown(e.to_string()))?;
+        
+        let items: Vec<ListItem> = movies.into_iter()
+            .map(|movie| self.movie_to_list_item(movie))
+            .collect();
+            
+        debug!("Converted {} company movies to list items", items.len());
+        Ok(items)
+    }
+    
+    /// Get movies using TMDb discover endpoint with filters
+    pub async fn get_discover_movies(&self, params: &[(&str, &str)]) -> Result<Vec<ListItem>, ListParseError> {
+        info!("Fetching movies via discover with {} filters", params.len());
+        
+        let movies = self.tmdb_client.get_discover_movies(params)
+            .await
+            .map_err(|e| ListParseError::Unknown(e.to_string()))?;
+        
+        let items: Vec<ListItem> = movies.into_iter()
+            .map(|movie| self.movie_to_list_item(movie))
+            .collect();
+            
+        debug!("Converted {} discover movies to list items", items.len());
+        Ok(items)
+    }
+    
     /// Convert TMDb movie to ListItem
     fn convert_movie_to_item(&self, movie: serde_json::Value) -> ListItem {
         ListItem {

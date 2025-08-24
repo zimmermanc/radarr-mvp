@@ -16,6 +16,7 @@ pub fn create_queue_routes() -> Router {
         .route("/queue/:id", delete(queue::remove_queue_item))
         .route("/queue/:id/pause", put(queue::pause_queue_item))
         .route("/queue/:id/resume", put(queue::resume_queue_item))
+        .route("/queue/:id/priority", put(queue::update_queue_priority))
         .route("/queue/status", get(queue::get_queue_status))
         .route("/queue/retry", post(queue::retry_failed_downloads))
         .route("/queue/process", post(queue::process_queue))

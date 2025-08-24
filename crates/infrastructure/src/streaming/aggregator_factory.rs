@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    // repositories::PostgresStreamingCache, // Temporarily disabled
+    repositories::PostgresStreamingCache,
     tmdb::TmdbStreamingClient,
     trakt::TraktClient,
     watchmode::WatchmodeClient,
@@ -58,7 +58,7 @@ impl StreamingServiceFactory {
         info!("Building streaming service aggregator");
 
         // Create repositories
-        // let cache_repo = Arc::new(PostgresStreamingCache::new(self.pool.clone())); // Temporarily disabled
+        let cache_repo = Arc::new(PostgresStreamingCache::new(self.pool.clone()));
         let trending_repo = cache_repo.clone() as Arc<dyn TrendingRepository>;
         let availability_repo = cache_repo.clone() as Arc<dyn AvailabilityRepository>;
         let token_repo = cache_repo.clone() as Arc<dyn OAuthTokenRepository>;
@@ -115,8 +115,7 @@ impl StreamingServiceFactory {
 
     /// Build just the cache repository
     pub fn build_cache_repository(self) -> Arc<dyn StreamingCacheRepository> {
-        // Arc::new(PostgresStreamingCache::new(self.pool)) // Temporarily disabled
-        unimplemented!("StreamingCache temporarily disabled for compilation")
+        Arc::new(PostgresStreamingCache::new(self.pool))
     }
 
     /// Build streaming configuration with cache TTLs

@@ -240,8 +240,10 @@ impl PostgresListSyncRepository {
                 SyncHistoryEntry,
                 r#"
                 SELECT id, import_list_id, sync_status, started_at, completed_at,
-                       duration_ms, items_found, items_added, items_updated,
-                       items_removed, items_excluded, error_message, error_details,
+                       duration_ms, 
+                       items_found, items_added, items_updated,
+                       items_removed, items_excluded, error_message, 
+                       error_details,
                        sync_metadata
                 FROM list_sync_history 
                 WHERE import_list_id = $1
@@ -252,13 +254,18 @@ impl PostgresListSyncRepository {
                 limit,
                 offset
             )
+            .fetch_all(&self.pool)
+            .await
+            .map_err(InfrastructureError::Database)?
         } else {
             sqlx::query_as!(
                 SyncHistoryEntry,
                 r#"
                 SELECT id, import_list_id, sync_status, started_at, completed_at,
-                       duration_ms, items_found, items_added, items_updated,
-                       items_removed, items_excluded, error_message, error_details,
+                       duration_ms, 
+                       items_found, items_added, items_updated,
+                       items_removed, items_excluded, error_message, 
+                       error_details,
                        sync_metadata
                 FROM list_sync_history 
                 ORDER BY started_at DESC 
@@ -267,10 +274,10 @@ impl PostgresListSyncRepository {
                 limit,
                 offset
             )
-        }
-        .fetch_all(&self.pool)
-        .await
-        .map_err(InfrastructureError::Database)?;
+            .fetch_all(&self.pool)
+            .await
+            .map_err(InfrastructureError::Database)?
+        };
 
         debug!("Retrieved {} sync history entries", entries.len());
         Ok(entries)
@@ -288,45 +295,48 @@ impl PostgresListSyncRepository {
             sqlx::query!(
                 r#"
                 SELECT 
-                    COUNT(*) as total_syncs,
-                    COUNT(*) FILTER (WHERE sync_status = 'success') as successful_syncs,
-                    COUNT(*) FILTER (WHERE sync_status = 'failed') as failed_syncs,
-                    AVG(duration_ms) as avg_duration_ms,
-                    SUM(items_found) as total_items,
-                    AVG(items_found) as avg_items_per_sync,
+                    COUNT(*) as "total_syncs!",
+                    COUNT(*) FILTER (WHERE sync_status = 'success') as "successful_syncs!",
+                    COUNT(*) FILTER (WHERE sync_status = 'failed') as "failed_syncs!",
+                    AVG(duration_ms::float) as "avg_duration_ms?",
+                    SUM(items_found) as "total_items?",
+                    AVG(items_found::float) as "avg_items_per_sync?",
                     MAX(CASE 
                         WHEN duration_ms > 0 THEN items_found::float / (duration_ms::float / 1000.0)
                         ELSE 0 
-                    END) as peak_items_per_second
+                    END) as "peak_items_per_second?"
                 FROM list_sync_history 
                 WHERE import_list_id = $1 AND started_at >= $2
                 "#,
                 list_id,
                 cutoff_date
             )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(InfrastructureError::Database)?
         } else {
             sqlx::query!(
                 r#"
                 SELECT 
-                    COUNT(*) as total_syncs,
-                    COUNT(*) FILTER (WHERE sync_status = 'success') as successful_syncs,
-                    COUNT(*) FILTER (WHERE sync_status = 'failed') as failed_syncs,
-                    AVG(duration_ms) as avg_duration_ms,
-                    SUM(items_found) as total_items,
-                    AVG(items_found) as avg_items_per_sync,
+                    COUNT(*) as "total_syncs!",
+                    COUNT(*) FILTER (WHERE sync_status = 'success') as "successful_syncs!",
+                    COUNT(*) FILTER (WHERE sync_status = 'failed') as "failed_syncs!",
+                    AVG(duration_ms::float) as "avg_duration_ms?",
+                    SUM(items_found) as "total_items?",
+                    AVG(items_found::float) as "avg_items_per_sync?",
                     MAX(CASE 
                         WHEN duration_ms > 0 THEN items_found::float / (duration_ms::float / 1000.0)
                         ELSE 0 
-                    END) as peak_items_per_second
+                    END) as "peak_items_per_second?"
                 FROM list_sync_history 
                 WHERE started_at >= $1
                 "#,
                 cutoff_date
             )
-        }
-        .fetch_one(&self.pool)
-        .await
-        .map_err(InfrastructureError::Database)?;
+            .fetch_one(&self.pool)
+            .await
+            .map_err(InfrastructureError::Database)?
+        };
 
         // Get most common errors
         let error_query = if let Some(list_id) = list_id {

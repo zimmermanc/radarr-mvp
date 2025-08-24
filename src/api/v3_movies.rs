@@ -10,7 +10,7 @@ use tracing::{error, debug, warn};
 use radarr_core::{models::Movie, domain::repositories::MovieRepository};
 use crate::services::AppServices;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct MovieListQuery {
     #[serde(default)]
     sort_by: Option<String>,
@@ -88,7 +88,7 @@ pub async fn list_movies(
         debug!("Fetching movies with pagination: page={}, limit={}, offset={}", page, limit, offset);
         
         // Apply filtering based on params
-        let movies = if params.monitored == Some(true) {
+        if params.monitored == Some(true) {
             debug!("Fetching only monitored movies");
             match services.movie_repository.find_monitored().await {
                 Ok(movies) => {
@@ -197,7 +197,43 @@ pub async fn update_movie(
     Path(id): Path<i32>,
     Json(payload): Json<Value>,
 ) -> Result<Json<MovieResponse>, StatusCode> {
-    Err(StatusCode::NOT_IMPLEMENTED)
+    debug!("Updating movie with ID: {} with payload: {:?}", id, payload);
+    
+    // Find the movie first
+    let mut movie = match services.movie_repository.find_by_tmdb_id(id).await {
+        Ok(Some(movie)) => movie,
+        Ok(None) => {
+            debug!("Movie with ID {} not found", id);
+            return Err(StatusCode::NOT_FOUND);
+        },
+        Err(e) => {
+            error!("Failed to fetch movie with ID {}: {}", id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    
+    // Apply updates from payload
+    if let Some(monitored) = payload.get("monitored").and_then(|v| v.as_bool()) {
+        movie.monitored = monitored;
+        debug!("Updated movie monitored status to: {}", monitored);
+    }
+    
+    if let Some(quality_profile_id) = payload.get("quality_profile_id").and_then(|v| v.as_i64()).map(|v| v as i32) {
+        movie.quality_profile_id = Some(quality_profile_id);
+        debug!("Updated movie quality profile to: {}", quality_profile_id);
+    }
+    
+    // Update the movie in repository
+    match services.movie_repository.update(&movie).await {
+        Ok(updated_movie) => {
+            debug!("Successfully updated movie: {}", updated_movie.title);
+            Ok(Json(convert_movie_to_response(updated_movie)))
+        },
+        Err(e) => {
+            error!("Failed to update movie: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 /// DELETE /api/v3/movie/{id} - Delete movie
@@ -318,7 +354,7 @@ fn convert_movie_to_response(movie: Movie) -> MovieResponse {
     // Use tmdb_id as the API id since the web UI expects integer IDs
     MovieResponse {
         id: movie.tmdb_id,
-        title: movie.title,
+        title: movie.title.clone(),
         original_title: movie.original_title,
         sort_title,
         status: movie.status.to_string(),
@@ -357,4 +393,199 @@ fn generate_sort_title(title: &str) -> String {
     } else {
         lower
     }
+}
+
+// Additional movie action endpoints
+
+#[derive(Deserialize, Debug)]
+pub struct SearchReleasesQuery {
+    indexers: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct SearchReleaseResponse {
+    pub id: String,
+    pub title: String,
+    pub indexer: String,
+    #[serde(rename = "indexerId")]
+    pub indexer_id: String,
+    pub size: i64,
+    pub quality: String,
+    pub resolution: String,
+    pub source: String,
+    pub codec: String,
+    pub seeders: i32,
+    pub leechers: i32,
+    #[serde(rename = "sceneGroup")]
+    pub scene_group: Option<String>,
+    #[serde(rename = "releaseGroup")]
+    pub release_group: Option<String>,
+    pub languages: Vec<String>,
+    #[serde(rename = "publishDate")]
+    pub publish_date: String,
+    pub score: Option<i32>,
+    #[serde(rename = "matchType")]
+    pub match_type: String,
+    #[serde(rename = "downloadUrl")]
+    pub download_url: Option<String>,
+}
+
+/// GET /api/v3/movies/{id}/search - Search releases for a movie
+pub async fn search_movie_releases(
+    Extension(_services): Extension<Arc<AppServices>>,
+    Path(id): Path<i32>,
+    Query(_params): Query<SearchReleasesQuery>,
+) -> Result<Json<Vec<SearchReleaseResponse>>, StatusCode> {
+    debug!("Searching releases for movie ID: {}", id);
+    
+    // For MVP, return mock search results
+    // In production, this would:
+    // 1. Look up movie details
+    // 2. Query indexers (Prowlarr, HDBits, etc.)
+    // 3. Parse and score releases
+    // 4. Return sorted results
+    
+    let mock_releases = vec![
+        SearchReleaseResponse {
+            id: format!("rel_{}", uuid::Uuid::new_v4().to_string()),
+            title: format!("Movie.{}.1080p.BluRay.x264-SPARKS", id),
+            indexer: "HDBits".to_string(),
+            indexer_id: "hdb_12345".to_string(),
+            size: 10737418240, // 10GB
+            quality: "1080p BluRay".to_string(),
+            resolution: "1080p".to_string(),
+            source: "BluRay".to_string(),
+            codec: "x264".to_string(),
+            seeders: 45,
+            leechers: 2,
+            scene_group: Some("SPARKS".to_string()),
+            release_group: Some("SPARKS".to_string()),
+            languages: vec!["English".to_string()],
+            publish_date: chrono::Utc::now().to_rfc3339(),
+            score: Some(95),
+            match_type: "exact".to_string(),
+            download_url: Some(format!("magnet:?xt=urn:btih:movie{}", id)),
+        },
+        SearchReleaseResponse {
+            id: format!("rel_{}", uuid::Uuid::new_v4().to_string()),
+            title: format!("Movie.{}.2160p.WEB-DL.DDP5.1.Atmos.H.265-FLUX", id),
+            indexer: "HDBits".to_string(),
+            indexer_id: "hdb_12346".to_string(),
+            size: 21474836480, // 20GB
+            quality: "2160p WEB-DL".to_string(),
+            resolution: "2160p".to_string(),
+            source: "WEB-DL".to_string(),
+            codec: "H.265".to_string(),
+            seeders: 32,
+            leechers: 5,
+            scene_group: Some("FLUX".to_string()),
+            release_group: Some("FLUX".to_string()),
+            languages: vec!["English".to_string()],
+            publish_date: chrono::Utc::now().to_rfc3339(),
+            score: Some(90),
+            match_type: "exact".to_string(),
+            download_url: Some(format!("magnet:?xt=urn:btih:movie{}_4k", id)),
+        },
+    ];
+    
+    debug!("Returning {} mock releases for movie {}", mock_releases.len(), id);
+    Ok(Json(mock_releases))
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DownloadReleaseRequest {
+    #[serde(rename = "movieId")]
+    pub movie_id: i32,
+    #[serde(rename = "releaseId")]
+    pub release_id: String,
+    #[serde(rename = "indexerId")]
+    pub indexer_id: String,
+    #[serde(rename = "downloadUrl")]
+    pub download_url: String,
+}
+
+/// POST /api/v3/movies/download - Download a release
+pub async fn download_release(
+    Extension(_services): Extension<Arc<AppServices>>,
+    Json(request): Json<DownloadReleaseRequest>,
+) -> Result<StatusCode, StatusCode> {
+    debug!("Starting download for release: {} from movie: {}", request.release_id, request.movie_id);
+    
+    // For MVP, just simulate successful download initiation
+    // In production, this would:
+    // 1. Validate the release and movie
+    // 2. Add to qBittorrent download client
+    // 3. Create queue entry for tracking
+    // 4. Return success/error status
+    
+    debug!("Download initiated successfully for release: {}", request.release_id);
+    Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BulkUpdateRequest {
+    #[serde(rename = "movieIds")]
+    pub movie_ids: Vec<i32>,
+    pub updates: BulkUpdateData,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BulkUpdateData {
+    pub monitored: Option<bool>,
+    pub quality_profile_id: Option<i32>,
+}
+
+/// PUT /api/v3/movies/bulk - Bulk update movies
+pub async fn bulk_update_movies(
+    Extension(services): Extension<Arc<AppServices>>,
+    Json(request): Json<BulkUpdateRequest>,
+) -> Result<Json<Vec<MovieResponse>>, StatusCode> {
+    debug!("Bulk updating {} movies", request.movie_ids.len());
+    
+    let mut updated_movies = Vec::new();
+    
+    // Update each movie individually
+    for movie_id in &request.movie_ids {
+        match services.movie_repository.find_by_tmdb_id(*movie_id).await {
+            Ok(Some(mut movie)) => {
+                let mut has_changes = false;
+                
+                // Apply bulk updates
+                if let Some(monitored) = request.updates.monitored {
+                    movie.monitored = monitored;
+                    has_changes = true;
+                }
+                
+                if let Some(quality_profile_id) = request.updates.quality_profile_id {
+                    movie.quality_profile_id = Some(quality_profile_id);
+                    has_changes = true;
+                }
+                
+                // Save changes if any were made
+                if has_changes {
+                    match services.movie_repository.update(&movie).await {
+                        Ok(updated_movie) => {
+                            debug!("Updated movie: {}", updated_movie.title);
+                            updated_movies.push(convert_movie_to_response(updated_movie));
+                        },
+                        Err(e) => {
+                            error!("Failed to update movie {}: {}", movie_id, e);
+                            // Continue with other movies instead of failing completely
+                        }
+                    }
+                }
+            },
+            Ok(None) => {
+                warn!("Movie with ID {} not found during bulk update", movie_id);
+                // Continue with other movies
+            },
+            Err(e) => {
+                error!("Failed to fetch movie {} during bulk update: {}", movie_id, e);
+                // Continue with other movies
+            }
+        }
+    }
+    
+    debug!("Successfully updated {} out of {} movies", updated_movies.len(), request.movie_ids.len());
+    Ok(Json(updated_movies))
 }

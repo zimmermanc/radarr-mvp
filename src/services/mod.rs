@@ -37,6 +37,8 @@ pub struct AppServices {
     pub indexer_client: Arc<dyn IndexerClient + Send + Sync>,
     /// Event bus for inter-component communication
     pub event_bus: Arc<EventBus>,
+    /// Queue repository for download queue operations
+    pub queue_repository: Option<Arc<dyn radarr_core::services::QueueRepository + Send + Sync>>,
     /// Queue processor for background download processing
     pub queue_processor: Option<Arc<QueueProcessor<PostgresQueueRepository, QBittorrentDownloadClient>>>,
     /// RSS monitoring service
@@ -74,6 +76,7 @@ impl AppServices {
             movie_repository,
             indexer_client: prowlarr_client,
             event_bus,
+            queue_repository: None, // Will be initialized separately
             queue_processor: None, // Will be initialized separately
             rss_service: None, // Will be initialized separately
             streaming_aggregator: None, // Will be initialized separately
@@ -88,6 +91,9 @@ impl AppServices {
     ) -> Result<()> {
         // Create queue repository
         let queue_repo = Arc::new(PostgresQueueRepository::new(self.database_pool.clone()));
+        
+        // Store queue repository for use by other services
+        self.queue_repository = Some(queue_repo.clone());
         
         // Create download client service adapter
         let download_client = Arc::new(QBittorrentDownloadClient::new(qbittorrent_config)?);
@@ -109,10 +115,19 @@ impl AppServices {
         &mut self,
         config: RssServiceConfig,
     ) -> Result<()> {
+        // Ensure queue repository is initialized
+        let queue_repository = self.queue_repository.as_ref()
+            .ok_or_else(|| RadarrError::ValidationError {
+                field: "queue_repository".to_string(),
+                message: "Queue repository must be initialized before RSS service".to_string(),
+            })?;
+        
         let rss_service = Arc::new(RssService::new(
             config,
             self.indexer_client.clone(),
             self.database_pool.clone(),
+            self.movie_repository.clone(),
+            queue_repository.clone(),
         ).with_event_bus(self.event_bus.clone()));
         
         self.rss_service = Some(rss_service);

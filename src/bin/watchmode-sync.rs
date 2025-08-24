@@ -19,7 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Watchmode CSV ID mapping sync");
 
     // Create database pool
-    let pool = create_pool(&database_url).await?;
+    let db_config = radarr_infrastructure::DatabaseConfig {
+        database_url,
+        max_connections: 1,
+        ..Default::default()
+    };
+    let pool = create_pool(db_config).await?;
     let cache_repo = Arc::new(PostgresStreamingCache::new(pool));
 
     // Create CSV sync

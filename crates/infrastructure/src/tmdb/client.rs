@@ -532,6 +532,85 @@ impl TmdbClient {
         movie
     }
 
+    /// Get movies from a production company
+    pub async fn get_company_movies(&self, company_id: i32) -> Result<Vec<Movie>, TmdbError> {
+        let page = 1;
+        let url = format!("{}/company/{}/movies", self.base_url, company_id);
+        
+        debug!("Fetching movies for company: id={}", company_id);
+        
+        let response = self.client
+            .get(&url)
+            .query(&[
+                ("api_key", &self.api_key),
+                ("page", &page.to_string()),
+            ])
+            .send()
+            .await?;
+
+        if response.status() == 404 {
+            return Err(TmdbError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let search_response: TmdbSearchResponse = response.json().await?;
+        
+        debug!("TMDB company movies returned {} results", search_response.results.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = search_response.results
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
+    /// Get movies using TMDb discover endpoint with filters
+    pub async fn get_discover_movies(&self, params: &[(&str, &str)]) -> Result<Vec<Movie>, TmdbError> {
+        let url = format!("{}/discover/movie", self.base_url);
+        
+        debug!("Fetching movies via discover with {} filters", params.len());
+        
+        let mut query_params = vec![("api_key", self.api_key.as_str())];
+        query_params.extend_from_slice(params);
+        
+        let response = self.client
+            .get(&url)
+            .query(&query_params)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("TMDB API error: {} - {}", status, text);
+            return Err(TmdbError::ApiError {
+                message: format!("HTTP {}: {}", status, text),
+            });
+        }
+
+        let search_response: TmdbSearchResponse = response.json().await?;
+        
+        debug!("TMDB discover returned {} results", search_response.results.len());
+        
+        // Convert TMDB results to our Movie model
+        let movies = search_response.results
+            .into_iter()
+            .map(|tmdb_movie| self.tmdb_movie_to_movie(tmdb_movie))
+            .collect();
+
+        Ok(movies)
+    }
+
     /// Get circuit breaker metrics for monitoring
     pub async fn get_circuit_breaker_metrics(&self) -> radarr_core::CircuitBreakerMetrics {
         self.circuit_breaker.get_metrics().await

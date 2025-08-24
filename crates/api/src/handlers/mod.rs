@@ -11,7 +11,7 @@ pub mod commands;
 pub mod calendar;
 pub mod queue;
 pub mod quality;
-// pub mod streaming; // Temporarily disabled
+pub mod streaming;
 pub mod monitoring;
 
 // Re-export handler functions

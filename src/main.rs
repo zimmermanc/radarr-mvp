@@ -354,6 +354,9 @@ fn build_router(app_state: AppState) -> Router {
         .route("/api/v3/movie/:id", axum::routing::put(api::update_movie))
         .route("/api/v3/movie/:id", delete(api::delete_movie))
         .route("/api/v3/movie/lookup", get(api::lookup_movies))
+        .route("/api/v3/movies/:id/search", get(api::search_movie_releases))
+        .route("/api/v3/movies/download", post(api::download_release))
+        .route("/api/v3/movies/bulk", axum::routing::put(api::bulk_update_movies))
         .route("/api/v3/qualityprofile", get(api::list_quality_profiles))
         .route("/api/v3/qualityprofile/:id", get(api::get_quality_profile))
         // Add Prometheus metrics endpoint (this will be replaced by monitoring routes)
@@ -361,7 +364,7 @@ fn build_router(app_state: AppState) -> Router {
         
         // Add metrics collector and services to extensions
         .layer(axum::Extension(metrics))
-        .layer(axum::Extension(Arc::new(app_state.services)))
+        .layer(axum::Extension(Arc::new(app_state.services.clone())))
         .layer(axum::Extension(ws_state))
         .layer(axum::Extension(retry_config));
     

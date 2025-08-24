@@ -83,7 +83,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !args.dry_run {
                 // Save to database
                 info!("Saving token to database");
-                let pool = create_pool(&args.database_url).await?;
+                let db_config = radarr_infrastructure::DatabaseConfig {
+                    database_url: args.database_url.clone(),
+                    max_connections: 1,
+                    ..Default::default()
+                };
+                let pool = create_pool(db_config).await?;
                 let cache_repo = PostgresStreamingCache::new(pool);
                 
                 let oauth_token = oauth_client.token_to_oauth(token_response);

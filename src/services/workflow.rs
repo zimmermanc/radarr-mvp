@@ -478,7 +478,7 @@ impl EventHandler for DownloadImportHandler {
                 // Get movie information from database
                 let movie_info = match self.movie_repository.find_by_id(*movie_id).await {
                     Ok(Some(movie)) => {
-                        debug!("Found movie information: {} ({})", movie.title, movie.year);
+                        debug!("Found movie information: {} ({})", movie.title, movie.year.map_or("unknown".to_string(), |y| y.to_string()));
                         Some(movie)
                     }
                     Ok(None) => {

@@ -40,10 +40,10 @@ async fn main() -> Result<()> {
 async fn test_hdbits_search() -> Result<()> {
     println!("   🔍 Creating HDBits client...");
     
-    // Use mock configuration (won't actually work without real session cookie)
+    // Use mock configuration (won't actually work without real passkey)
     let config = HDBitsConfig {
         username: "test_user".to_string(),
-        session_cookie: "test_session_cookie_123".to_string(),
+        passkey: "test_passkey_123".to_string(),
         rate_limit_per_hour: 150,
         timeout_seconds: 30,
     };

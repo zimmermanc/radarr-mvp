@@ -13,7 +13,13 @@ radarr-decision = { path = "../decision" }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true, features = ["fs", "compression-gzip", "compression-br", "cors", "set-header"] }
+tower-http = { workspace = true, features = [
+  "fs",
+  "compression-gzip",
+  "compression-br",
+  "cors",
+  "set-header",
+] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }

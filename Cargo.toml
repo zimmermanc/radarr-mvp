@@ -64,15 +64,15 @@ mime_guess = "2.0"
 
 [workspace]
 members = [
-    # Note: crates/analysis excluded from releases (contains research tools)
-    "crates/core", 
-    "crates/api",
-    "crates/infrastructure",
-    "crates/indexers",
-    "crates/decision",
-    "crates/downloaders",
-    "crates/import", 
-    "crates/notifications",
+  # Note: crates/analysis excluded from releases (contains research tools)
+  "crates/core",
+  "crates/api",
+  "crates/infrastructure",
+  "crates/indexers",
+  "crates/decision",
+  "crates/downloaders",
+  "crates/import",
+  "crates/notifications",
 ]
 resolver = "2"
 
@@ -85,10 +85,24 @@ async-trait = "0.1"
 # Web framework
 axum = { version = "0.7", features = ["macros", "ws"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "metrics", "timeout"] }
+tower-http = { version = "0.5", features = [
+  "cors",
+  "trace",
+  "metrics",
+  "timeout",
+] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "sqlite", "chrono", "uuid", "migrate", "macros", "rust_decimal"] }
+sqlx = { version = "0.8", features = [
+  "runtime-tokio-rustls",
+  "postgres",
+  "sqlite",
+  "chrono",
+  "uuid",
+  "migrate",
+  "macros",
+  "rust_decimal",
+] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -120,8 +134,16 @@ clap = { version = "4.0", features = ["derive", "env"] }
 
 # OpenTelemetry and Observability Stack
 opentelemetry = { version = "0.21", features = ["trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.21", features = ["rt-tokio", "trace", "metrics"] }
-opentelemetry-otlp = { version = "0.14", features = ["tonic", "trace", "metrics"] }
+opentelemetry_sdk = { version = "0.21", features = [
+  "rt-tokio",
+  "trace",
+  "metrics",
+] }
+opentelemetry-otlp = { version = "0.14", features = [
+  "tonic",
+  "trace",
+  "metrics",
+] }
 opentelemetry-prometheus = "0.14"
 tracing-opentelemetry = "0.22"
 prometheus = "0.13"

@@ -78,14 +78,320 @@ Our comprehensive CI/CD pipeline ensures code quality and security:
 - **Multi-platform**: Linux, macOS, Windows testing
 - **Performance**: Benchmark regression detection
 
-## 🚀 Quick Start
+## 🚀 Installation
+
+### Option 1: Pre-built Binaries (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/zimmermanc/radarr-mvp/releases):
+
+```bash
+# Linux x86_64 - using curl
+curl -L https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-x86_64-unknown-linux-gnu.tar.gz | tar xz
+
+# Or using our installer script (automatically detects platform)
+curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-installer.sh | sh
+```
+
+**Supported Platforms:**
+- **Linux**: x86_64, ARM64 (aarch64)
+- **macOS**: Intel (x86_64), Apple Silicon (aarch64)  
+- **Windows**: x86_64
+
+### Option 2: Automated Installation
+
+For a complete setup including database configuration:
+
+```bash
+# Download and run the installer
+curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/install.sh | sudo bash -s -- --setup-database --install-postgres
+
+# Or step by step:
+wget https://github.com/zimmermanc/radarr-mvp/releases/latest/download/radarr-mvp-x86_64-unknown-linux-gnu.tar.gz
+tar xzf radarr-mvp-*.tar.gz
+cd radarr-mvp-*/
+sudo ./install/install.sh --setup-database --install-postgres
+```
+
+### Option 3: Package Managers
+
+**Homebrew (macOS/Linux):**
+```bash
+brew install zimmermanc/tap/radarr-mvp
+```
+
+**cargo-binstall (Cross-platform):**
+```bash
+cargo binstall radarr-mvp
+```
+
+## 🛠️ Quick Setup
+
+### Prerequisites
+- **PostgreSQL 14+** (automatically installed with `--install-postgres`)
+- **Linux/macOS/Windows** x86_64 or ARM64
+
+### 1. Database Setup
+
+If you used the automated installer with `--setup-database`, skip this step.
+
+Otherwise, set up PostgreSQL manually:
+
+```bash
+# Run the database setup script (included in releases)
+./install/setup-database.sh --generate-password
+
+# Or manually:
+sudo -u postgres createdb radarr
+sudo -u postgres createuser radarr
+sudo -u postgres psql -c "ALTER USER radarr WITH PASSWORD 'your_password';"
+```
+
+### 2. Configuration
+
+Edit the configuration file:
+
+```bash
+# If installed system-wide
+sudo nano /opt/radarr/.env
+
+# Or in your download directory
+nano .env
+```
+
+**Required Settings:**
+```bash
+DATABASE_URL="postgresql://radarr:your_password@localhost/radarr"
+API_KEY="your_secure_api_key_here"
+TMDB_API_KEY="your_tmdb_api_key"  # Get from https://www.themoviedb.org/
+```
+
+### 3. Start Radarr MVP
+
+**System Service (recommended):**
+```bash
+sudo systemctl start radarr
+sudo systemctl enable radarr  # Start on boot
+
+# View logs
+journalctl -u radarr -f
+```
+
+**Manual Start:**
+```bash
+./radarr-mvp
+# Or if installed system-wide
+/opt/radarr/radarr-mvp
+```
+
+### 4. Access Web Interface
+
+Open your browser to: **http://localhost:7878**
+
+- **API Documentation**: http://localhost:7878/docs
+- **Health Check**: http://localhost:7878/health
+- **Metrics**: http://localhost:7878/metrics
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+All configuration is done via the `.env` file or environment variables:
+
+```bash
+# Core Settings
+HOST=0.0.0.0                    # Listen address
+PORT=7878                       # Listen port
+API_KEY=your_secure_key         # API authentication key
+DATABASE_URL=postgresql://...    # PostgreSQL connection string
+
+# Movie Database (Required)
+TMDB_API_KEY=your_tmdb_key      # Get from themoviedb.org
+
+# Optional: Indexer Configuration
+HDBITS_USERNAME=your_username
+HDBITS_PASSKEY=your_passkey
+
+# Optional: Streaming Services
+TRAKT_CLIENT_ID=your_trakt_id
+TRAKT_CLIENT_SECRET=your_trakt_secret
+WATCHMODE_API_KEY=your_watchmode_key
+
+# Logging
+RUST_LOG=info                   # Log level: error, warn, info, debug, trace
+```
+
+### Database Migrations
+
+Migrations are automatically included in releases:
+
+```bash
+# Apply migrations (done automatically on first start)
+sqlx migrate run
+
+# Check migration status
+sqlx migrate info
+```
+
+## 🛠️ Management Commands
+
+### Service Management
+```bash
+# System service
+sudo systemctl start radarr     # Start service
+sudo systemctl stop radarr      # Stop service  
+sudo systemctl restart radarr   # Restart service
+sudo systemctl status radarr    # Check status
+journalctl -u radarr -f         # View logs
+
+# Manual process management
+pkill -f radarr-mvp             # Stop manual process
+```
+
+### Database Operations
+```bash
+# Backup database
+/opt/radarr/backup.sh           # Automated backup script
+
+# Manual backup
+pg_dump "$DATABASE_URL" | gzip > radarr_backup.sql.gz
+
+# Restore backup  
+zcat radarr_backup.sql.gz | psql "$DATABASE_URL"
+
+# Reset database (⚠️ destructive)
+sudo -u postgres dropdb radarr && sudo -u postgres createdb -O radarr radarr
+sqlx migrate run
+```
+
+### Maintenance
+```bash
+# Update to latest version
+curl -fsSL https://github.com/zimmermanc/radarr-mvp/releases/latest/download/install.sh | sudo bash
+
+# Check version
+./radarr-mvp --version
+curl -s http://localhost:7878/health | jq .version
+
+# View configuration
+cat /opt/radarr/.env
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+**Service won't start:**
+```bash
+# Check logs
+journalctl -u radarr -n 50
+
+# Check configuration
+sudo -u radarr /opt/radarr/radarr-mvp --help
+
+# Test database connection
+psql "$DATABASE_URL" -c "SELECT version();"
+```
+
+**Port already in use:**
+```bash
+# Find what's using port 7878
+sudo lsof -i :7878
+sudo netstat -tulpn | grep 7878
+
+# Change port in configuration
+sudo nano /opt/radarr/.env
+# Set PORT=8080 or another available port
+```
+
+**Permission denied:**
+```bash
+# Fix ownership
+sudo chown -R radarr:radarr /opt/radarr
+
+# Fix permissions
+chmod 600 /opt/radarr/.env
+chmod +x /opt/radarr/radarr-mvp
+```
+
+**Database connection failed:**
+```bash
+# Check PostgreSQL is running
+sudo systemctl status postgresql
+
+# Test connection manually
+psql -h localhost -U radarr -d radarr
+
+# Check database exists
+sudo -u postgres psql -l | grep radarr
+```
+
+### Performance Tuning
+
+**Memory Usage:**
+```bash
+# Adjust memory limits
+sudo systemctl edit radarr
+# Add: [Service]
+#      MemoryMax=4G
+
+# Monitor memory usage
+htop -p $(pgrep radarr-mvp)
+```
+
+**Database Performance:**
+```bash
+# Add database indexes (if needed)
+psql "$DATABASE_URL" -c "CREATE INDEX CONCURRENTLY idx_movies_tmdb_id ON movies(tmdb_id);"
+
+# Analyze database
+psql "$DATABASE_URL" -c "ANALYZE;"
+```
+
+## 🗑️ Uninstallation
+
+### Complete Removal
+```bash
+# Stop and remove service
+sudo systemctl stop radarr
+sudo systemctl disable radarr
+sudo rm /etc/systemd/system/radarr.service
+sudo systemctl daemon-reload
+
+# Remove installation (⚠️ removes all data)
+sudo rm -rf /opt/radarr
+
+# Remove user
+sudo userdel radarr
+
+# Remove database (⚠️ removes all data)  
+sudo -u postgres dropdb radarr
+sudo -u postgres dropuser radarr
+```
+
+### Keep Data (Remove only binary)
+```bash
+# Stop service
+sudo systemctl stop radarr
+
+# Backup data
+sudo cp -r /opt/radarr/data /opt/radarr/data.backup
+/opt/radarr/backup.sh
+
+# Remove only binary and service
+sudo rm /opt/radarr/radarr-mvp
+sudo rm /etc/systemd/system/radarr.service
+```
+
+## 🔧 Development Setup
+
+For developers who want to build from source:
 
 ### Prerequisites
 - Rust 1.75+
 - PostgreSQL 16
-- Node.js 20+ (for frontend)
+- Node.js 20+ (for web UI development)
 
-### Installation
+### Build from Source
 
 ```bash
 # Clone the repository
@@ -96,9 +402,7 @@ cd radarr-mvp/unified-radarr
 cargo build --workspace
 
 # Setup database
-createdb radarr
-export DATABASE_URL="postgresql://localhost/radarr"
-sqlx migrate run
+./install/setup-database.sh --generate-password
 
 # Run tests
 cargo test --workspace
@@ -112,7 +416,8 @@ cargo run --bin radarr-mvp
 ```bash
 cd web
 npm install
-npm run dev
+npm run dev        # Development server on port 5173
+npm run build      # Production build
 ```
 
 ## 🚀 Production Deployment

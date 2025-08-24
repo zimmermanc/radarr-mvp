@@ -9,12 +9,13 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header},
     middleware,
-    response::Json,
+    response::{Html, Json, Response},
     routing::{delete, get, post},
     Router,
 };
+use include_dir::{include_dir, Dir};
 use radarr_api::{
     create_simple_api_router, init_telemetry, middleware::require_api_key, shutdown_telemetry,
     MetricsCollector, SimpleApiState, TelemetryConfig,
@@ -43,6 +44,69 @@ use config::retry_config;
 use config::AppConfig;
 use services::RssServiceConfig;
 use services::{AppServices, ServiceBuilder as AppServiceBuilder};
+
+// Embed the web UI assets at compile time
+static WEB_ASSETS: Dir = include_dir!("web/dist");
+
+/// Serve static files from embedded web assets
+async fn serve_static(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
+    serve_embedded_file(&path).await
+}
+
+/// Serve the main index.html for SPA routing
+async fn serve_spa() -> Response {
+    serve_embedded_file("index.html").await
+}
+
+/// Helper to serve files from embedded directory
+async fn serve_embedded_file(path: &str) -> Response {
+    // Handle root path
+    let file_path = if path.is_empty() || path == "/" {
+        "index.html"
+    } else {
+        path
+    };
+
+    match WEB_ASSETS.get_file(file_path) {
+        Some(file) => {
+            let mime_type = mime_guess::from_path(file_path)
+                .first_or_octet_stream()
+                .to_string();
+
+            Response::builder()
+                .header(header::CONTENT_TYPE, mime_type)
+                .header(header::CACHE_CONTROL, "public, max-age=31536000") // Cache for 1 year
+                .body(axum::body::Body::from(file.contents()))
+                .unwrap()
+        }
+        None => {
+            // For SPA routing, fallback to index.html for non-asset requests
+            if !file_path.contains('.') && file_path != "index.html" {
+                // Directly serve index.html to avoid recursion
+                match WEB_ASSETS.get_file("index.html") {
+                    Some(file) => {
+                        Response::builder()
+                            .header(header::CONTENT_TYPE, "text/html")
+                            .header(header::CACHE_CONTROL, "no-cache") // Don't cache HTML for SPA routing
+                            .body(axum::body::Body::from(file.contents()))
+                            .unwrap()
+                    }
+                    None => {
+                        Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(axum::body::Body::from("index.html not found"))
+                            .unwrap()
+                    }
+                }
+            } else {
+                Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(axum::body::Body::from("File not found"))
+                    .unwrap()
+            }
+        }
+    }
+}
 
 /// Application state shared across all handlers
 #[derive(Clone)]
@@ -396,6 +460,20 @@ fn build_router(app_state: AppState) -> Router {
 
     router = router.merge(monitoring_router);
     info!("Monitoring routes added to API");
+
+    // Add web UI routes (static files and SPA fallback)
+    router = router
+        .route("/assets/*path", get(serve_static))
+        .route("/", get(serve_spa))
+        // SPA fallback routes for client-side routing
+        .route("/movies", get(serve_spa))
+        .route("/movies/*path", get(serve_spa))
+        .route("/queue", get(serve_spa))
+        .route("/settings", get(serve_spa))
+        .route("/dashboard", get(serve_spa))
+        .route("/streaming", get(serve_spa));
+    
+    info!("Web UI routes added (embedded assets)");
 
     router
         // Add CORS layer first (before auth) to handle preflight

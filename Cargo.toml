@@ -5,6 +5,8 @@ edition = "2021"
 description = "Radarr MVP - Movie automation and management system"
 authors = ["Radarr Team"]
 license = "GPL-3.0"
+repository = "https://github.com/zimmermanc/radarr-mvp"
+homepage = "https://github.com/zimmermanc/radarr-mvp"
 
 [[bin]]
 name = "radarr-mvp"
@@ -56,17 +58,21 @@ dotenv = "0.15"
 anyhow = "1.0"
 env_logger = "0.10"
 md5 = { workspace = true }
+# For embedding web assets
+include_dir = "0.7"
+mime_guess = "2.0"
 
 [workspace]
 members = [
-    "crates/analysis",  # TEMPORARILY DISABLED - 30+ compilation errors
+    # Note: crates/analysis excluded from releases (contains research tools)
     "crates/core", 
     "crates/api",
     "crates/infrastructure",
     "crates/indexers",
     "crates/decision",
     "crates/downloaders",
-    "crates/import", "crates/notifications",
+    "crates/import", 
+    "crates/notifications",
 ]
 resolver = "2"
 
@@ -159,3 +165,8 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

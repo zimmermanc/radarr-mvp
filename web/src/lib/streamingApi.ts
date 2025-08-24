@@ -1,8 +1,6 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 import type {
   MediaType,
-  TimeWindow,
-  TrendingSource,
   TrendingQuery,
   TrendingResponse,
   AvailabilityResponse,

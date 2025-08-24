@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM streaming_availability WHERE expires_at < CURRENT_TIMESTAMP",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "42bbcf2890a20ccaddb07e775070073d9620fd37e5b4204795347c1aacee9aee"
+}

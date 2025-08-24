@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT tmdb_id, watchmode_id, media_type, last_verified\n            FROM streaming_id_mappings\n            WHERE tmdb_id = $1 AND media_type = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tmdb_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "watchmode_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "media_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "last_verified",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "754eb895465341d02e53d3832e240f3ae1cad18410b97db272d5fef13541b5f2"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM coming_soon_releases WHERE expires_at < CURRENT_TIMESTAMP",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "0b6627885af8a4dd3f717ee6bd26f202fa517da1fee0b728ae7c222446631b3e"
+}

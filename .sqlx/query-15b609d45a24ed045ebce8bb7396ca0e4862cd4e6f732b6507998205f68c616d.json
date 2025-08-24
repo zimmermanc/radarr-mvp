@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT watchmode_id\n            FROM streaming_id_mappings\n            WHERE tmdb_id = $1 AND media_type = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "watchmode_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "15b609d45a24ed045ebce8bb7396ca0e4862cd4e6f732b6507998205f68c616d"
+}

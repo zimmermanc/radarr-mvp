@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO streaming_cache (cache_key, data, expires_at)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (cache_key)\n            DO UPDATE SET \n                data = EXCLUDED.data,\n                expires_at = EXCLUDED.expires_at,\n                updated_at = CURRENT_TIMESTAMP\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a0b0a683b69d4ff66df5ca5eab7310a615c1e858bcd69e012a3248cef0ba4b6"
+}

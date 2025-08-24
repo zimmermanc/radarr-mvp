@@ -1,0 +1,120 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, tmdb_id, media_type, title, release_date, poster_path, backdrop_path,\n                overview, source, time_window, rank, score, vote_average, vote_count,\n                popularity, fetched_at, expires_at\n            FROM trending_entries\n            WHERE media_type = $1 AND source = $2 AND time_window = $3 AND expires_at > CURRENT_TIMESTAMP\n            ORDER BY rank ASC NULLS LAST, score DESC NULLS LAST\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tmdb_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "media_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "release_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "poster_path",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "backdrop_path",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "overview",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "source",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "time_window",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "rank",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "score",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 12,
+        "name": "vote_average",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 13,
+        "name": "vote_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "popularity",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 15,
+        "name": "fetched_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "4720be507a5055377dfea79d6aa515027496c7b4dc9a890e9ea5ed6eecbb5fde"
+}

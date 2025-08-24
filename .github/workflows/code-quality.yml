@@ -1,0 +1,197 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Rust code quality checks
+  rust-quality:
+    name: Rust Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-quality-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: |
+          cd unified-radarr
+          cargo fmt --all -- --check
+      
+      - name: Install cargo-machete (detect unused dependencies)
+        run: cargo install cargo-machete --locked
+      
+      - name: Check for unused dependencies
+        run: |
+          cd unified-radarr
+          cargo machete
+      
+      - name: Install cargo-outdated
+        run: cargo install cargo-outdated --locked
+      
+      - name: Check for outdated dependencies
+        run: |
+          cd unified-radarr
+          cargo outdated --exit-code 1 || true
+      
+      - name: Run Clippy with pedantic lints
+        run: |
+          cd unified-radarr
+          cargo clippy --all-targets --all-features -- \
+            -W clippy::all \
+            -W clippy::pedantic \
+            -W clippy::nursery \
+            -W clippy::cargo \
+            -D warnings
+  
+  # Code complexity analysis
+  complexity:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install complexity tools
+        run: |
+          cargo install tokei --locked
+          cargo install loc --locked
+      
+      - name: Lines of code analysis
+        run: |
+          cd unified-radarr
+          echo "## Code Statistics" > complexity-report.md
+          echo "" >> complexity-report.md
+          
+          echo "### Project Overview" >> complexity-report.md
+          tokei . --exclude target --exclude node_modules >> complexity-report.md
+          echo "" >> complexity-report.md
+          
+          echo "### Rust Code Metrics" >> complexity-report.md
+          loc --exclude target . >> complexity-report.md || true
+          echo "" >> complexity-report.md
+          
+          echo "### File Count" >> complexity-report.md
+          echo "- Rust files: $(find . -name "*.rs" -not -path "./target/*" | wc -l)" >> complexity-report.md
+          echo "- TypeScript files: $(find . -name "*.ts" -o -name "*.tsx" -not -path "./node_modules/*" -not -path "./target/*" | wc -l)" >> complexity-report.md
+          echo "- Total lines of Rust code: $(find . -name "*.rs" -not -path "./target/*" -exec wc -l {} + | tail -1 | awk '{print $1}')" >> complexity-report.md
+          
+          cat complexity-report.md
+      
+      - name: Upload complexity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: complexity-report
+          path: unified-radarr/complexity-report.md
+  
+  # TypeScript/React quality checks
+  frontend-quality:
+    name: Frontend Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: unified-radarr/web/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd unified-radarr/web
+          npm ci
+      
+      - name: Run ESLint
+        run: |
+          cd unified-radarr/web
+          npm run lint || true
+      
+      - name: Check TypeScript
+        run: |
+          cd unified-radarr/web
+          npm run type-check || npx tsc --noEmit || true
+      
+      - name: Run Prettier check
+        run: |
+          cd unified-radarr/web
+          npx prettier --check "src/**/*.{ts,tsx,js,jsx,css}" || true
+  
+  # Security and dependency checks
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      
+      - name: Run cargo audit
+        run: |
+          cd unified-radarr
+          cargo audit || true
+      
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      
+      - name: Check licenses and security
+        run: |
+          cd unified-radarr
+          cargo deny check || true
+  
+  # Dead code detection
+  dead-code:
+    name: Dead Code Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+      
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat --locked
+      
+      - name: Check binary size
+        run: |
+          cd unified-radarr
+          cargo build --release
+          cargo bloat --release --crates || true
+      
+      - name: Install cargo-udeps (nightly only)
+        run: cargo install cargo-udeps --locked
+      
+      - name: Check for unused dependencies (nightly)
+        run: |
+          cd unified-radarr
+          cargo +nightly udeps --all-targets || true

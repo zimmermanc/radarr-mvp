@@ -1,9 +1,7 @@
 //! Advanced Search Routes
 //! Enhanced search and filtering API endpoints
 
-use crate::handlers::advanced_search::{
-    advanced_search, bulk_operations, AdvancedSearchState,
-};
+use crate::handlers::advanced_search::{advanced_search, bulk_operations, AdvancedSearchState};
 use axum::{
     routing::{get, post},
     Router,
@@ -13,7 +11,7 @@ use radarr_infrastructure::DatabasePool;
 /// Create advanced search routes
 pub fn create_advanced_search_routes(database_pool: DatabasePool) -> Router {
     let state = AdvancedSearchState::new(database_pool);
-    
+
     Router::new()
         .route("/api/v3/search/advanced", get(advanced_search))
         .route("/api/v3/search/bulk", post(bulk_operations))
@@ -42,7 +40,7 @@ mod tests {
             .await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
-        
+
         let json: serde_json::Value = response.json();
         assert!(json.get("results").is_some());
         assert!(json.get("search_metadata").is_some());
@@ -67,7 +65,7 @@ mod tests {
             .await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
-        
+
         let json: serde_json::Value = response.json();
         assert!(json.get("successful").is_some());
         assert!(json.get("total_items").is_some());

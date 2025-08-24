@@ -22,7 +22,11 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 
 # Email support
-lettre = { version = "0.11", features = ["smtp-transport", "tokio1-rustls-tls", "builder"], default-features = false }
+lettre = { version = "0.11", features = [
+  "smtp-transport",
+  "tokio1-rustls-tls",
+  "builder",
+], default-features = false }
 mime = "0.3"
 
 # Template engine

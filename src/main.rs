@@ -9,7 +9,7 @@
 
 use axum::{
     extract::State,
-    http::{HeaderValue, StatusCode, header},
+    http::{header, HeaderValue, StatusCode},
     middleware,
     response::{Html, Json, Response},
     routing::{delete, get, post},
@@ -50,7 +50,14 @@ static WEB_ASSETS: Dir = include_dir!("web/dist");
 
 /// Serve static files from embedded web assets
 async fn serve_static(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
-    serve_embedded_file(&path).await
+    tracing::info!("Serving static file: {}", path);
+    // For assets requests, look in the assets/ subdirectory
+    let full_path = if path.starts_with("index-") {
+        format!("assets/{}", path)
+    } else {
+        path
+    };
+    serve_embedded_file(&full_path).await
 }
 
 /// Serve the main index.html for SPA routing
@@ -66,6 +73,16 @@ async fn serve_embedded_file(path: &str) -> Response {
     } else {
         path
     };
+
+    tracing::info!(
+        "Looking for embedded file: {} (original path: {})",
+        file_path,
+        path
+    );
+    tracing::info!(
+        "Available embedded files: {:?}",
+        WEB_ASSETS.files().map(|f| f.path()).collect::<Vec<_>>()
+    );
 
     match WEB_ASSETS.get_file(file_path) {
         Some(file) => {
@@ -91,12 +108,10 @@ async fn serve_embedded_file(path: &str) -> Response {
                             .body(axum::body::Body::from(file.contents()))
                             .unwrap()
                     }
-                    None => {
-                        Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .body(axum::body::Body::from("index.html not found"))
-                            .unwrap()
-                    }
+                    None => Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(axum::body::Body::from("index.html not found"))
+                        .unwrap(),
                 }
             } else {
                 Response::builder()
@@ -464,6 +479,7 @@ fn build_router(app_state: AppState) -> Router {
     // Add web UI routes (static files and SPA fallback)
     router = router
         .route("/assets/*path", get(serve_static))
+        .route("/vite.svg", get(serve_static))
         .route("/", get(serve_spa))
         // SPA fallback routes for client-side routing
         .route("/movies", get(serve_spa))
@@ -472,7 +488,7 @@ fn build_router(app_state: AppState) -> Router {
         .route("/settings", get(serve_spa))
         .route("/dashboard", get(serve_spa))
         .route("/streaming", get(serve_spa));
-    
+
     info!("Web UI routes added (embedded assets)");
 
     router

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { UIProvider } from './contexts/UIContext';
@@ -15,8 +15,16 @@ import { AddMovie } from './pages/AddMovie';
 import { Settings } from './pages/Settings';
 import { Queue } from './pages/Queue';
 import Streaming from './pages/Streaming';
+import { initStreamingApi } from './lib/streamingApi';
 
 function App() {
+  // Initialize streaming API globally
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    const apiKey = import.meta.env.VITE_API_KEY || 'secure_production_api_key_2025';
+    initStreamingApi(baseUrl, apiKey);
+  }, []);
+
   return (
     <ThemeProvider>
       <UIProvider>

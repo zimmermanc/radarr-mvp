@@ -47,12 +47,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **API Documentation**: Complete endpoints with authentication working
 
 ### Current System Status (2025-08-24)
-- **CI/CD Pipeline**: 🔧 Fixing TOML formatting issues and validation
+- **CI/CD Pipeline**: ✅ TOML formatting issues resolved, GitHub billing limits reached
 - **Security Scanning**: ✅ All secret detection and vulnerability checks passing
 - **Release Automation**: ✅ cargo-dist + cargo-release integration operational
 - **Production Ready**: ✅ Clean slate installation completely validated
 - **Web UI Integration**: ✅ Embedded assets serving correctly from binary
-- **Current completion**: 98% (release pipeline complete, CI fixes in progress)
+- **Streaming Integration**: 🚨 **ISSUE** - Endpoints return 404 despite route mounting logs
+- **Current completion**: 97% (core system ready, streaming page debugging needed)
+
+### 🚨 Known Issue: Streaming Page Functionality (2025-08-24)
+
+**Problem**: Streaming page shows "Failed to load trending content"
+- **API Status**: `/api/streaming/trending/movie/day` returns 404 Not Found
+- **Logs Show**: "Streaming routes added to API" but endpoints not accessible
+- **Config Status**: TMDB API key updated to correct value (`9a357e949dc7e59a52b9db19318e0b71`)
+- **Root Cause**: Streaming aggregator initialization or route mounting issue
+
+**Impact**: Advanced movie discovery features not available (trending, coming soon, provider filtering)
+**Workaround**: Core movie automation fully functional without streaming features
+**Resolution**: Requires debugging streaming service initialization and route configuration
 
 ## Recent Work (Week 6-8 - Infrastructure & Discovery)
 

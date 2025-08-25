@@ -1,10 +1,7 @@
-import React from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Movies } from './Movies';
 import { renderWithProviders } from '../test/TestWrapper';
-import { server } from '../test/setup';
-import { http, HttpResponse } from 'msw';
 
 const mockMovies = [
   {

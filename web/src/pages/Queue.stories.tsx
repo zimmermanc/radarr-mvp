@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Queue } from './Queue';
-import { within, expect, userEvent } from '@storybook/test';
+import { within, expect, userEvent } from '@storybook/testing-library';
 import { BrowserRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import * as api from '../lib/api';

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { TrendingCarousel } from './TrendingCarousel';
-import { within, expect, userEvent } from '@storybook/test';
+import { within, expect, userEvent } from '@storybook/testing-library';
 
 // Mock the streaming API for Storybook
 import { getStreamingApi } from '../../lib/streamingApi';

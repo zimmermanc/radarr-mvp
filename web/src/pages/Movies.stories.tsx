@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Movies } from './Movies';
-import { within, expect, userEvent } from '@storybook/test';
+import { within, expect, userEvent } from '@storybook/testing-library';
 import { TestWrapper } from '../test/TestWrapper';
 
 const meta: Meta<typeof Movies> = {

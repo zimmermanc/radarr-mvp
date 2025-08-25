@@ -7,7 +7,7 @@ echo "Starting Radarr MVP service..."
 pkill -f radarr-mvp
 
 # Export required environment variables
-export TMDB_API_KEY="9a357e949dc7e59a52b9db19318e0b71"
+export TMDB_API_KEY="YOUR_TMDB_API_KEY_HERE"
 export RADARR_API_KEY="test-api-key"
 
 # Start the service

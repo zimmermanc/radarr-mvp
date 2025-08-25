@@ -106,7 +106,7 @@ repos:
       - id: check-test-credentials
         name: "🧪 Check test credentials"
         description: "Ensure test files don't contain real credentials"
-        entry: bash -c 'if git diff --cached --name-only | grep -E "(test|spec)" | xargs grep -l "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863" 2>/dev/null; then echo "❌ Real HDBits passkey found in test files. Use mock data."; exit 1; fi'
+        entry: bash -c 'if git diff --cached --name-only | grep -E "(test|spec)" | xargs grep -l "your_real_passkey_pattern" 2>/dev/null; then echo "❌ Real HDBits passkey found in test files. Use mock data."; exit 1; fi'
         language: system
         pass_filenames: false
         always_run: true

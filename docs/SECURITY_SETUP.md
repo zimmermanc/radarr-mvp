@@ -58,7 +58,7 @@ Ensure these files exist in your repository root:
 # Create a test file with fake secrets
 cat > test_secrets.txt << EOF
 API_KEY=abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
-HDBITS_KEY=ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863
+HDBITS_KEY=your_fake_test_passkey_for_security_testing_only
 DATABASE_URL=postgresql://user:password123@localhost:5432/db
 EOF
 

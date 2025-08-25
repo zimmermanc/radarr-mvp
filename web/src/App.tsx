@@ -23,7 +23,7 @@ function App() {
   // Initialize streaming API globally
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
-    const apiKey = import.meta.env.VITE_API_KEY || 'secure_production_api_key_2025';
+    const apiKey = import.meta.env.VITE_API_KEY || 'YOUR_API_KEY_HERE';
     initStreamingApi(baseUrl, apiKey);
   }, []);
 

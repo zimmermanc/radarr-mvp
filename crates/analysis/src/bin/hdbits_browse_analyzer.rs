@@ -21,14 +21,14 @@ struct Cli {
     output: PathBuf,
 
     /// HDBits username
-    #[arg(short, long, default_value = "blargdiesel")]
+    #[arg(short, long, default_value = "your_username")]
     username: String,
 
     /// HDBits passkey
     #[arg(
         short,
         long,
-        default_value = "ed487790cd0dee98941ab5c132179bd2c8c5e23622c0c04a800ad543cde2990cd44ed960892d990214ea1618bf29780386a77246a21dc636d83420e077e69863"
+        default_value = "your_hdbits_passkey_here"
     )]
     passkey: String,
 

@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Radarr MVP Deployment Script
-# Deploys to test server root@192.168.0.138
+# Deploys to test server root@YOUR_SERVER_IP
 
 set -e  # Exit on any error
 
 # Configuration
-SERVER="root@192.168.0.138"
+SERVER="root@YOUR_SERVER_IP"
 REMOTE_DIR="/opt/radarr"
 SERVICE_NAME="radarr"
 BINARY_NAME="radarr-mvp"
@@ -129,15 +129,15 @@ if ssh "$SERVER" "curl -s http://localhost:7878/health" >/dev/null 2>&1; then
     echo -e "${GREEN}✓ Health check passed${NC}"
 else
     echo -e "${YELLOW}! Health check failed (service might still be starting)${NC}"
-    echo "Check manually: curl http://192.168.0.138:7878/health"
+    echo "Check manually: curl http://YOUR_SERVER_IP:7878/health"
 fi
 
 echo ""
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
 echo "Service: systemctl status $SERVICE_NAME"
 echo "Logs: journalctl -u $SERVICE_NAME -f"
-echo "URL: http://192.168.0.138:7878"
-echo "Health: http://192.168.0.138:7878/health"
+echo "URL: http://YOUR_SERVER_IP:7878"
+echo "Health: http://YOUR_SERVER_IP:7878/health"
 
 # Optional: Show recent logs
 echo ""

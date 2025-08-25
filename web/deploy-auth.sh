@@ -8,7 +8,7 @@ set -e
 echo "🚀 Starting Radarr Web UI deployment with authentication..."
 
 # Configuration
-SERVER_HOST="192.168.0.138"
+SERVER_HOST="YOUR_SERVER_IP"
 SERVER_USER="root"
 SERVER_PATH="/opt/radarr/web"
 BUILD_OUTPUT="dist"
@@ -45,7 +45,7 @@ npm ci
 # Step 3: Set production environment
 print_status "Setting production environment..."
 export NODE_ENV=production
-export VITE_API_BASE_URL="http://192.168.0.138:7878"
+export VITE_API_BASE_URL="http://YOUR_SERVER_IP:7878"
 
 # Step 4: Build the application
 print_status "Building application..."
@@ -121,7 +121,7 @@ echo "Authentication Details:"
 echo "📱 Web Interface: http://$SERVER_HOST:7878"
 echo "🔑 Default Username: admin"
 echo "🔑 Default Password: admin"
-echo "🔐 API Key: secure_production_api_key_2025"
+echo "🔐 API Key: YOUR_API_KEY_HERE"
 echo ""
 echo "Next Steps:"
 echo "1. Open http://$SERVER_HOST:7878 in your browser"

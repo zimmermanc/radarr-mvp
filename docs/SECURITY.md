@@ -121,7 +121,7 @@ DB_PASSWORD=secure_random_password_here
 
 #### ✅ Secure Configuration
 ```bash
-QBITTORRENT_HOST=http://192.168.0.138:8080
+QBITTORRENT_HOST=http://YOUR_SERVER_IP:8080
 QBITTORRENT_USERNAME=admin
 QBITTORRENT_PASSWORD=secure_admin_password
 ```

@@ -26,7 +26,7 @@ A modern, high-performance movie collection manager built with Rust, featuring a
 
 - **Completion**: ~82% MVP Complete
 - **Tests**: 162+ passing across 8 crates
-- **Production**: Deployed at http://192.168.0.138:7878/
+- **Production**: Deployed at http://YOUR_SERVER_IP:7878/
 - **CI/CD**: Comprehensive GitHub Actions pipeline with security scanning
 
 ## 🛠️ Technology Stack

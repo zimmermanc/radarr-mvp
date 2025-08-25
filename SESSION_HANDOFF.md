@@ -31,7 +31,7 @@
 - **Error**: "WebSocket is closed before the connection is established"
 - **Location**: `web/src/contexts/WebSocketContext.tsx` line 65
 - **Backend**: `src/websocket.rs` expects `apikey` query parameter
-- **Investigation needed**: Why connections fail with correct `apikey=secure_production_api_key_2025`
+- **Investigation needed**: Why connections fail with correct `apikey=YOUR_API_KEY_HERE`
 
 ### **Production Streaming Page Validation**
 - **Status**: "d is not iterable" fix deployed but needs validation

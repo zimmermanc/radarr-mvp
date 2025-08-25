@@ -1,6 +1,6 @@
 [package]
 name = "radarr-mvp"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "Radarr MVP - Movie automation and management system"
 authors = ["Radarr Team"]

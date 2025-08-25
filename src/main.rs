@@ -459,7 +459,7 @@ fn build_router(app_state: AppState) -> Router {
     // Add streaming routes if aggregator is available
     if let Some(aggregator) = streaming_aggregator {
         use radarr_api::routes::streaming::streaming_routes;
-        router = router.nest("/api/streaming", streaming_routes(aggregator));
+        router = router.nest("/api/v3/streaming", streaming_routes(aggregator));
         info!("Streaming routes added to API");
     }
 

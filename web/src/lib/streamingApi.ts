@@ -17,7 +17,7 @@ class StreamingApiClient {
 
   constructor(baseUrl: string, apiKey: string) {
     this.client = axios.create({
-      baseURL: `${baseUrl}/api/streaming`,
+      baseURL: `${baseUrl}/api/v3/streaming`,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',

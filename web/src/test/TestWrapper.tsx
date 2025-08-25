@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
+import { render } from '@testing-library/react';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { UIProvider } from '../contexts/UIContext';
 import { AuthProvider } from '../contexts/AuthContext';

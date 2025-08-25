@@ -95,7 +95,7 @@ export function validateApiResponse<T>(
     console.error('Received data:', data);
     
     if (error instanceof z.ZodError) {
-      const issues = error.errors.map(err => 
+      const issues = error.issues.map(err => 
         `${err.path.join('.')}: ${err.message}`
       ).join(', ');
       

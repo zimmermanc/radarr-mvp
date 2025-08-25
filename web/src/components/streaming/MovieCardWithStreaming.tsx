@@ -17,6 +17,14 @@ export const MovieCardWithStreaming: React.FC<MovieCardWithStreamingProps> = ({
   isSelected,
   onSelectionToggle,
 }) => {
+  // Handle undefined/null movie data gracefully
+  if (!movie || typeof movie !== 'object') {
+    return (
+      <div className="card-interactive bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+        <p className="text-gray-500 dark:text-gray-400">Invalid movie data</p>
+      </div>
+    );
+  }
   const [availability, setAvailability] = useState<AvailabilityItem[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
 
@@ -129,7 +137,7 @@ export const MovieCardWithStreaming: React.FC<MovieCardWithStreamingProps> = ({
             {movie.vote_average && (
               <div className="flex items-center space-x-1 text-xs text-secondary-600 dark:text-secondary-400">
                 <span>⭐</span>
-                <span>{movie.vote_average.toFixed(1)}</span>
+                <span>{(movie.vote_average || 0).toFixed(1)}</span>
               </div>
             )}
           </div>

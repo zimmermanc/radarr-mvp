@@ -33,7 +33,9 @@ export const TrendingCarousel: React.FC<TrendingCarouselProps> = ({
         window: selectedWindow,
         limit: 20,
       });
-      setEntries(response?.entries || []);
+      // Defensive programming: ensure we have a valid array
+      const entries = response?.data?.entries || response?.entries || [];
+      setEntries(Array.isArray(entries) ? entries : []);
     } catch (err) {
       console.error('Failed to fetch trending:', err);
       setError('Failed to load trending content');
@@ -175,7 +177,7 @@ export const TrendingCarousel: React.FC<TrendingCarouselProps> = ({
       </div>
 
       <div className="flex justify-center mt-4 gap-1">
-        {Array.from({ length: Math.ceil(entries.length / 5) }).map((_, i) => (
+        {Array.from({ length: Math.ceil(Math.max(entries.length, 0) / 5) || 0 }).map((_, i) => (
           <button
             key={i}
             onClick={() => setCurrentIndex(i * 5)}

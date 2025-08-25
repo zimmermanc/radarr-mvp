@@ -11,6 +11,10 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
   plugins: [react()],
+  build: {
+    sourcemap: false, // Disable source maps for production
+    minify: true // Enable minification for production
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

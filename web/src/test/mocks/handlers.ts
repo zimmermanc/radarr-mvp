@@ -56,8 +56,7 @@ const mockTrendingMovies = {
 };
 
 const mockQueueItems = {
-  data: {
-    records: [
+  records: [
       {
         id: '1',
         movieId: 'movie-1',
@@ -84,31 +83,31 @@ const mockQueueItems = {
       },
     ],
     totalCount: 2,
-  },
-  success: true,
-  error: null,
 };
 
 const mockMovies = {
-  data: [
-    {
-      id: '1',
-      tmdb_id: 123456,
-      title: 'Mock Movie 1',
-      year: 2025,
-      overview: 'A mock movie for testing',
-      poster_path: '/mock-poster1.jpg',
-      backdrop_path: '/mock-backdrop1.jpg',
-      status: 'wanted',
-      monitored: true,
-      quality_profile_id: 1,
-      added: '2025-08-24T20:00:00Z',
-      updated: '2025-08-24T20:00:00Z',
-    },
-  ],
-  totalCount: 1,
-  currentPage: 1,
-  totalPages: 1,
+  data: {
+    movies: [
+      {
+        id: '1',
+        tmdb_id: 123456,
+        title: 'Mock Movie 1',
+        year: 2025,
+        overview: 'A mock movie for testing',
+        poster_path: '/mock-poster1.jpg',
+        backdrop_path: '/mock-backdrop1.jpg',
+        status: 'wanted',
+        monitored: true,
+        quality_profile_id: 1,
+        added: '2025-08-24T20:00:00Z',
+        updated: '2025-08-24T20:00:00Z',
+      },
+    ],
+    totalCount: 1,
+    currentPage: 1,
+    totalPages: 1,
+  },
+  success: true,
 };
 
 export const handlers = [

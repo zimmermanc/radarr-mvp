@@ -40,10 +40,10 @@ describe('Queue Page', () => {
   it('should render queue items successfully', async () => {
     renderWithProviders(<Queue />);
 
-    // Wait for queue items to load
+    // Wait for queue items to load (using MSW mock data)
     await waitFor(() => {
-      expect(screen.getByText('Test Movie 1')).toBeInTheDocument();
-      expect(screen.getByText('Test Movie 2')).toBeInTheDocument();
+      expect(screen.getByText('Mock Queue Movie 1')).toBeInTheDocument();
+      expect(screen.getByText('Mock Queue Movie 2')).toBeInTheDocument();
     });
 
     // Verify queue item details
@@ -56,7 +56,7 @@ describe('Queue Page', () => {
 
     // Wait for items to load
     await waitFor(() => {
-      expect(screen.getByText('Test Movie 1')).toBeInTheDocument();
+      expect(screen.getByText('Mock Queue Movie 1')).toBeInTheDocument();
     });
 
     // Test pause action

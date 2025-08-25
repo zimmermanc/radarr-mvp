@@ -56,7 +56,7 @@ cargo run --release
 curl http://localhost:7878/health
 
 # Test trending endpoint
-curl -H "X-Api-Key: secure_production_api_key_2025" \
+curl -H "X-Api-Key: YOUR_API_KEY_HERE" \
   http://localhost:7878/api/streaming/trending/movie
 ```
 
@@ -75,7 +75,7 @@ Create/update `web/.env`:
 
 ```bash
 VITE_API_URL=http://localhost:7878
-VITE_API_KEY=secure_production_api_key_2025
+VITE_API_KEY=YOUR_API_KEY_HERE
 ```
 
 ### 3. Start Development Server

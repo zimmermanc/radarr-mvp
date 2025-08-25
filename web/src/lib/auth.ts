@@ -5,7 +5,7 @@ import { createApiClient } from './api';
  * Authentication service for managing user sessions and API keys
  */
 export class AuthService {
-  private static readonly PRODUCTION_API_KEY = 'secure_production_api_key_2025';
+  private static readonly PRODUCTION_API_KEY = 'YOUR_API_KEY_HERE';
   private static readonly DEFAULT_USERNAME = 'admin';
   private static readonly DEFAULT_PASSWORD = 'admin';
 

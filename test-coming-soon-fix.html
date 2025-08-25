@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coming Soon API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #0f0;
+        }
+        .test-result {
+            border: 1px solid #0f0;
+            padding: 15px;
+            margin: 10px 0;
+            background: #000;
+        }
+        .success { border-color: #0f0; }
+        .error { border-color: #f00; color: #f00; }
+        pre { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Testing Coming Soon API Fix</h1>
+    
+    <div class="test-result">
+        <h2>Mock Backend Response (What the API returns):</h2>
+        <pre id="backend-response"></pre>
+    </div>
+    
+    <div class="test-result">
+        <h2>Frontend Parsing Test:</h2>
+        <pre id="frontend-test"></pre>
+    </div>
+    
+    <div class="test-result">
+        <h2>Fix Verification:</h2>
+        <pre id="fix-result"></pre>
+    </div>
+
+    <script>
+        // Mock backend response structure
+        const mockBackendResponse = {
+            success: true,
+            data: {
+                media_type: "movie",
+                region: "US",
+                total_results: 3,
+                entries: [  // Note: backend returns 'entries'
+                    {
+                        tmdb_id: 123456,
+                        media_type: "movie",
+                        title: "Upcoming Movie 1",
+                        release_date: "2025-09-01",
+                        poster_path: "/poster1.jpg",
+                        overview: "An exciting new movie coming soon",
+                        source: "tmdb",
+                        region: "US",
+                        streaming_services: ["Netflix", "Disney+"]
+                    },
+                    {
+                        tmdb_id: 789012,
+                        media_type: "movie",
+                        title: "Upcoming Movie 2",
+                        release_date: "2025-09-15",
+                        poster_path: "/poster2.jpg",
+                        overview: "Another great movie on the way",
+                        source: "tmdb",
+                        region: "US",
+                        streaming_services: ["Amazon Prime"]
+                    },
+                    {
+                        tmdb_id: 345678,
+                        media_type: "movie",
+                        title: "Upcoming Movie 3",
+                        release_date: "2025-10-01",
+                        poster_path: "/poster3.jpg",
+                        overview: "The most anticipated movie of the year",
+                        source: "tmdb",
+                        region: "US",
+                        streaming_services: ["Hulu", "Max"]
+                    }
+                ],
+                fetched_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 24*60*60*1000).toISOString()
+            }
+        };
+
+        // Display backend response
+        document.getElementById('backend-response').textContent = JSON.stringify(mockBackendResponse, null, 2);
+
+        // Test frontend parsing (OLD vs NEW)
+        function testFrontendParsing() {
+            const response = mockBackendResponse.data;
+            
+            // OLD CODE (looking for 'releases' - would fail)
+            const oldCode = `
+// OLD ComingSoonList.tsx code:
+const releases = response?.releases || response?.data?.releases || [];
+setReleases(Array.isArray(releases) ? releases : []);
+
+Result: releases = ${JSON.stringify(response?.releases || response?.data?.releases || [])}
+Length: ${(response?.releases || response?.data?.releases || []).length}
+`;
+
+            // NEW CODE (looking for 'entries' - should work)
+            const newCode = `
+// NEW ComingSoonList.tsx code (FIXED):
+const entries = response?.entries || response?.data?.entries || [];
+setReleases(Array.isArray(entries) ? entries : []);
+
+Result: entries = [${response?.entries?.length || 0} items]
+First item: ${response?.entries?.[0]?.title || 'undefined'}
+`;
+
+            document.getElementById('frontend-test').textContent = 
+                "OLD CODE (BROKEN):\n" + oldCode + "\n\n" +
+                "NEW CODE (FIXED):\n" + newCode;
+        }
+
+        // Verify the fix
+        function verifyFix() {
+            const response = mockBackendResponse.data;
+            const entries = response?.entries || response?.data?.entries || [];
+            
+            const result = entries.length > 0 
+                ? `✅ SUCCESS: Found ${entries.length} upcoming movies!\n\nMovies:\n${entries.map(e => `- ${e.title} (${e.release_date})`).join('\n')}`
+                : `❌ FAILED: No entries found. Check the field name mapping.`;
+            
+            document.getElementById('fix-result').textContent = result;
+            document.getElementById('fix-result').parentElement.className = 
+                entries.length > 0 ? 'test-result success' : 'test-result error';
+        }
+
+        // Run tests
+        testFrontendParsing();
+        verifyFix();
+    </script>
+</body>
+</html>

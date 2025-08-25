@@ -31,9 +31,9 @@ export const ComingSoonList: React.FC<ComingSoonListProps> = ({
       setError(null);
       const api = getStreamingApi();
       const response = await api.getComingSoon(mediaType, region);
-      // Defensive programming: ensure releases is always an array
-      const releases = response?.releases || response?.data?.releases || [];
-      setReleases(Array.isArray(releases) ? releases : []);
+      // Defensive programming: ensure entries is always an array (changed from 'releases' to 'entries')
+      const entries = response?.entries || response?.data?.entries || [];
+      setReleases(Array.isArray(entries) ? entries : []);
     } catch (err) {
       console.error('Failed to fetch coming soon:', err);
       setError('Failed to load upcoming releases');

@@ -85,8 +85,10 @@ export interface AvailabilityResponse {
 export interface ComingSoonResponse {
   media_type: MediaType;
   region: string;
-  releases: ComingSoon[];
+  entries: ComingSoon[];  // Changed from 'releases' to match backend
+  total_results?: number;  // Optional field from backend
   fetched_at: string;
+  expires_at?: string;     // Optional field from backend
 }
 
 export interface ProvidersResponse {

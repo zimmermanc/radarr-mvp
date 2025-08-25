@@ -42,10 +42,30 @@ describe('Movies Page', () => {
   it('should render movies list successfully', async () => {
     renderWithProviders(<Movies />);
 
+    // Wait for loading to complete first
+    await waitFor(() => {
+      // Check if we're not in loading state anymore
+      expect(screen.queryByText(/loading|Loading/i)).not.toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    // Debug: check if there are any console errors
+    const errors = [];
+    const originalError = console.error;
+    console.error = (...args) => {
+      errors.push(args.join(' '));
+      originalError(...args);
+    };
+
+    // Debug: log what's actually rendered
+    console.log('Rendered content (Movies):', document.body.textContent);
+    console.log('Console errors:', errors);
+    
+    console.error = originalError;
+
     // Wait for movies to load (using MSW mock data)
     await waitFor(() => {
       expect(screen.getByText('Mock Movie 1')).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
 
     // Verify movie details are displayed
     expect(screen.getByText('2025')).toBeInTheDocument();

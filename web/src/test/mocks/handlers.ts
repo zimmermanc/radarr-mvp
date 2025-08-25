@@ -56,7 +56,8 @@ const mockTrendingMovies = {
 };
 
 const mockQueueItems = {
-  records: [
+  data: {
+    items: [
       {
         id: '1',
         movieId: 'movie-1',
@@ -82,12 +83,14 @@ const mockQueueItems = {
         estimatedCompletionTime: null,
       },
     ],
-    totalCount: 2,
+    totalRecords: 2,
+  },
+  success: true,
 };
 
 const mockMovies = {
   data: {
-    movies: [
+    records: [
       {
         id: '1',
         tmdb_id: 123456,
@@ -101,11 +104,12 @@ const mockMovies = {
         quality_profile_id: 1,
         added: '2025-08-24T20:00:00Z',
         updated: '2025-08-24T20:00:00Z',
+        has_file: false,
       },
     ],
     totalCount: 1,
-    currentPage: 1,
-    totalPages: 1,
+    page: 1,
+    pageSize: 20,
   },
   success: true,
 };

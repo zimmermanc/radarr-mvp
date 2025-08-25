@@ -33,7 +33,7 @@ export const TrendingCarousel: React.FC<TrendingCarouselProps> = ({
         window: selectedWindow,
         limit: 20,
       });
-      setEntries(response.entries);
+      setEntries(response?.entries || []);
     } catch (err) {
       console.error('Failed to fetch trending:', err);
       setError('Failed to load trending content');
@@ -76,7 +76,7 @@ export const TrendingCarousel: React.FC<TrendingCarouselProps> = ({
     );
   }
 
-  const visibleEntries = entries.slice(currentIndex, currentIndex + 5);
+  const visibleEntries = Array.isArray(entries) ? entries.slice(currentIndex, currentIndex + 5) : [];
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">

@@ -137,7 +137,7 @@ export const MovieCardWithStreaming: React.FC<MovieCardWithStreamingProps> = ({
             {movie.vote_average && (
               <div className="flex items-center space-x-1 text-xs text-secondary-600 dark:text-secondary-400">
                 <span>⭐</span>
-                <span>{(movie.vote_average || 0).toFixed(1)}</span>
+                <span>{(typeof movie.vote_average === 'number' ? movie.vote_average : 0).toFixed(1)}</span>
               </div>
             )}
           </div>

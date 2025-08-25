@@ -87,7 +87,8 @@ describe('Movies Page', () => {
       expect(screen.getByText('Movies')).toBeInTheDocument();
     });
 
-    // Should have basic UI elements
-    expect(screen.getByText('Add Movie')).toBeInTheDocument();
+    // Should have basic UI elements (use getAllByText for multiple matches)
+    const addMovieButtons = screen.getAllByText('Add Movie');
+    expect(addMovieButtons.length).toBeGreaterThan(0);
   });
 });

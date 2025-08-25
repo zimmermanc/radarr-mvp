@@ -55,7 +55,7 @@ describe('TrendingCarousel', () => {
       ),
     } as any);
 
-    render(<TrendingCarousel />);
+    render(<TrendingCarousel mediaType="movie" />);
     
     // Should show loading spinner
     expect(screen.getByRole('status') || screen.getByTestId('loading-indicator')).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe('TrendingCarousel', () => {
       getTrending: vi.fn().mockResolvedValue(mockTrendingData),
     } as any);
 
-    render(<TrendingCarousel />);
+    render(<TrendingCarousel mediaType="movie" />);
 
     // Wait for data to load
     await waitFor(() => {
@@ -84,7 +84,7 @@ describe('TrendingCarousel', () => {
       getTrending: vi.fn().mockRejectedValue(new Error('API Error: Failed to fetch')),
     } as any);
 
-    render(<TrendingCarousel />);
+    render(<TrendingCarousel mediaType="movie" />);
 
     // Wait for error state
     await waitFor(() => {
@@ -107,7 +107,7 @@ describe('TrendingCarousel', () => {
       getTrending: vi.fn().mockResolvedValue(emptyResponse),
     } as any);
 
-    render(<TrendingCarousel />);
+    render(<TrendingCarousel mediaType="movie" />);
 
     // Wait for empty state
     await waitFor(() => {
@@ -128,7 +128,7 @@ describe('TrendingCarousel', () => {
 
     // This test specifically checks that the component handles bad data gracefully
     expect(() => {
-      render(<TrendingCarousel />);
+      render(<TrendingCarousel mediaType="movie" />);
     }).not.toThrow();
 
     // Component should render without crashing, even with bad data

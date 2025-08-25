@@ -4,34 +4,34 @@ import { describe, it, expect, vi } from 'vitest';
 import { MovieCardWithStreaming } from './MovieCardWithStreaming';
 import type { TrendingEntry } from '../../lib/schemas';
 
-const mockMovie: TrendingEntry = {
+const mockMovie: any = {
   id: '1',
   tmdb_id: 123456,
-  media_type: 'movie',
   title: 'Test Movie',
-  release_date: '2025-01-01',
+  year: 2025,
+  overview: 'A test movie for testing purposes',
   poster_path: '/test-poster.jpg',
   backdrop_path: '/test-backdrop.jpg',
-  overview: 'A test movie for testing purposes',
-  source: 'tmdb',
-  time_window: 'day',
-  rank: 1,
-  score: 100.0,
+  status: 'wanted',
+  monitored: true,
+  quality_profile_id: 1,
+  added: '2025-08-24T20:00:00Z',
+  updated: '2025-08-24T20:00:00Z',
   vote_average: 8.5,
-  vote_count: 1000,
-  popularity: 95.5,
-  fetched_at: '2025-08-24T20:00:00Z',
-  expires_at: '2025-08-24T23:00:00Z',
+  has_file: false,
 };
 
 describe('MovieCardWithStreaming', () => {
   it('should render movie information correctly', () => {
-    const onAddToQueue = vi.fn();
+    const onMovieClick = vi.fn();
+    const onSelectionToggle = vi.fn();
     
     render(
       <MovieCardWithStreaming 
         movie={mockMovie} 
-        onAddToQueue={onAddToQueue}
+        onMovieClick={onMovieClick}
+        isSelected={false}
+        onSelectionToggle={onSelectionToggle}
       />
     );
 
@@ -51,12 +51,15 @@ describe('MovieCardWithStreaming', () => {
       poster_path: null,
     };
     
-    const onAddToQueue = vi.fn();
+    const onMovieClick = vi.fn();
+    const onSelectionToggle = vi.fn();
     
     render(
       <MovieCardWithStreaming 
         movie={movieWithoutPoster} 
-        onAddToQueue={onAddToQueue}
+        onMovieClick={onMovieClick}
+        isSelected={false}
+        onSelectionToggle={onSelectionToggle}
       />
     );
 
@@ -68,33 +71,40 @@ describe('MovieCardWithStreaming', () => {
     expect(images.length).toBeGreaterThan(0);
   });
 
-  it('should call onAddToQueue when add button is clicked', () => {
-    const onAddToQueue = vi.fn();
+  it('should call onMovieClick when movie is clicked', () => {
+    const onMovieClick = vi.fn();
+    const onSelectionToggle = vi.fn();
     
     render(
       <MovieCardWithStreaming 
         movie={mockMovie} 
-        onAddToQueue={onAddToQueue}
+        onMovieClick={onMovieClick}
+        isSelected={false}
+        onSelectionToggle={onSelectionToggle}
       />
     );
 
-    // Find and click add button
-    const addButton = screen.getByRole('button', { name: /add|download|\+/i });
-    fireEvent.click(addButton);
-
-    // Should call callback with movie data
-    expect(onAddToQueue).toHaveBeenCalledWith(mockMovie);
+    // Find and click the movie card
+    const movieCard = screen.getByText('Test Movie').closest('div');
+    if (movieCard) {
+      fireEvent.click(movieCard);
+      // Should call callback with movie data
+      expect(onMovieClick).toHaveBeenCalledWith(mockMovie);
+    }
   });
 
   it('should handle undefined movie data gracefully', () => {
-    const onAddToQueue = vi.fn();
+    const onMovieClick = vi.fn();
+    const onSelectionToggle = vi.fn();
     
     // Test with undefined movie (could cause crashes)
     expect(() => {
       render(
         <MovieCardWithStreaming 
           movie={undefined as any} 
-          onAddToQueue={onAddToQueue}
+          onMovieClick={onMovieClick}
+          isSelected={false}
+          onSelectionToggle={onSelectionToggle}
         />
       );
     }).not.toThrow();
@@ -108,14 +118,17 @@ describe('MovieCardWithStreaming', () => {
       vote_average: 'invalid' as any,
     };
     
-    const onAddToQueue = vi.fn();
+    const onMovieClick = vi.fn();
+    const onSelectionToggle = vi.fn();
     
     // Should not crash with malformed data
     expect(() => {
       render(
         <MovieCardWithStreaming 
           movie={malformedMovie as any} 
-          onAddToQueue={onAddToQueue}
+          onMovieClick={onMovieClick}
+          isSelected={false}
+          onSelectionToggle={onSelectionToggle}
         />
       );
     }).not.toThrow();

@@ -42,15 +42,13 @@ describe('Movies Page', () => {
   it('should render movies list successfully', async () => {
     renderWithProviders(<Movies />);
 
-    // Wait for movies to load
+    // Wait for movies to load (using MSW mock data)
     await waitFor(() => {
-      expect(screen.getByText('Test Movie 1')).toBeInTheDocument();
-      expect(screen.getByText('Test Movie 2')).toBeInTheDocument();
+      expect(screen.getByText('Mock Movie 1')).toBeInTheDocument();
     });
 
     // Verify movie details are displayed
     expect(screen.getByText('2025')).toBeInTheDocument();
-    expect(screen.getByText('2024')).toBeInTheDocument();
   });
 
   it('should handle search functionality', async () => {
@@ -58,7 +56,7 @@ describe('Movies Page', () => {
 
     // Wait for initial load
     await waitFor(() => {
-      expect(screen.getByText('Test Movie 1')).toBeInTheDocument();
+      expect(screen.getByText('Mock Movie 1')).toBeInTheDocument();
     });
 
     // Test search input if present

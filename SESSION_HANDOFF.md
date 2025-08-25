@@ -35,7 +35,7 @@
 
 ### **Production Streaming Page Validation**
 - **Status**: "d is not iterable" fix deployed but needs validation
-- **Test**: Visit http://192.168.0.131:7878/streaming to verify no JavaScript errors
+- **Test**: Visit http://YOUR_SERVER:7878/streaming to verify no JavaScript errors
 - **Expected**: Trending movies should display without console errors
 
 ### **CI Testing Integration**
@@ -80,7 +80,7 @@ Validate production streaming page functionality and complete final 1% of Radarr
 Current status: 99% complete with comprehensive testing infrastructure operational (19/19 tests passing). 
 
 Immediate priorities:
-1. Test streaming page on production server (http://192.168.0.131:7878/streaming) - verify no "d is not iterable" errors
+1. Test streaming page on production server (http://YOUR_SERVER:7878/streaming) - verify no "d is not iterable" errors
 2. Debug WebSocket authentication failures - investigate why connections fail despite correct apikey configuration
 3. Validate frontend testing in CI - ensure GitHub Actions frontend-testing.yml works
 4. Create v1.0.3 release with all improvements
@@ -89,7 +89,7 @@ System context: All core features working, testing infrastructure complete, mino
 ```
 
 ### **Key Files for Next Session**
-- **Production server**: root@192.168.0.131 (test streaming page functionality)
+- **Production server**: root@YOUR_SERVER (test streaming page functionality)
 - **WebSocket config**: `web/src/contexts/WebSocketContext.tsx` + `src/websocket.rs`
 - **Testing**: `web/` directory with 19/19 passing tests
 - **Documentation**: `CLAUDE.md` and `TASKLIST.md` updated with current status

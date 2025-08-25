@@ -29,19 +29,24 @@ export const ProviderFilter: React.FC<ProviderFilterProps> = ({
       setLoading(true);
       const api = getStreamingApi();
       const response = await api.getProviders(region);
-      setProviders(response.providers);
+      // Defensive programming: ensure providers is always an array
+      const providers = response?.providers || response?.data?.providers || [];
+      setProviders(Array.isArray(providers) ? providers : []);
     } catch (err) {
       console.error('Failed to fetch providers:', err);
+      setProviders([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
   const toggleProvider = (providerName: string) => {
-    if (selectedProviders.includes(providerName)) {
-      onProvidersChange(selectedProviders.filter((p) => p !== providerName));
+    // Defensive programming: ensure selectedProviders is always an array
+    const safeSelected = Array.isArray(selectedProviders) ? selectedProviders : [];
+    if (safeSelected.includes(providerName)) {
+      onProvidersChange(safeSelected.filter((p) => p !== providerName));
     } else {
-      onProvidersChange([...selectedProviders, providerName]);
+      onProvidersChange([...safeSelected, providerName]);
     }
   };
 
@@ -51,7 +56,9 @@ export const ProviderFilter: React.FC<ProviderFilterProps> = ({
 
   // Popular providers to show first
   const popularProviders = ['Netflix', 'Disney Plus', 'Amazon Prime Video', 'Hulu', 'Apple TV Plus', 'HBO Max'];
-  const sortedProviders = [...providers].sort((a, b) => {
+  // Defensive programming: ensure providers is always an array before spreading
+  const safeProviders = Array.isArray(providers) ? providers : [];
+  const sortedProviders = [...safeProviders].sort((a, b) => {
     const aIsPopular = popularProviders.includes(a.name);
     const bIsPopular = popularProviders.includes(b.name);
     if (aIsPopular && !bIsPopular) return -1;
@@ -150,7 +157,7 @@ export const ProviderFilter: React.FC<ProviderFilterProps> = ({
         </>
       )}
 
-      {selectedProviders.length > 0 && (
+      {Array.isArray(selectedProviders) && selectedProviders.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {selectedProviders.map((provider) => (
             <span

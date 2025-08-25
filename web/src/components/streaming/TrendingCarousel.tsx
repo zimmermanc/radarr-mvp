@@ -34,8 +34,10 @@ export const TrendingCarousel: React.FC<TrendingCarouselProps> = ({
         limit: 20,
       });
       // Defensive programming: ensure we have a valid array
+      // Fix for production "u is not iterable" error - comprehensive null safety
       const entries = response?.data?.entries || response?.entries || [];
       setEntries(Array.isArray(entries) ? entries : []);
+      console.log('TrendingCarousel: Loaded', entries.length, 'entries - v1.0.3-fixed');
     } catch (err) {
       console.error('Failed to fetch trending:', err);
       setError('Failed to load trending content');

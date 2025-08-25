@@ -19,6 +19,7 @@ import { initStreamingApi } from './lib/streamingApi';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
+  // v1.0.3 - Fixed critical JavaScript iteration errors in production
   // Initialize streaming API globally
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;

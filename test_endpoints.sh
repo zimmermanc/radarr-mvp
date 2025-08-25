@@ -11,7 +11,7 @@ echo "🌐 Radarr MVP Endpoint Testing Suite"
 echo "===================================="
 
 # Configuration
-API_KEY="secure_production_api_key_2025"
+API_KEY="YOUR_API_KEY_HERE"
 BASE_URL="http://localhost:7878"
 TEST_TIMEOUT=30
 SERVER_PID=""

@@ -50,7 +50,7 @@ test_api_endpoint() {
     echo "Endpoint: $method $endpoint"
     
     response=$(curl -s -w "\n%{http_code}" -X "$method" \
-        -H "X-Api-Key: secure_production_api_key_2025" \
+        -H "X-Api-Key: YOUR_API_KEY_HERE" \
         -H "Content-Type: application/json" \
         "http://localhost:7878$endpoint" 2>/dev/null || echo -e "\nERROR")
     
@@ -170,7 +170,7 @@ if [ "$SERVER_RUNNING" = true ]; then
     # Test server response time
     echo "Testing API response time..."
     response_time=$(curl -s -w "%{time_total}" -o /dev/null \
-        -H "X-Api-Key: secure_production_api_key_2025" \
+        -H "X-Api-Key: YOUR_API_KEY_HERE" \
         "http://localhost:7878/api/v1/system/status")
     
     if (( $(echo "$response_time < 2.0" | bc -l) )); then

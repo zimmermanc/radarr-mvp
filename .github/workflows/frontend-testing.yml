@@ -1,0 +1,160 @@
+name: Frontend Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'web/**'
+      - '.github/workflows/frontend-testing.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'web/**'
+  workflow_dispatch:
+
+jobs:
+  # Comprehensive frontend testing
+  frontend-quality:
+    name: Frontend Quality & Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      
+      - name: Install dependencies
+        run: |
+          cd web
+          npm ci
+      
+      - name: Run linting
+        run: |
+          cd web
+          npm run lint
+      
+      - name: Build frontend
+        run: |
+          cd web
+          npm run build
+      
+      - name: Run unit tests with coverage
+        run: |
+          cd web
+          npm run test:coverage
+      
+      - name: Check coverage thresholds
+        run: |
+          cd web
+          # Verify coverage meets minimum requirements
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const coverage = require('./coverage/coverage-summary.json');
+              const { lines, branches, functions, statements } = coverage.total;
+              
+              console.log('Coverage Summary:');
+              console.log('Lines:', lines.pct + '%');
+              console.log('Branches:', branches.pct + '%');
+              console.log('Functions:', functions.pct + '%');
+              console.log('Statements:', statements.pct + '%');
+              
+              if (lines.pct < 85 || branches.pct < 75 || functions.pct < 80 || statements.pct < 85) {
+                console.error('Coverage thresholds not met!');
+                process.exit(1);
+              }
+              
+              console.log('✅ All coverage thresholds met');
+            "
+          fi
+      
+      - name: Build Storybook
+        run: |
+          cd web
+          npm run build-storybook
+      
+      - name: Run Storybook tests
+        run: |
+          cd web
+          npm run test:storybook
+      
+      - name: Install Playwright browsers
+        run: |
+          cd web
+          npx playwright install chromium --with-deps
+      
+      - name: Start backend for E2E tests
+        run: |
+          # Start a mock backend or use existing test server
+          cd ..
+          cargo build --release
+          # Start server in background for E2E tests
+          RADARR_API_KEY=test_api_key_for_e2e DATABASE_URL=sqlite::memory: ./target/release/radarr-mvp &
+          sleep 10
+        env:
+          RUST_LOG: error
+      
+      - name: Run E2E tests with console error detection
+        run: |
+          cd web
+          npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:7878
+      
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: web/coverage/
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: |
+            web/test-results/
+            web/playwright-report/
+      
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              const coveragePath = path.join('web', 'coverage', 'coverage-summary.json');
+              if (fs.existsSync(coveragePath)) {
+                const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+                const { lines, branches, functions, statements } = coverage.total;
+                
+                const comment = `## 🧪 Frontend Test Coverage
+                
+                | Metric | Coverage | Status |
+                |--------|----------|--------|
+                | Lines | ${lines.pct}% | ${lines.pct >= 85 ? '✅' : '❌'} |
+                | Branches | ${branches.pct}% | ${branches.pct >= 75 ? '✅' : '❌'} |
+                | Functions | ${functions.pct}% | ${functions.pct >= 80 ? '✅' : '❌'} |
+                | Statements | ${statements.pct}% | ${statements.pct >= 85 ? '✅' : '❌'} |
+                
+                **Thresholds**: Lines 85%, Branches 75%, Functions 80%, Statements 85%
+                `;
+                
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: comment
+                });
+              }
+            } catch (error) {
+              console.log('Could not find coverage report');
+            }

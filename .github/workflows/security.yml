@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 15
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full history for better analysis
       
@@ -92,7 +92,7 @@ jobs:
       
       - name: Upload security artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: security-reports
           path: |
